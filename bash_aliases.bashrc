@@ -79,11 +79,11 @@ alias llad=$_findAllDirectories' | xargs -0r '$_ll' -d' # All directories
 alias llf=$_findRegularFiles' | xargs -0r '$_ll' -d'    # List regular files
 alias llaf=$_findAllFiles' | xargs -0r '$_ll' -d '      # List all files + hidden
 alias llhf=$_findHiddenFiles' | xargs -0r '$_ll' -d'    # Only hidden files
-alias lla='ll -A' # All
-alias llh='ll -d .[^.]*' # Hidden
+alias lla=$_ll' -A' # All
+alias llh=$_ll' -d .[^.]*' # Hidden
 
-alias lld='ll -d */' # regular directories
-alias llhd='ll -d .[^.]*/' # Hidden directories
+alias lld=$_ll' -d */' # regular directories
+alias llhd=$_ll' -d .[^.]*/' # Hidden directories
 
 # Clear terminal and list files
 alias c="clear"
