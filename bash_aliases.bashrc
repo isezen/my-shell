@@ -159,7 +159,6 @@ print_files () {
     x=$(( $x + 1 ))
   done <<< "$1"
 }
-unset print_files
 
 # alias du='du -ach --max-depth=1 2> >(grep -v "^du: cannot \(access\|read\)" >&2)'
 alias du='du -ahd 1 '
