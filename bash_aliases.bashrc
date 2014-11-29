@@ -69,7 +69,7 @@ done
 # Long listings
 # if you have ll, use it instead of ls
 if hash ll 2>/dev/null; then
-  _ll='ll -h --group-directories-first'
+  _ll='ll -hGg --group-directories-first'
 else
   _ll='ls -lhF --color'
 fi
@@ -82,8 +82,8 @@ alias llhf=$_findHiddenFiles' | xargs -0r '$_ll' -d'    # Only hidden files
 alias lla=$_ll' -A' # All
 alias llh=$_ll' -d .[^.]*' # Hidden
 
-alias lld='\ll -dh */' # regular directories
-alias llhd='\ll -dh .[^.]*/' # Hidden directories
+alias lld='\ll -dhGg */' # regular directories
+alias llhd='\ll -dhGg .[^.]*/' # Hidden directories
 
 # Clear terminal and list files
 alias c="clear"
