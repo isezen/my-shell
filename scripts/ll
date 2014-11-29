@@ -269,8 +269,10 @@ fi
 # FILE PERMISSIONS
 ###### PERF:~51ms
 # Get file permissions column (remove total line)
-_perms=$(echo "$ll_res" | cut -d" " -f $_CURCOL | awk '{printf("%-11s\n", $1);}') # Flush left  ###### PERF:~10ms
+_perms=$(echo "$ll_res" | cut -d" " -f $_CURCOL)
+# | awk '{printf("%-11s\n", $1);}'
 _CURCOL=$(($_CURCOL+1)) ###### PERF:~5ms
+_perms=$(flush_left "$_perms")
 _perms=$(echo "$_perms" | ###### PERF:~23ms
   sed -e "s/d/$_cd&$_creset/g" |
   sed -e "s/l/$_cl&$_creset/g" |
@@ -284,8 +286,10 @@ _perms=$(echo "$_perms" | ###### PERF:~23ms
 # HARD LINKS
 ###### PERF:~34ms
 #                        # Get hard links column # Flush right
-_hlinks=$(echo "$ll_res" | cut -d" " -f $_CURCOL | sed -e :a -e 's/^.\{1,1\}$/ &/;ta') ###### PERF:~18ms
+_hlinks=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~18ms
 _CURCOL=$(($_CURCOL+1)) ###### PERF:~5ms
+# | sed -e :a -e 's/^.\{1,1\}$/ &/;ta'
+_hlinks=$(flush_right "$_hlinks")
 res=$(paste -d" " <(echo "$res") <(echo "$_hlinks")) ###### PERF:~20ms
 
 # USERS
