@@ -67,23 +67,23 @@ done
 
 
 # Long listings
-# if you have ls++, use it instead of ls
-if hash ls++ 2>/dev/null; then
-  _ll='ls++ -lhF'
+# if you have ll, use it instead of ls
+if hash ll 2>/dev/null; then
+  _ll='ll -h --group-directories-first'
 else
   _ll='ls -lhF --color'
 fi
 
-alias ll=$_ll
-alias llad=$_findAllDirectories' | xargs -0r '$_ll' -d' # All directories
+alias ll="$_ll -F"
+alias llad=$_findAllDirectories' | xargs -0r '$_ll' -dF' # All directories
 alias llf=$_findRegularFiles' | xargs -0r '$_ll' -d'    # List regular files
 alias llaf=$_findAllFiles' | xargs -0r '$_ll' -d '      # List all files + hidden
 alias llhf=$_findHiddenFiles' | xargs -0r '$_ll' -d'    # Only hidden files
 alias lla=$_ll' -A' # All
 alias llh=$_ll' -d .[^.]*' # Hidden
 
-alias lld=$_ll' -d */' # regular directories
-alias llhd=$_ll' -d .[^.]*/' # Hidden directories
+alias lld='\ll -dh */' # regular directories
+alias llhd='\ll -dh .[^.]*/' # Hidden directories
 
 # Clear terminal and list files
 alias c="clear"
@@ -102,30 +102,6 @@ if hash pydf 2>/dev/null; then alias df='pydf'; fi
 
 # Use dfc instead of df if exist
 if hash dfc 2>/dev/null; then alias df='dfc'; fi
-
-# Sorted du commands
-# Everything in current directory
-dus () {
-  \du -ahd 1 | sed -r "s:./::" | sort -h | while IFS=$'\t' read -r size line;
-  do printf "%s\t%s" $size "$line";
-    [[ -d $line ]] && printf "/";
-    echo;
-  done;
-}
-
-# Only Regular files
-dusf () {
-  _filelist=$(eval $_findRegularFiles' | xargs -r0 \du -ach | sort -h;');
-  echo "$_filelist";
-  echo "Number of files:"$(expr $(echo "$_filelist"| wc -l) - 1);
-}
-
-# Only Hidden files
-dusf. () {
-  _filelist=$(eval $_findHiddenFiles' | xargs -r0 \du -ach | sort -h;');
-  echo "$_filelist";
-  echo "Number of files:"$(expr $(echo "$_filelist"| wc -l) - 1);
-}
 
 dushf () {
   echo "Calculating disk usage of all hidden files in $PWD"

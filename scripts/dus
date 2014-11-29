@@ -1,0 +1,67 @@
+#!/bin/bash
+# sezenismail@gmail.com
+# 2014-11-24
+# Disk Usage Info Sorted and Colored
+# Disk usage Informatin for everyhing in CURRENT directory
+#
+# dus (f|d|h|a)v
+
+
+_usage() {
+  echo "Disk Usage Script 2014 Ismail SEZEN"
+  echo "Usage: $0 -(f|d|h|a)v *.pdf"
+  echo "-f : Only Regular files"
+  echo "-d : Only Directories"
+  echo "-h : Only Hidden files"
+  echo "-a : Everything"
+  echo "-p : Search pattern"
+  echo "-v : Verbose output."
+  echo "-h : Shows this message."
+  exit 1
+}
+
+OPTIND=1 # Reset in case getopts has been used previously in the shell.
+
+VERBOSE=0    # v
+FILES=0      # f
+DIRS=0       # d
+ONLYHIDDEN=0 # h
+ALL=0        # a
+PATTERN=     # p
+
+while getopts "h?vfdhap" opt; do
+  case "$opt" in
+    h|\?)
+    _usage
+    exit 0
+    ;;
+    v)  VERBOSE=1
+    ;;
+    f)  ALLUSERS=1
+    ;;
+    u)  UNINSTALL=1
+    ;;
+  esac
+done
+shift $((OPTIND-1))
+
+
+# echo "$ls_res" |  tr " " ","
+
+ls_res=$(\ls -AUF1 --color) # get only file/directory names
+du_res=$(\du -ahcd 1 | sed -r "s:./::") # get sizes
+du_total=$(echo "$du_res" | tail -n 1)
+du_res=$(echo "$du_res" | head -n -2) # get sizes
+du_sizes=$(echo "$du_res" | cut -f 1) # Only sizes column
+
+res=$(paste <(echo "$du_sizes") <(echo "$ls_res")) # combine size and file names
+res=$(echo "$res" | sort -h -k 1) # Sort
+
+# Colorize Sizes
+res=$(echo "$res" | GREP_COLORS='mt=00;35' egrep --color=always '^[0-9]*\.?[0-9][K]|$')
+res=$(echo "$res" | GREP_COLORS='mt=00;32' egrep --color=always '^[0-9]*\.?[0-9][M]|$')
+res=$(echo "$res" | GREP_COLORS='mt=01;31' egrep --color=always '^[0-9]*\.?[0-9]+[G]|$')
+
+echo "$res" # Print result
+echo "------------"
+echo -e "\033[41m$du_total\033[0m" # Print Total
