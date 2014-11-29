@@ -32,4 +32,6 @@ If you installed before for *all users*, use `-a` flag to uninstall for *all use
 ./install.sh -ua
 . ~/.bashrc
 ```
+##### Installing Scripts
 
+To use scripts in `scripts`folder, simply copy them under `/usr/bin` or create symlinks.
