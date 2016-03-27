@@ -14,7 +14,7 @@ function save() {
   local fbase="$1"
   local fname="${_PREFIX}/$fbase"
   local url="$_URLM/$fbase"
-  echo "Downloading script from ${url} and saving it to ${fname}..."
+  echo "Downloading script from ${url} and saving it to ${fname}"
   curl -sL "${url}" > "${fname}" || die "Couldn't download script from ${url}"
   chmod +x "${fname}"
   echo "Done."
@@ -35,7 +35,7 @@ else
 fi
 
 mkdir -p "$_PREFIX"
-echo "Checking if PATH contains ${_PREFIX}..."
+echo "Checking if PATH contains ${_PREFIX}"
 if [[ ":$PATH:" != *":$_PREFIX:"* ]]; then
   grep "$_PREFIX" "${SCRIPT}" > /dev/null 2>&1 || (echo "Appending export command to ${SCRIPT}..."; echo "" >> "${SCRIPT}"; echo "export PATH=\"$_PREFIX:$PATH\"" >> "${SCRIPT}")
   echo "Done."
