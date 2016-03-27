@@ -388,7 +388,7 @@ res=$(paste -d" " <(echo "$res") <(echo "$_dates2") <(echo "$_entries")) ###### 
 
 echo "$res" ###### PERF:~60ms
 echo "$ll_total"
-_val=$(( $(date +%s%N)/1000000 - $_tsmp )); echo "Performance: $_val"
+# _val=$(( $(date +%s%N)/1000000 - $_tsmp )); echo "Performance: $_val"
 
 
 # _tsmp2=$(( $(date +%s%N)/1000000 ));
