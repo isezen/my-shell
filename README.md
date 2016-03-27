@@ -1,37 +1,21 @@
-mybash
+my-shell
 ======
 
-This shell scripts contains my personalized bash settings for inst; *aliases*, *small functions* etc.. I tried my best to make it compatible for both Linux and Mac OS X. If you have an issue, please open an issue.
+my-shell project contains my shell environment settings like aliases and small scripts. They should be compatible with both linux and OSX. If not, please open an issue.
 
 ## Installation
 
-##### Installing only for yourself
+##### Shell Settings
 
-To install, issue the commands below in terminal. This procedure creates a hidden directory named `~/.mybash/` and copies `bash_aliases.bashrc` and `mybash.bashrc` files into it. Also, adds a line into `~/.bashrc` sourcing the `mybash.bashrc` file.
-```sh
-git clone https://github.com/isezen/mybash.git
-./install.sh
-. ~/.bashrc
-```
+Issue the commands below in terminal to install. This one-liner will download `install_shell_settings.sh` and run it in your sh environment. Also, you can download installer and run it on your own machine but this is easiest way.
 
-##### Install for all users
+```sh
+sh -c "$(curl -sL https://git.io/vVftO)"
+```
+The command above downloads `alias.sh` and `bash.sh` files to your home folder as hidden files and source them in your profile file. If you want to install them for all users in the machine, you must copy these files to `/etc` and source them in your main system wide profile file.
 
-To install for *all users* (**requires root privileges**), issue the commands below in terminal. This procedure creates a directory named `/etc/mybash/` and copies `bash_aliases.bashrc` and `mybash.bashrc` files into it. Also, adds a line into `/etc/bash.bashrc` for Linux (`/etc/bashrc` for MAC OS X) sourcing the `/etc/mybash/mybash.bashrc` file.` 
-```sh
-git clone https://github.com/isezen/mybash.git
-./install.sh -a
-```
-#### Uninstall:
-If you installed before for the current user, you can use the commands below as it is.
-```sh
-./install.sh -u
-. ~/.bashrc
-```
-If you installed before for *all users*, use `-a` flag to uninstall for *all users*. **(Requires root privileges)**
-```sh
-./install.sh -ua
-. ~/.bashrc
-```
+To uninstall, delete the files `.myaliases.sh` and `.bash.sh` files in your home directory and remove the relevant lines in your profile file.
+
 ##### Installing Scripts
 
 To use scripts in `scripts`folder, simply copy them under `/usr/bin` or create symlinks.
