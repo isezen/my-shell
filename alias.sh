@@ -184,7 +184,7 @@ alias wget="wget -c"
 
 alias h='history'
 # Statistics of history
-alias stath="history|
+alias hs="history|
   awk '{CMD[\$2]++;count++;}END { for (a in CMD)print CMD[a] \" \" CMD[a]/count*100 \"% \" a;}'|
   grep -v \"./\"|
   column -c3 -s \" \" -t|
