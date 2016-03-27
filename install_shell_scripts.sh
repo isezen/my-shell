@@ -40,8 +40,7 @@ if [[ ":$PATH:" != *":$_PREFIX:"* ]]; then
   grep "$_PREFIX" "${SCRIPT}" > /dev/null 2>&1 || (echo "Appending export command to ${SCRIPT}..."; echo "" >> "${SCRIPT}"; echo "export PATH=\"$_PREFIX:$PATH\"" >> "${SCRIPT}")
   echo "Done."
 fi
-for s in ll dus dusf dusf.; do
-  save "$s"
-done
+echo ""
+for s in ll dus dusf dusf.; do save "$s"; done
 
 echo "The next time you log in, shell scripts will be enabled."
