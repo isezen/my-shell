@@ -16,6 +16,14 @@
 PS1="\h\xE2\x98\x98 \${NEW_PWD} [\$] "
 export CLICOLOR=1
 
+# append to the history file, don't overwrite it
+shopt -s histappend
+# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
+HISTSIZE=1000
+HISTFILESIZE=2000
+# don't put duplicate lines or lines starting with space in the history.
+export HISTCONTROL=ignoreboth
+
 bash_prompt_command() {
   local pwdmaxlen=25
   local trunc_symbol=".."
