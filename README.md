@@ -16,6 +16,10 @@ The command above downloads `alias.sh` and `bash.sh` files to your home folder a
 
 To uninstall, delete the files `.myaliases.sh` and `.bash.sh` files in your home directory and remove the relevant lines in your profile file.
 
-##### Installing Scripts
+##### Scripts
 
-To use scripts in `scripts`folder, simply copy them under `/usr/bin` or create symlinks.
+To use scripts in `scripts`folder, simply run the command below or download and copy them to `/usr/local/bin`. You should run the command with `sudo` because of `/usr/local/bin`. 
+
+```sh
+sudo sh -c "$(curl -sL https://git.io/vVfYB)"
+```
