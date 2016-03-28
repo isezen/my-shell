@@ -161,7 +161,7 @@ function hg;history | grep $argv;end; funcsave hg
 
 function laf
   set -l param
-  if [ "(ls --version 2>/dev/null)" ]
+  if ls --version > /dev/null 2>&1
     set param $param --color --group-directories-first
   end
 	find . -maxdepth 1 -type f -print0 | sed -e "s:./::g" | xargs -0r ls $param $argv
@@ -171,7 +171,7 @@ function ld; ls $argv -d -- *; end; funcsave ld
 
 function lf
   set -l param
-  if [ "(ls --version 2>/dev/null)" ]
+  if ls --version > /dev/null 2>&1
     set param $param --color --group-directories-first
   end
   find . -maxdepth 1 -type f -a ! -iname ".*" -print0 | sed -e "s:./::g"  | xargs -0r ls $param $argv
@@ -183,7 +183,7 @@ function lhd; ls -d .*/; end; funcsave lhd
 
 function lhf
   set -l param
-  if [ "(ls --version 2>/dev/null)" ]
+  if ls --version > /dev/null 2>&1
     set param $param --color --group-directories-first
   end
   find . -maxdepth 1 -type f -a -iname ".*" -print0 | sed -e "s:./::g" | xargs -0r ls $param $argv
@@ -225,7 +225,7 @@ function ls
   if hash ls 2>/dev/null # if ls exist
     # if gnu ls
     set -l param
-    if [ "(ls --version 2>/dev/null)" ]
+    if command ls --version > /dev/null 2>&1
       set param $param --color --group-directories-first
     end
     command ls $param $argv
@@ -242,7 +242,7 @@ function la; ls -AF $argv; end; funcsave la
 
 function lad
   set -l param
-  if [ "(ls --version 2>/dev/null)" ]
+  if ls --version > /dev/null 2>&1
     set param $param --color --group-directories-first
   end
 	find . -maxdepth 1 -type d \( -not -iname "." \) -print0 | sed -e "s:./::g" | xargs -0r ls -dF $param $argv
@@ -309,7 +309,7 @@ function set_dircolors
 	curl -sLo ~/.dircolors https://raw.github.com/trapd00r/LS_COLORS/master/LS_COLORS
 	end
 	command --search ls >/dev/null; and begin
-		if [ "(ls --version 2>/dev/null)" ]
+		if ls --version > /dev/null 2>&1
 			if not set -q LS_COLORS
 				if type -f dircolors >/dev/null
 					if test -e ~/.dircolors
