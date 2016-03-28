@@ -10,7 +10,11 @@ function cdh; cd ~/ $argv; echo "You are at $HOME"; end; funcsave cdh
 
 function fish_greeting
 	command --search fortune >/dev/null; and begin
+		set -l cols red green brown yellow blue magenta purple cyan white
+		set i (math "("(random)" % 9)+1")
+		set_color $cols[$i]
 		fortune -a
+		echo
 	end
 end; funcsave fish_greeting
 
@@ -259,7 +263,7 @@ function mem
 
   set INACTIVE (math "$INACTIVE_BLOCKS*4096/(1024*1024)")
   set TOTAL (echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)
-  echo "Free Memory: $TOTAL""GB of $TOTALRAM"
+  echo -n -s 'Free Memory: ' (set_color purple) $TOTAL 'GB' (set_color normal) ' of ' (set_color yellow) "$TOTALRAM" (set_color normal)
 end; funcsave mem
 
 function mkdir;command mkdir -pv $argv;end; funcsave mkdir
