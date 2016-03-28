@@ -34,22 +34,25 @@ if [ "${SHELL}" == bash ];then
   URL2="https://raw.githubusercontent.com/isezen/my-shell/master/bash.sh"
   test -f "${HOME}/.bash_profile" && SCRIPT="${HOME}/.bash_profile" || SCRIPT="${HOME}/.profile"
   QUOTE='"'
+  save myaliases "$URL1"
+  save mybash "$URL2"
 elif [ "${SHELL}" == fish ];then
   echo "Make sure you have fish 2.2 or later. Your version is:"
   fish -v
 
-  URL1="https://raw.githubusercontent.com/isezen/my-shell/master/alias.fish"
-  URL2="https://raw.githubusercontent.com/isezen/my-shell/master/bash.fish"
+  URL="https://raw.githubusercontent.com/isezen/my-shell/master/my_settings.fish"
   mkdir -p "${HOME}/.config/fish"
   SCRIPT="${HOME}/.config/fish/config.fish"
   HOME_PREFIX='{$HOME}'
   SHELL_AND='; and'
+  curl -sL "${URL}" | fish
+  save_to_config="if type set_dircolors > /dev/null; set_dircolors; end"
+  echo "Checking if ${SCRIPT} contains set_dircolors"
+  grep "$save_to_config" "${SCRIPT}" > /dev/null 2>&1 || (echo "Appending source command to ${SCRIPT}..."; echo "" >> "${SCRIPT}"; echo "$save_to_config" >> "${SCRIPT}")
+  echo "Done."
 else
   die "Your shell, ${SHELL}, is not supported yet. Only bash are supported. Sorry!"
   exit 1
 fi
-
-save myaliases "$URL1"
-save mybash "$URL2"
 
 echo "The next time you log in, shell settings will be enabled."
