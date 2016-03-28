@@ -9,9 +9,9 @@ set -xU CLICOLOR 1
 function cdh; cd ~/ $argv; echo "You are at $HOME"; end; funcsave cdh
 
 function fish_greeting
-  if hash fortune 2>/dev/null
-    fortune -a
-  end
+	command --search fortune >/dev/null; and begin
+		fortune -a
+	end
 end; funcsave fish_greeting
 
 
@@ -109,11 +109,11 @@ end; funcsave fish_prompt
 
 
 function free
-  if hash free 2>/dev/null
-    free -mt $argv
-  else
-    vm_stat | perl -ne '/page size of (\d+)/ and $size=$1;    /Pages\s+([^:]+)[^\d]+(\d+)/ and printf("%-16s % 16.2f Mb\n", "$1:",     $2 * $size / 1048576);' $argv;
-  end
+	command --search free >/dev/null; and begin
+		free -mt $argv
+	end; or begin
+	    vm_stat | perl -ne '/page size of (\d+)/ and $size=$1;    /Pages\s+([^:]+)[^\d]+(\d+)/ and printf("%-16s % 16.2f Mb\n", "$1:",     $2 * $size / 1048576);' $argv;
+	end
 end; funcsave free
 
 function FindFiles
@@ -130,15 +130,15 @@ end; funcsave df
 
 function dir
   set -l param
-  if hash dir 2>/dev/null
-    if [ "(dir --version 2>/dev/null)" ]
+  command --search dir >/dev/null; and begin
+    if command dir --version > /dev/null 2>&1
       set param $param --color --group-directories-first
       if isatty 1
         set param $param --indicator-style=classify
       end
     end
     command dir $param $argv
-  else
+  end; or begin
     eval "ls -C -b"
   end
 end; funcsave dir
@@ -146,9 +146,9 @@ end; funcsave dir
 function du; command du -ahd 1 $argv 2>/dev/null; end; funcsave du
 function du.; command du -ahd 0 $argv 2>/dev/null;end; funcsave du.
 function du2
-  if hash ncdu 2>/dev/null
+  command --search ncdu >/dev/null; and begin
 	 command ncdu $argv
-	else
+	end; or begin
 		echo Install ncdu
 	end
 end; funcsave du2
@@ -222,14 +222,13 @@ function llhf
 end; funcsave llhf
 
 function ls
-  if hash ls 2>/dev/null # if ls exist
-    # if gnu ls
+  command --search ls >/dev/null; and begin
     set -l param
     if command ls --version > /dev/null 2>&1
       set param $param --color --group-directories-first
     end
     command ls $param $argv
-  else
+  end; or begin
     echo "ls does not exist"
   end
 end; funcsave ls
@@ -274,9 +273,9 @@ function nowdate;date +"%Y-%m-%d";end; funcsave nowdate
 function path;echo -e $PATH | sed 's/ /\n/g';end; funcsave path
 
 function ping
-	if hash grc 2>/dev/null
+  command --search grc >/dev/null; and begin
 		grc ping -c 10 $argv
-	else
+	end; or begin
 		ping -c 10 $argv
 	end
 end; funcsave ping
@@ -293,9 +292,9 @@ function print_files
 end; funcsave print_files
 
 function ps
-	if hash grc 2>/dev/null
+	command --search grc >/dev/null; and begin
 		grc ps aux $argv
-	else
+	end; or begin
 		ps aux $argv
 	end
 end; funcsave ps
@@ -306,7 +305,7 @@ function rm!;rm -Rf $argv;end; funcsave rm!
 
 function set_dircolors
 	if not test -e ~/.dircolors
-	curl -sLo ~/.dircolors https://raw.github.com/trapd00r/LS_COLORS/master/LS_COLORS
+	  curl -sLo ~/.dircolors https://raw.github.com/trapd00r/LS_COLORS/master/LS_COLORS
 	end
 	command --search ls >/dev/null; and begin
 		if ls --version > /dev/null 2>&1
@@ -326,9 +325,9 @@ function sl;ls $argv;end; funcsave sl
 function sourceme;source ~/.config/fish/config.fish $argv;end; funcsave sourceme
 
 function top
-	if hash htop 2>/dev/null
+	command --search htop >/dev/null; and begin
 		htop -s PERCENT_CPU $argv
-	else
+	end; or begin
 		command top
 	end
 end; funcsave top
@@ -336,7 +335,7 @@ end; funcsave top
 function topme;top -u $USER $argv;end; funcsave topme
 
 function updateme
-	command --search ll >/dev/null; and begin
+	command --search port >/dev/null; and begin
 		sudo port selfupdate; and sudo port upgrade outdated $argv
 	end; or begin
 		echo install macports
@@ -348,12 +347,12 @@ function vdir
  	command --search ll >/dev/null; and begin
 	  command ll -hGg $argv
 	end; or begin
-	  if hash dir 2>/dev/null
-	    if [ "(dir --version 2>/dev/null)" ]
+	  command --search vdir >/dev/null; and begin
+	    if dir --version >/dev/null 2>&1
 	      set param $param --color --group-directories-first
 	    end
 	    command vdir $param $argv
-	  else
+	  end; or begin
 	    eval "ls -l -b"
 	  end
 	end
