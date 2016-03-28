@@ -25,14 +25,6 @@ SHELL=$(echo "${SHELL}" | tr / "\n" | tail -1)
 # shellcheck disable=SC2016
 _PREFIX='/usr/local/bin'
 _URLM="https://raw.githubusercontent.com/isezen/my-shell/master/scripts"
-QUOTE=''
-if [ "${SHELL}" == bash ]; then
-  test -f "${HOME}/.bash_profile" && SCRIPT="${HOME}/.bash_profile" || SCRIPT="${HOME}/.profile"
-  QUOTE='"'
-else
-  die "Your shell, ${SHELL}, is not supported yet. Only bash are supported. Sorry!"
-  exit 1
-fi
 
 mkdir -p "$_PREFIX"
 echo "Checking if PATH contains ${_PREFIX}"
