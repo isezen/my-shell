@@ -227,11 +227,33 @@ end; funcsave llhf
 
 function ls
   command --search ls >/dev/null; and begin
-    set -l param
+	  set -l param
     if command ls --version > /dev/null 2>&1
       set param $param --color --group-directories-first
     end
-    command ls $param $argv
+
+    set args (getopt -s sh l $argv 2>/dev/null)
+	  set args (fish -c "for el in $args; echo \$el; end")
+	  set -l longlist 0
+	  set i 1
+	  while true
+	    switch $args[$i]
+	      case "-l"
+	        set longlist 1
+	      case "--"
+	        break
+	    end
+	    set i (math "$i + 1")
+	  end
+	  if [ $longlist = 1 ]
+	    command --search ll >/dev/null; and begin
+	      command ll -hGg $param $argv
+	    end; or begin
+        command ls $param $argv
+	    end
+	  else
+	    command ls $param $argv
+	  end
   end; or begin
     echo "ls does not exist"
   end
@@ -254,15 +276,15 @@ end; funcsave lad
 function mcd; mkdir -p $argv; cd $argv;end; funcsave mcd
 
 function mem
-	set FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
-  set INACTIVE_BLOCKS (vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')
-  set SPECULATIVE_BLOCKS (vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
-  set TOTALRAM (system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')
+	set -l FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
+  set -l INACTIVE_BLOCKS (vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')
+  set -l SPECULATIVE_BLOCKS (vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
+  set -l TOTALRAM (system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')
 
-  set FREE (math "($FREE_BLOCKS+$SPECULATIVE_BLOCKS)*4096/(1024*1024)")
+  set -l FREE (math "($FREE_BLOCKS+$SPECULATIVE_BLOCKS)*4096/(1024*1024)")
 
-  set INACTIVE (math "$INACTIVE_BLOCKS*4096/(1024*1024)")
-  set TOTAL (echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)
+  set -l INACTIVE (math "$INACTIVE_BLOCKS*4096/(1024*1024)")
+  set -l TOTAL (echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)
   echo -n -s 'Free Memory: ' (set_color purple) $TOTAL 'GB' (set_color normal) ' of ' (set_color yellow) "$TOTALRAM" (set_color normal)
 end; funcsave mem
 
