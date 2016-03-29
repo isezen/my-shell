@@ -6,6 +6,7 @@
 
 set -xU CLICOLOR 1
 
+function c; clear; end; funcsave cdh
 function cdh; cd ~/ $argv; echo "You are at $HOME"; end; funcsave cdh
 
 function fish_greeting
