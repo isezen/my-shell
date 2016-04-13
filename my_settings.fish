@@ -164,6 +164,21 @@ function h;history $argv;end; funcsave h
 function hc;history --clear $argv;end; funcsave hc
 function hg;history | grep $argv;end; funcsave hg
 
+function head
+    set x (tput cols)
+    set x (math "$x - 1")
+    set cmd "command head $argv | command cut -b 1-$x"
+    command --search ccze >/dev/null; and begin
+        set cmd "$cmd | command ccze -A"
+    end; or begin
+        command --search grc >/dev/null; and begin
+            set cmd "grc $cmd"
+        end; or begin
+        end
+    end
+    eval $cmd
+end; funcsave head
+
 function laf
   set -l param
   if command ls --version > /dev/null 2>&1
@@ -350,6 +365,22 @@ end; funcsave set_dircolors
 function sl;ls $argv;end; funcsave sl
 
 function sourceme;source ~/.config/fish/config.fish $argv;end; funcsave sourceme
+
+
+function tail
+    set x (tput cols)
+    set x (math "$x - 1")
+    set cmd "command tail $argv | command cut -b 1-$x"
+    command --search ccze >/dev/null; and begin
+        set cmd "$cmd | command ccze -A"
+    end; or begin
+        command --search grc >/dev/null; and begin
+            set cmd "grc $cmd"
+        end; or begin
+        end
+    end
+    eval $cmd
+end; funcsave tail
 
 function top
 	command --search htop >/dev/null; and begin
