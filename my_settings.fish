@@ -314,6 +314,10 @@ function nowdate;date +"%Y-%m-%d";end; funcsave nowdate
 
 function path;echo -e $PATH | sed 's/ /\n/g';end; funcsave path
 
+function pfind
+    command ps aux | grep "$argv" | head -1 | cut -d " " -f 5
+end; funcsave pfind
+
 function ping
   command --search grc >/dev/null; and begin
 		grc ping -c 10 $argv
@@ -386,7 +390,7 @@ function top
 	command --search htop >/dev/null; and begin
 		htop -s PERCENT_CPU $argv
 	end; or begin
-		command top
+		command top $argv
 	end
 end; funcsave top
 
