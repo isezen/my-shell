@@ -141,7 +141,7 @@ dufiles () {
 # Only Directories
 dusd () {
   let x=-1
-  _filelist=$(eval $_findAllDirectories' | xargs -r0 \du -hcd 0 | sed -r "s:./::" | sort -h');
+  _filelist=$(eval $_findAllDirectories' | xargs -r0 \du -hcd 0 | sed -E "s:./::" | sort -h');
   print_files "$_filelist"
   echo "Number of Dirs:"$(expr $(echo "$_filelist"| wc -l) - 1);
 }

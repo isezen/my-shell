@@ -197,9 +197,16 @@ function lf
   find . -maxdepth 1 -type f -a ! -iname ".*" -print0 | sed -e "s:./::g"  | xargs -0r ls $param $argv
 end; funcsave lf
 
-function lh; ls $argv -Ad .*; end; funcsave lh
+function lh
+    set -l matches .*
+    ls $argv -Ad $matches
+end
+; funcsave lh
 
-function lhd; ls -d .*/; end; funcsave lhd
+function lhd
+    set -l matches .*/
+    ls -d $matches;
+end; funcsave lhd
 
 function lhf
   set -l param
@@ -233,9 +240,15 @@ function llf
 	find . -maxdepth 1 -type f -a ! -iname ".*" -print0 | sed -e "s:./::g"  | xargs -0r ll -hGd $argv
 end; funcsave llf
 
-function llh;ll $argv -hGgAd .*;end; funcsave llh
+function llh
+    set -l matches .*
+    ll $argv -hGgAd $matches;
+end; funcsave llh
 
-function llhd; ll $argv -dhGg .*/; end; funcsave llhd
+function llhd
+    set -l matches .*/
+    ll $argv -dhGg $matches;
+end; funcsave llhd
 
 function llhf
 	find . -maxdepth 1 -type f -a -iname ".*" -print0 | sed -e "s:./::g" | xargs -0r ll -hGgd $argv
@@ -243,33 +256,21 @@ end; funcsave llhf
 
 function ls
   command --search ls >/dev/null; and begin
-	  set -l param
+    set -l param
     if command ls --version > /dev/null 2>&1
       set param $param --color --group-directories-first
     end
 
     set args (getopt -s sh l $argv 2>/dev/null)
-	  set args (fish -c "for el in $args; echo \$el; end")
-	  set -l longlist 0
-	  set i 1
-	  while true
-	    switch $args[$i]
-	      case "-l"
-	        set longlist 1
-	      case "--"
-	        break
-	    end
-	    set i (math "$i + 1")
-	  end
-	  if [ $longlist = 1 ]
-	    command --search ll >/dev/null; and begin
-	      command ll -hGg $param $argv
-	    end; or begin
-        command ls $param $argv
-	    end
-	  else
-	    command ls $param $argv
-	  end
+    if [ $args = ' -l --' ]
+      command --search ll >/dev/null; and begin
+        command ll -hGg $param $argv
+      end; or begin
+         command ls $param $argv
+      end
+    else
+      command ls $param $argv
+    end
   end; or begin
     echo "ls does not exist"
   end
@@ -315,7 +316,7 @@ function nowdate;date +"%Y-%m-%d";end; funcsave nowdate
 function path;echo -e $PATH | sed 's/ /\n/g';end; funcsave path
 
 function pfind
-    command ps aux | grep "$argv" | head -1 | cut -d " " -f 5
+    command ps aux | grep "$argv" | command head -1 | cut -d " " -f 5
 end; funcsave pfind
 
 function ping
