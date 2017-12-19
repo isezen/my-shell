@@ -179,6 +179,10 @@ function head
     eval $cmd
 end; funcsave head
 
+function internalip
+    ifconfig en0 | grep inet | grep -v inet6 | cut -d ' ' -f2
+end; funcsave internalip
+
 function laf
   set -l param
   if command ls --version > /dev/null 2>&1
