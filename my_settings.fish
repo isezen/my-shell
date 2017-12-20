@@ -128,9 +128,11 @@ function FindFiles
 end;funcsave FindFiles
 
 function df
-  if hash dfc 2>/dev/null
-   dfc $argv
-  end
+    command --search hash dfc >/dev/null; and begin
+        dfc $argv
+    end; or begin
+        command df $argv
+    end
 end; funcsave df
 
 function dir
