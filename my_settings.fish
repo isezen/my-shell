@@ -405,16 +405,16 @@ function topme;top -u $USER $argv;end; funcsave topme
 
 function update
     if [ (uname) = 'Darwin' ]
-        command --search port >/dev/null; and begin
+        if type -q port
             sudo port selfupdate; and sudo port upgrade outdated $argv
-        end; and begin
+        else
             echo install macports
         end
     else if [ (uname) = 'Linux' ]
         if [ (lsb_release -si) = 'Ubuntu' ]
-            command --search apt-get >/dev/null; and begin
+            if type -q apt-get
                 sudo apt-get update; and sudo apt-get upgrade
-            end; or begin
+            else
                echo install apt-get
             end
         end
