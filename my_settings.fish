@@ -299,7 +299,7 @@ end; funcsave lad
 function mcd; mkdir -p $argv; cd $argv;end; funcsave mcd
 
 function mem
-	set -l FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
+  set -l FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
   set -l INACTIVE_BLOCKS (vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')
   set -l SPECULATIVE_BLOCKS (vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
   set -l TOTALRAM (system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')
@@ -403,13 +403,23 @@ end; funcsave top
 
 function topme;top -u $USER $argv;end; funcsave topme
 
-function updateme
-	command --search port >/dev/null; and begin
-		sudo port selfupdate; and sudo port upgrade outdated $argv
-	end; or begin
-		echo install macports
-	end
-end; funcsave updateme
+function update
+    if [ (uname) = 'Darwin' ]
+        command --search port >/dev/null; and begin
+            sudo port selfupdate; and sudo port upgrade outdated $argv
+        end; and begin
+            echo install macports
+        end
+    else if [ (uname) = 'Linux' ]
+        if [ (lsb_release -si) = 'Ubuntu' ]
+            command --search apt-get >/dev/null; and begin
+                sudo apt-get update; and sudo apt-get upgrade
+            end; or begin
+               echo install apt-get
+            end
+        end
+    end
+end; funcsave update
 
 function vdir
   set -l param
