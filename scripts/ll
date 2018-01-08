@@ -377,6 +377,7 @@ sed -e "s/$_prgx$_lmon/$_cmon&$_creset/" |
 sed -e "s/$_prgx$_lyr/$_cyr&$_creset/");
 
 # Get file list ffrom ll result
+# You need to use gnucut here. Make proper settings in macports - coreutils.
 _entries=$(echo "$ll_res" | cut -d" " --complement -f 1-$(($_CURCOL-1))) ###### PERF:~15ms
 
 # echo "$_sizes"
