@@ -446,3 +446,6 @@ function webify
 end; funcsave webify
 
 function wget;command wget -c $argv;end; funcsave wget
+
+function r;command radian $argv;end; funcsave r
+
