@@ -1,7 +1,7 @@
 #!/bin/env fish
 # 2016-03-28
 # sezenismail@gmail.com
-# Shiny bash promt supoort and
+# Shiny bash promt support and
 # dircolors support
 
 set -xU CLICOLOR 1
@@ -335,14 +335,14 @@ end; funcsave ping
 
 function ports;netstat -tulanp $argv;end; funcsave ports
 
-function print_files
-	while IFS=$'\t' read -r size line
-    printf "%s\t%s" $size "$line"
-    [[ -d $line ]]; and printf "/"
-    echo
-    set x (math "$x + 1")
-  end < echo "$1"
-end; funcsave print_files
+# function print_files
+# 	while IFS=$'\t' read -r size line
+#     printf "%s\t%s" $size "$line"
+#     [[ -d $line ]]; and printf "/"
+#     echo
+#     set x (math "$x + 1")
+#   end < echo "$1"
+# end; funcsave print_files
 
 function ps
 	command --search grc >/dev/null; and begin
