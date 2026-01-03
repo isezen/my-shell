@@ -79,18 +79,20 @@ jobs:
             
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Total Tests | $TOTAL_TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Passed | $PASSED_TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Failed | $FAILED_TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            
-            # Calculate coverage percentage
+            echo "| Metric | Count | Percent |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|---------|" >> $GITHUB_STEP_SUMMARY
             if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
-              COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
-              echo "### Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+              FAILED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($FAILED_TESTS/$TOTAL_TESTS)*100}")
+              PASSED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
+              echo "| Failed | $FAILED_TESTS | ${FAILED_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| Passed | $PASSED_TESTS | ${PASSED_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | $TOTAL_TESTS | 100.0% |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Failed | $FAILED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
+              echo "| Passed | $PASSED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | $TOTAL_TESTS | - |" >> $GITHUB_STEP_SUMMARY
             fi
+            echo "" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ BATS not found. Cannot generate coverage report." >> $GITHUB_STEP_SUMMARY
           fi
@@ -98,12 +100,17 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Files" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| File | Tests |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Tests | Percent |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|---------|" >> $GITHUB_STEP_SUMMARY
           for test_file in tests/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
-              echo "| \`$(basename "$test_file")\` | $TEST_COUNT |" >> $GITHUB_STEP_SUMMARY
+              if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null && [ "$TEST_COUNT" -gt 0 ] 2>/dev/null; then
+                FILE_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($TEST_COUNT/$TOTAL_TESTS)*100}")
+                echo "| \`$(basename "$test_file")\` | $TEST_COUNT | ${FILE_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| \`$(basename "$test_file")\` | $TEST_COUNT | - |" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           done
 
@@ -182,18 +189,20 @@ jobs:
             
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Total Tests | $TOTAL_TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Passed | $PASSED_TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Failed | $FAILED_TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            
-            # Calculate coverage percentage
+            echo "| Metric | Count | Percent |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|---------|" >> $GITHUB_STEP_SUMMARY
             if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
-              COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
-              echo "### Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+              FAILED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($FAILED_TESTS/$TOTAL_TESTS)*100}")
+              PASSED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
+              echo "| Failed | $FAILED_TESTS | ${FAILED_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| Passed | $PASSED_TESTS | ${PASSED_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | $TOTAL_TESTS | 100.0% |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Failed | $FAILED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
+              echo "| Passed | $PASSED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | $TOTAL_TESTS | - |" >> $GITHUB_STEP_SUMMARY
             fi
+            echo "" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ BATS not found. Cannot generate coverage report." >> $GITHUB_STEP_SUMMARY
           fi
@@ -201,12 +210,17 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Files" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| File | Tests |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Tests | Percent |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|---------|" >> $GITHUB_STEP_SUMMARY
           for test_file in tests/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
-              echo "| \`$(basename "$test_file")\` | $TEST_COUNT |" >> $GITHUB_STEP_SUMMARY
+              if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null && [ "$TEST_COUNT" -gt 0 ] 2>/dev/null; then
+                FILE_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($TEST_COUNT/$TOTAL_TESTS)*100}")
+                echo "| \`$(basename "$test_file")\` | $TEST_COUNT | ${FILE_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| \`$(basename "$test_file")\` | $TEST_COUNT | - |" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           done
 
