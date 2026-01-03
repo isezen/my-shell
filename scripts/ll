@@ -6,9 +6,9 @@
 
 _tsmp=$(( $(date +%s%N)/1000000 ));
 
-# DEFINITIOS
+# DEFINITIONS
 declare -r _usr='you';
-# TIME STAMP LABES
+# TIME STAMP LABELS
 declare -r _lsec='sec'
 declare -r _lmin='min'
 declare -r _lhrs='hrs'
@@ -21,6 +21,23 @@ declare -r _lG='G'
 declare -r _lM='M'
 declare -r _lK='K'
 declare -r _lB='B'
+
+# SIZE CONSTANTS (bytes)
+declare -r _SIZE_KB=1024
+declare -r _SIZE_MB=1048576
+declare -r _SIZE_GB=1073741824
+declare -r _SIZE_TB=1099511627776
+
+# TIME CONSTANTS (seconds)
+declare -r _TIME_SEC=1
+declare -r _TIME_MIN=60
+declare -r _TIME_HOUR=3600
+declare -r _TIME_DAY=86400
+declare -r _TIME_2DAYS=172800
+declare -r _TIME_30DAYS=2592000
+declare -r _TIME_45DAYS=3888000
+declare -r _TIME_YEAR=31536000
+declare -r _TIME_2MIN=120
 
 # COLORS
 declare -r _creset=$'\x1b[0m' # DON'T CHANGE THIS!
@@ -215,8 +232,16 @@ while getopts "$optspec" optchar; do
   esac
 done
 
-flush_left() { _len=$(echo "$1" | wc -L); echo "$1" | awk '{printf("%-'$_len's\n", $1);}';}
-flush_right() { _len=$(echo "$1" | wc -L); echo "$1" | awk '{printf("%'$_len's\n", $1);}';}
+flush_left() { 
+  local _len
+  _len=$(echo "$1" | wc -L)
+  echo "$1" | awk -v len="$_len" '{printf("%-"len"s\n", $1);}'
+}
+flush_right() { 
+  local _len
+  _len=$(echo "$1" | wc -L)
+  echo "$1" | awk -v len="$_len" '{printf("%"len"s\n", $1);}'
+}
 
 # Run ls command first and get the result file/folder list.
 #                            Get dates directly as seconds
@@ -230,20 +255,21 @@ fi
 
 if [ ! -z ${ASIZE+x} ]; then # if -s is set
   # Remove leading white spaces
-  ll_res=$(echo "$ll_res" | sed -e 's/^[ \t]*//') ###### PERF:~18ms
+  ll_res="${ll_res#"${ll_res%%[![:space:]]*}"}" ###### PERF:~18ms
   #                       # Cut first column
   _sizes=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~15ms
-  _CURCOL=$(($_CURCOL+1)) ###### PERF:~5ms
+  _CURCOL=$((_CURCOL+1)) ###### PERF:~5ms
   if [ -z ${HUMANREADABLE+x} ]; then # if -h is not set ###### PERF:~60ms
     _len_sizes=$(echo "$_sizes" | wc -L) ###### PERF:~17ms
-    IFS=$'\n'; arr=( $(echo -e "$_sizes") ) ###### PERF:~9ms
-    _sizes=$(for x in ${arr[@]} ; do ###### PERF:~50ms
-      _format="%"$_len_sizes"d"
-      if [[ $x -lt 1024 ]]; then printf "$_cb$_format$_creset\n" $x;continue; fi
-      if [[ $x -lt 1048576 ]]; then printf "$_ck$_format$_creset\n" $x;continue; fi
-      if [[ $x -lt 1073741824 ]]; then printf "$_cm$_format$_creset\n" $x;continue; fi
-      if [[ $x -lt 1099511627776 ]]; then printf "$_cg$_format$_creset\n" $x;continue; fi
-      if [[ $x -ge 1099511627776 ]]; then printf "$_ct$_format$_creset\n" $x;continue; fi
+    mapfile -t arr <<< "$_sizes" ###### PERF:~9ms
+    _sizes=$(for x in "${arr[@]}" ; do ###### PERF:~50ms
+      _formatted=""
+      printf -v _formatted "%${_len_sizes}d" "$x"
+      if [[ $x -lt $_SIZE_KB ]]; then printf '%s%s%s\n' "$_cb" "$_formatted" "$_creset";continue; fi
+      if [[ $x -lt $_SIZE_MB ]]; then printf '%s%s%s\n' "$_ck" "$_formatted" "$_creset";continue; fi
+      if [[ $x -lt $_SIZE_GB ]]; then printf '%s%s%s\n' "$_cm" "$_formatted" "$_creset";continue; fi
+      if [[ $x -lt $_SIZE_TB ]]; then printf '%s%s%s\n' "$_cg" "$_formatted" "$_creset";continue; fi
+      if [[ $x -ge $_SIZE_TB ]]; then printf '%s%s%s\n' "$_ct" "$_formatted" "$_creset";continue; fi
       done;)
   else # if -h is set ###### PERF:~62ms
     #Colorize B,K,M,G,T
@@ -263,7 +289,7 @@ if [ ! -z ${ASIZE+x} ]; then # if -s is set
     sed -e "s/$_lK/$_clK&$_creset/" |
     sed -e "s/$_lB/$_clB&$_creset/");
   fi
-  res=$(echo "$_sizes") ###### PERF:~10ms
+  res="$_sizes" ###### PERF:~10ms
 fi
 
 # FILE PERMISSIONS
@@ -271,7 +297,7 @@ fi
 # Get file permissions column (remove total line)
 _perms=$(echo "$ll_res" | cut -d" " -f $_CURCOL)
 # | awk '{printf("%-11s\n", $1);}'
-_CURCOL=$(($_CURCOL+1)) ###### PERF:~5ms
+_CURCOL=$((_CURCOL+1)) ###### PERF:~5ms
 _perms=$(flush_left "$_perms")
 _perms=$(echo "$_perms" | ###### PERF:~23ms
   sed -e "s/d/$_cd&$_creset/g" |
@@ -281,13 +307,13 @@ _perms=$(echo "$_perms" | ###### PERF:~23ms
   sed -e "s/x/$_cx&$_creset/g" |
   sed -e "s/+/$_cplus&$_creset/g");
 #             ###### PERF:~23ms                                      ###### PERF:~18ms
-[[ $res ]] && res=$(paste -d" " <(echo "$res") <(echo "$_perms")) || res=$(echo "$_perms")
+[[ $res ]] && res=$(paste -d" " <(echo "$res") <(echo "$_perms")) || res="$_perms"
 
 # HARD LINKS
 ###### PERF:~34ms
 #                        # Get hard links column # Flush right
-_hlinks=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~18ms
-_CURCOL=$(($_CURCOL+1)) ###### PERF:~5ms
+  _hlinks=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~18ms
+  _CURCOL=$((_CURCOL+1)) ###### PERF:~5ms
 # | sed -e :a -e 's/^.\{1,1\}$/ &/;ta'
 _hlinks=$(flush_right "$_hlinks")
 res=$(paste -d" " <(echo "$res") <(echo "$_hlinks")) ###### PERF:~20ms
@@ -296,10 +322,10 @@ res=$(paste -d" " <(echo "$res") <(echo "$_hlinks")) ###### PERF:~20ms
 if [ -z ${OWNER+x} ]; then # if -g is not set
   ###### PERF:~14ms
   _users=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~15ms
-  _CURCOL=$(($_CURCOL+1)) ###### PERF:~5ms
+  _CURCOL=$((_CURCOL+1)) ###### PERF:~5ms
   if [ -z ${NUMERICUIDGID+x} ]; then # if -n is not set ###### PERF:~41ms
     #                         Get user List   # Replace $USER by 'you'
-    _users=$(echo "$_users" | sed -e "s/$USER/$_usr/") ###### PERF:~12ms
+    _users="${_users//$USER/$_usr}" ###### PERF:~12ms
     _users=$(flush_left "$_users") ###### PERF:~26ms
     _users=$(echo "$_users" | sed -e "s/$_usr/$_cusr&$_creset/g" | sed -e "s/root/$_croot&$_creset/g"); ###### PERF:~13ms
   else # if -n is set
@@ -314,24 +340,25 @@ fi
 # GROUPS
 if [ -z ${GROUPNAME+x} ]; then # if -G is not set ###### PERF:~52ms
   _groups=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~14ms
-  _CURCOL=$(($_CURCOL+1))
+  _CURCOL=$((_CURCOL+1))
   _groups=$(flush_left "$_groups") ###### PERF:~26ms
   res=$(paste -d" " <(echo "$res") <(echo "$_groups")) ###### PERF:~21ms
 fi
 
 # SIZES
 _sizes=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~14ms
-_CURCOL=$(($_CURCOL+1))
+_CURCOL=$((_CURCOL+1))
 if [ -z ${HUMANREADABLE+x} ]; then # if -h is not set ###### PERF:~67ms
   _len_sizes=$(echo "$_sizes" | wc -L) ###### PERF:~15ms
-  IFS=$'\n'; arr=( $(echo -e "$_sizes") ) ###### PERF:~9ms
-  _sizes=$(for x in ${arr[@]} ; do  ###### PERF:~55ms
-    _format="%"$_len_sizes"d"
-    if [[ $x -lt 1024 ]]; then printf "$_cb$_format$_creset\n" $x;continue; fi
-    if [[ $x -lt 1048576 ]]; then printf "$_ck$_format$_creset\n" $x;continue; fi
-    if [[ $x -lt 1073741824 ]]; then printf "$_cm$_format$_creset\n" $x;continue; fi
-    if [[ $x -lt 1099511627776 ]]; then printf "$_cg$_format$_creset\n" $x;continue; fi
-    if [[ $x -ge 1099511627776 ]]; then printf "$_ct$_format$_creset\n" $x;continue; fi
+  mapfile -t arr <<< "$_sizes" ###### PERF:~9ms
+  _sizes=$(for x in "${arr[@]}" ; do  ###### PERF:~55ms
+    _formatted=""
+    printf -v _formatted "%${_len_sizes}d" "$x"
+    if [[ $x -lt $_SIZE_KB ]]; then printf '%s%s%s\n' "$_cb" "$_formatted" "$_creset";continue; fi
+    if [[ $x -lt $_SIZE_MB ]]; then printf '%s%s%s\n' "$_ck" "$_formatted" "$_creset";continue; fi
+    if [[ $x -lt $_SIZE_GB ]]; then printf '%s%s%s\n' "$_cm" "$_formatted" "$_creset";continue; fi
+    if [[ $x -lt $_SIZE_TB ]]; then printf '%s%s%s\n' "$_cg" "$_formatted" "$_creset";continue; fi
+    if [[ $x -ge $_SIZE_TB ]]; then printf '%s%s%s\n' "$_ct" "$_formatted" "$_creset";continue; fi
   done;)
 else # if -h is set ###### PERF:~56ms
   #Colorize B,K,M,G,T
@@ -354,16 +381,16 @@ res=$(paste -d" " <(echo "$res") <(echo "$_sizes")) ###### PERF:~25ms
 
 # DATES
 #          # Convert to array         # cut 6th column  # subtract from current date
-IFS=$'\n'; arr=( $(echo -e "$ll_res" | cut -d" " -f $_CURCOL | awk '{print strftime("%s") - $1}') ) ###### PERF:~36ms
-_CURCOL=$(($_CURCOL+1))
-_dates2=$(for x in ${arr[@]} ; do ###### PERF:~80ms
-  _format="%2d %3s"
-  if [[ $x -lt 120 ]]; then printf "$_format\n" $x "$_lsec";continue; fi
-  if [[ $x -lt 3600 ]]; then printf "$_format\n" $(($x / 60)) "$_lmin";continue; fi
-  if [[ $x -lt 172800 ]]; then printf "$_format\n" $(($x / 3600)) "$_lhrs";continue; fi
-  if [[ $x -lt 3888000 ]]; then printf "$_format\n" $(($x / 86400)) "$_lday";continue; fi
-  if [[ $x -lt 31536000 ]]; then printf "$_format\n" $(($x / 2592000)) "$_lmon";continue; fi
-  if [[ $x -ge 31536000 ]]; then printf "$_format\n" $(($x / 31536000)) "$_lyr";continue; fi
+mapfile -t arr <<< "$(echo "$ll_res" | cut -d" " -f $_CURCOL | awk '{print strftime("%s") - $1}')" ###### PERF:~36ms
+_CURCOL=$((_CURCOL+1))
+_dates2=$(for x in "${arr[@]}" ; do ###### PERF:~80ms
+  _formatted=""
+  if [[ $x -lt $_TIME_2MIN ]]; then printf -v _formatted '%2d %3s' "$x" "$_lsec"; printf '%s\n' "$_formatted";continue; fi
+  if [[ $x -lt $_TIME_HOUR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_MIN)) "$_lmin"; printf '%s\n' "$_formatted";continue; fi
+  if [[ $x -lt $_TIME_2DAYS ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_HOUR)) "$_lhrs"; printf '%s\n' "$_formatted";continue; fi
+  if [[ $x -lt $_TIME_45DAYS ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_DAY)) "$_lday"; printf '%s\n' "$_formatted";continue; fi
+  if [[ $x -lt $_TIME_YEAR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_30DAYS)) "$_lmon"; printf '%s\n' "$_formatted";continue; fi
+  if [[ $x -ge $_TIME_YEAR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_YEAR)) "$_lyr"; printf '%s\n' "$_formatted";continue; fi
 done;)
 
 #Colorize New Passed times
@@ -376,9 +403,9 @@ sed -e "s/$_prgx$_lday/$_cday&$_creset/" |
 sed -e "s/$_prgx$_lmon/$_cmon&$_creset/" |
 sed -e "s/$_prgx$_lyr/$_cyr&$_creset/");
 
-# Get file list ffrom ll result
+# Get file list from ll result
 # You need to use gnucut here. Make proper settings in macports - coreutils.
-_entries=$(echo "$ll_res" | cut -d" " --complement -f 1-$(($_CURCOL-1))) ###### PERF:~15ms
+_entries=$(echo "$ll_res" | cut -d" " --complement -f 1-$((_CURCOL-1))) ###### PERF:~15ms
 
 # echo "$_sizes"
 #
