@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `test-bats` Makefile target to run BATS tests
 - Created `tests/README.md` with test documentation
 - Created `tests/TEST_COVERAGE.md` with detailed test coverage documentation
+- Added GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`)
+- Created `CONTRIBUTING.md` with contribution guidelines
+- Significantly expanded `README.md` with:
+  - Features overview
+  - Detailed installation instructions
+  - Usage examples
+  - Development guidelines
+  - Project structure
+  - Testing information
+  - CI/CD information
 
 ### Changed
 - Moved `IMPROVEMENTS.md` to `docs/` directory for better organization
