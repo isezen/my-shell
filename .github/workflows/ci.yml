@@ -7,12 +7,10 @@ on:
     branches: [ master, main ]
 
 jobs:
-  lint-and-test:
-    name: Lint and Test
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  test-ubuntu:
+    name: Test on Ubuntu
+    runs-on: ubuntu-latest
+    # Local (act) ve GitHub Actions'da çalışır
     
     steps:
       - name: Checkout code
@@ -21,40 +19,22 @@ jobs:
       - name: Set up shell
         run: |
           echo "SHELL=$SHELL" >> $GITHUB_ENV
-          echo "Running on ${{ matrix.os }}"
+          echo "Running on ubuntu-latest"
 
       - name: Install ShellCheck (Linux)
-        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
-      - name: Install ShellCheck (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install shellcheck
-
       - name: Install Fish (Linux)
-        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y fish
 
-      - name: Install Fish (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install fish
-
       - name: Install BATS (Linux)
-        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y bats
-
-      - name: Install BATS (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install bats-core
 
       - name: Run ShellCheck
         run: make lint-bash
@@ -63,13 +43,15 @@ jobs:
         run: make lint-fish
 
       - name: Run BATS tests
+        id: test-bats
         run: make test-bats
         continue-on-error: false
 
-      - name: Generate test coverage report
-        if: always()
+      - name: Generate Linux test report
+        if: always() && github.event_name != 'workflow_dispatch'
+        timeout-minutes: 2
         run: |
-          echo "## Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "##Linux Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -83,9 +65,17 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             
             # Extract test counts
-            TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk '{print $3}' || echo "0")
-            PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "ok" || echo "0")
-            FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "not ok" || echo "0")
+            TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
+            if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" = "" ]; then
+              TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok\|^not ok" || echo "0")
+            fi
+            PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok" || echo "0")
+            FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
+            
+            # Ensure TOTAL_TESTS is a valid number
+            if ! [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+              TOTAL_TESTS=$((PASSED_TESTS + FAILED_TESTS))
+            fi
             
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -97,7 +87,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             
             # Calculate coverage percentage
-            if [ "$TOTAL_TESTS" -gt 0 ]; then
+            if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
               COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
               echo "### Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
             fi
@@ -121,16 +111,135 @@ jobs:
           echo "📊 For detailed coverage information, see [TEST_COVERAGE.md](../tests/TEST_COVERAGE.md)" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload test results
-        if: always()
+        if: always() && github.event_name != 'workflow_dispatch'
         uses: actions/upload-artifact@v4
+        continue-on-error: true
+        timeout-minutes: 1
         with:
-          name: test-results-${{ matrix.os }}
+          name: test-results-ubuntu
           path: |
             ${{ github.workspace }}/tests/TEST_COVERAGE.md
           retention-days: 30
 
       - name: Check test results
-        if: failure()
+        if: failure() && steps.test-bats.outcome == 'failure'
+        run: |
+          echo "❌ Tests failed. Check the logs above for details."
+          exit 1
+
+  test-macos:
+    name: Test on macOS
+    runs-on: macos-latest
+    # Sadece GitHub Actions'da çalışır (act macOS runner'ları desteklemez)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up shell
+        run: |
+          echo "SHELL=$SHELL" >> $GITHUB_ENV
+          echo "Running on macos-latest"
+
+      - name: Install ShellCheck (macOS)
+        run: |
+          brew install shellcheck
+
+      - name: Install Fish (macOS)
+        run: |
+          brew install fish
+
+      - name: Install BATS (macOS)
+        run: |
+          brew install bats-core
+
+      - name: Run ShellCheck
+        run: make lint-bash
+
+      - name: Run Fish syntax check
+        run: make lint-fish
+
+      - name: Run BATS tests
+        id: test-bats
+        run: make test-bats
+        continue-on-error: false
+
+      - name: Generate OSX test report
+        if: always() && github.event_name != 'workflow_dispatch'
+        timeout-minutes: 2
+        run: |
+          echo "## OSX Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Run tests and capture output
+          if command -v bats >/dev/null 2>&1; then
+            TEST_OUTPUT=$(bats tests/*.bats 2>&1 || true)
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$TEST_OUTPUT" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract test counts
+            TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
+            if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" = "" ]; then
+              TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok\|^not ok" || echo "0")
+            fi
+            PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok" || echo "0")
+            FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
+            
+            # Ensure TOTAL_TESTS is a valid number
+            if ! [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+              TOTAL_TESTS=$((PASSED_TESTS + FAILED_TESTS))
+            fi
+            
+            echo "### Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Tests | $TOTAL_TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED_TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED_TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Calculate coverage percentage
+            if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+              COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
+              echo "### Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ BATS not found. Cannot generate coverage report." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Tests |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          for test_file in tests/*.bats; do
+            if [ -f "$test_file" ]; then
+              TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
+              echo "| \`$(basename "$test_file")\` | $TEST_COUNT |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 For detailed coverage information, see [TEST_COVERAGE.md](../tests/TEST_COVERAGE.md)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload test results
+        if: always() && github.event_name != 'workflow_dispatch' && env.ACTIONS_RUNTIME_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          name: test-results-macos
+          path: |
+            ${{ github.workspace }}/tests/TEST_COVERAGE.md
+          retention-days: 30
+
+      - name: Check test results
+        if: failure() && steps.test-bats.outcome == 'failure'
         run: |
           echo "❌ Tests failed. Check the logs above for details."
           exit 1

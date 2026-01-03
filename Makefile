@@ -1,7 +1,7 @@
 # Makefile for my-shell project
 # Provides convenient commands for linting, formatting, and testing
 
-.PHONY: help lint lint-bash lint-fish format format-fish check install-hooks test test-bats clean
+.PHONY: help lint lint-bash lint-fish format format-fish check install-hooks test test-bats test-act clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -83,6 +83,24 @@ test-bats: ## Run BATS tests
 		echo "$(COLOR_GREEN)✓ All BATS tests passed$(COLOR_RESET)"; \
 	else \
 		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-act: ## Run GitHub Actions workflow locally with act (Ubuntu only)
+	@echo "$(COLOR_GREEN)Running GitHub Actions workflow locally with act...$(COLOR_RESET)"
+	@if command -v act >/dev/null 2>&1; then \
+		if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
+			act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest \
+				--container-architecture linux/amd64 \
+				--rm \
+				-j test-ubuntu || exit 1; \
+			echo "$(COLOR_GREEN)✓ Act workflow completed$(COLOR_RESET)"; \
+		else \
+			echo "$(COLOR_RED)✗ Docker is not running. Please start Docker Desktop$(COLOR_RESET)"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "$(COLOR_RED)✗ act not found. Install with: brew install act$(COLOR_RESET)"; \
 		exit 1; \
 	fi
 
