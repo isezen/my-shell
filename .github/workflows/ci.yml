@@ -51,6 +51,7 @@ jobs:
         if: always() && github.event_name != 'workflow_dispatch'
         timeout-minutes: 2
         run: |
+          set +e
           echo "## Linux Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
@@ -73,15 +74,21 @@ jobs:
             FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
             
             # Ensure TOTAL_TESTS is a valid number
-            if ! [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+            TOTAL_TESTS=${TOTAL_TESTS:-0}
+            if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] || [ "$TOTAL_TESTS" -eq 0 ]; then
               TOTAL_TESTS=$((PASSED_TESTS + FAILED_TESTS))
+            fi
+            
+            # Final check: ensure TOTAL_TESTS is numeric
+            if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]]; then
+              TOTAL_TESTS=0
             fi
             
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Count | Percent |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|---------|" >> $GITHUB_STEP_SUMMARY
-            if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+            if [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] && [ "$TOTAL_TESTS" -gt 0 ]; then
               FAILED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($FAILED_TESTS/$TOTAL_TESTS)*100}")
               PASSED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
               echo "| Failed | $FAILED_TESTS | ${FAILED_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
@@ -90,7 +97,7 @@ jobs:
             else
               echo "| Failed | $FAILED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
               echo "| Passed | $PASSED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
-              echo "| Total Tests | $TOTAL_TESTS | - |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | ${TOTAL_TESTS:-0} | - |" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           else
@@ -105,7 +112,8 @@ jobs:
           for test_file in tests/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
-              if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null && [ "$TEST_COUNT" -gt 0 ] 2>/dev/null; then
+              TEST_COUNT=${TEST_COUNT:-0}
+              if [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] && [ "$TOTAL_TESTS" -gt 0 ] && [[ "$TEST_COUNT" =~ ^[0-9]+$ ]] && [ "$TEST_COUNT" -gt 0 ]; then
                 FILE_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($TEST_COUNT/$TOTAL_TESTS)*100}")
                 echo "| \`$(basename "$test_file")\` | $TEST_COUNT | ${FILE_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
               else
@@ -161,6 +169,7 @@ jobs:
         if: always() && github.event_name != 'workflow_dispatch'
         timeout-minutes: 2
         run: |
+          set +e
           echo "## OSX Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
@@ -183,15 +192,21 @@ jobs:
             FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
             
             # Ensure TOTAL_TESTS is a valid number
-            if ! [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+            TOTAL_TESTS=${TOTAL_TESTS:-0}
+            if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] || [ "$TOTAL_TESTS" -eq 0 ]; then
               TOTAL_TESTS=$((PASSED_TESTS + FAILED_TESTS))
+            fi
+            
+            # Final check: ensure TOTAL_TESTS is numeric
+            if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]]; then
+              TOTAL_TESTS=0
             fi
             
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Count | Percent |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|---------|" >> $GITHUB_STEP_SUMMARY
-            if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null; then
+            if [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] && [ "$TOTAL_TESTS" -gt 0 ]; then
               FAILED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($FAILED_TESTS/$TOTAL_TESTS)*100}")
               PASSED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
               echo "| Failed | $FAILED_TESTS | ${FAILED_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
@@ -200,7 +215,7 @@ jobs:
             else
               echo "| Failed | $FAILED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
               echo "| Passed | $PASSED_TESTS | - |" >> $GITHUB_STEP_SUMMARY
-              echo "| Total Tests | $TOTAL_TESTS | - |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | ${TOTAL_TESTS:-0} | - |" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           else
@@ -215,7 +230,8 @@ jobs:
           for test_file in tests/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
-              if [ "$TOTAL_TESTS" -gt 0 ] 2>/dev/null && [ "$TEST_COUNT" -gt 0 ] 2>/dev/null; then
+              TEST_COUNT=${TEST_COUNT:-0}
+              if [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] && [ "$TOTAL_TESTS" -gt 0 ] && [[ "$TEST_COUNT" =~ ^[0-9]+$ ]] && [ "$TEST_COUNT" -gt 0 ]; then
                 FILE_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($TEST_COUNT/$TOTAL_TESTS)*100}")
                 echo "| \`$(basename "$test_file")\` | $TEST_COUNT | ${FILE_PERCENT}% |" >> $GITHUB_STEP_SUMMARY
               else
