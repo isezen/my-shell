@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `.pre-commit-config.yaml` with ShellCheck and fish syntax checking hooks
 - Added `Makefile` with convenient commands for linting, formatting, and testing
 - Created `docs/SHELLCHECK_AND_PRE_COMMIT_EXPLANATION.md` with detailed explanations
+- Added BATS (Bash Automated Testing System) test framework
+- Created test suite in `tests/` directory with tests for:
+  - `alias.sh` - Tests for aliases and functions (26 tests)
+  - `bash.sh` - Tests for bash prompt settings (10 tests)
+  - `scripts/ll` - Tests for colorful long listing script (11 tests)
+  - `scripts/dus` - Tests for disk usage script (8 tests)
+- Added `test-bats` Makefile target to run BATS tests
+- Created `tests/README.md` with test documentation
+- Created `tests/TEST_COVERAGE.md` with detailed test coverage documentation
 
 ### Changed
 - Moved `IMPROVEMENTS.md` to `docs/` directory for better organization

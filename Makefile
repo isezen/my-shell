@@ -1,7 +1,7 @@
 # Makefile for my-shell project
 # Provides convenient commands for linting, formatting, and testing
 
-.PHONY: help lint lint-bash lint-fish format format-fish check install-hooks test clean
+.PHONY: help lint lint-bash lint-fish format format-fish check install-hooks test test-bats clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -74,9 +74,17 @@ install-hooks: ## Install pre-commit hooks
 		exit 1; \
 	fi
 
-test: lint ## Run tests (currently same as lint)
-	@echo "$(COLOR_GREEN)Running tests...$(COLOR_RESET)"
-	@$(MAKE) lint
+test: test-bats lint ## Run all tests (BATS tests and linting)
+
+test-bats: ## Run BATS tests
+	@echo "$(COLOR_GREEN)Running BATS tests...$(COLOR_RESET)"
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/*.bats || exit 1; \
+		echo "$(COLOR_GREEN)✓ All BATS tests passed$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
 
 clean: ## Clean temporary files
 	@echo "$(COLOR_GREEN)Cleaning temporary files...$(COLOR_RESET)"
