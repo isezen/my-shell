@@ -106,20 +106,6 @@ jobs:
               echo "| \`$(basename "$test_file")\` | $TEST_COUNT |" >> $GITHUB_STEP_SUMMARY
             fi
           done
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📊 For detailed coverage information, see [TEST_COVERAGE.md](../tests/TEST_COVERAGE.md)" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload test results
-        if: always() && github.event_name != 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        timeout-minutes: 1
-        with:
-          name: test-results-ubuntu
-          path: |
-            ${{ github.workspace }}/tests/TEST_COVERAGE.md
-          retention-days: 30
 
       - name: Check test results
         if: failure() && steps.test-bats.outcome == 'failure'
@@ -223,20 +209,6 @@ jobs:
               echo "| \`$(basename "$test_file")\` | $TEST_COUNT |" >> $GITHUB_STEP_SUMMARY
             fi
           done
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📊 For detailed coverage information, see [TEST_COVERAGE.md](../tests/TEST_COVERAGE.md)" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload test results
-        if: always() && github.event_name != 'workflow_dispatch' && env.ACTIONS_RUNTIME_TOKEN != ''
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        timeout-minutes: 1
-        with:
-          name: test-results-macos
-          path: |
-            ${{ github.workspace }}/tests/TEST_COVERAGE.md
-          retention-days: 30
 
       - name: Check test results
         if: failure() && steps.test-bats.outcome == 'failure'
