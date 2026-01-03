@@ -59,19 +59,24 @@ jobs:
           
           # Run tests and capture output
           if command -v bats >/dev/null 2>&1; then
-            TEST_OUTPUT=$(bats tests/*.bats 2>&1 || true)
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$TEST_OUTPUT" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            # Try pretty format first, fallback to TAP if not supported
+            TEST_OUTPUT=$(bats --pretty tests/*.bats 2>&1 || bats tests/*.bats 2>&1 || true)
             
-            # Extract test counts
+            # Extract test counts (before formatting)
             TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
             if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" = "" ]; then
               TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok\|^not ok" || echo "0")
             fi
             PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok" || echo "0")
             FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
+            
+            # Format test output: replace "ok" with "[ OK ]" and "not ok" with "[FAIL]"
+            FORMATTED_OUTPUT=$(echo "$TEST_OUTPUT" | sed 's/^ok /[ OK ] /g; s/^not ok /[FAIL] /g')
+            
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$FORMATTED_OUTPUT" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             
             # Ensure all test counts are numeric
             PASSED_TESTS=${PASSED_TESTS:-0}
@@ -189,19 +194,24 @@ jobs:
           
           # Run tests and capture output
           if command -v bats >/dev/null 2>&1; then
-            TEST_OUTPUT=$(bats tests/*.bats 2>&1 || true)
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$TEST_OUTPUT" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            # Try pretty format first, fallback to TAP if not supported
+            TEST_OUTPUT=$(bats --pretty tests/*.bats 2>&1 || bats tests/*.bats 2>&1 || true)
             
-            # Extract test counts
+            # Extract test counts (before formatting)
             TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
             if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" = "" ]; then
               TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok\|^not ok" || echo "0")
             fi
             PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok" || echo "0")
             FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
+            
+            # Format test output: replace "ok" with "[ OK ]" and "not ok" with "[FAIL]"
+            FORMATTED_OUTPUT=$(echo "$TEST_OUTPUT" | sed 's/^ok /[ OK ] /g; s/^not ok /[FAIL] /g')
+            
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$FORMATTED_OUTPUT" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             
             # Ensure all test counts are numeric
             PASSED_TESTS=${PASSED_TESTS:-0}
