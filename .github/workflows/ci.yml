@@ -51,7 +51,7 @@ jobs:
         if: always() && github.event_name != 'workflow_dispatch'
         timeout-minutes: 2
         run: |
-          echo "##Linux Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Linux Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
