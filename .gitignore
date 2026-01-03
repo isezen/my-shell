@@ -1,0 +1,41 @@
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# Editor files
+*.swp
+*.swo
+*.sublime-*
+.idea/
+.vscode/
+*.code-workspace
+
+# Backup files
+*.bak
+*.tmp
+*.orig
+*.save
+*~
+
+# Log files
+*.log
+
+# Test output
+test_output.*
+*.test.log
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+
+# Personal notes (optional - uncomment if needed)
+# notes.txt
+# TODO.txt
+
