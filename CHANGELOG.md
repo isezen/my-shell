@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Project structure
   - Testing information
   - CI/CD information
+- Created `REQUIREMENTS.md` with system requirements and dependencies documentation
 
 ### Changed
 - Moved `IMPROVEMENTS.md` to `docs/` directory for better organization
