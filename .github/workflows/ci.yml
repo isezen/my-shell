@@ -59,8 +59,11 @@ jobs:
           
           # Run tests and capture output
           if command -v bats >/dev/null 2>&1; then
-            # Try pretty format first, fallback to TAP if not supported
-            TEST_OUTPUT=$(bats --pretty tests/*.bats 2>&1 || bats tests/*.bats 2>&1 || true)
+            # Set TERM to avoid tput errors, use TAP format for CI
+            export TERM=dumb
+            # Use TAP format (more reliable in CI) and format it ourselves
+            # Suppress stderr errors (tput, broken pipe) but keep stdout
+            TEST_OUTPUT=$(bats tests/*.bats 2>/dev/null || bats tests/*.bats 2>&1 | grep -vE "(tput:|printf: write error)" || true)
             
             # Extract test counts (before formatting)
             TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
@@ -194,8 +197,11 @@ jobs:
           
           # Run tests and capture output
           if command -v bats >/dev/null 2>&1; then
-            # Try pretty format first, fallback to TAP if not supported
-            TEST_OUTPUT=$(bats --pretty tests/*.bats 2>&1 || bats tests/*.bats 2>&1 || true)
+            # Set TERM to avoid tput errors, use TAP format for CI
+            export TERM=dumb
+            # Use TAP format (more reliable in CI) and format it ourselves
+            # Suppress stderr errors (tput, broken pipe) but keep stdout
+            TEST_OUTPUT=$(bats tests/*.bats 2>/dev/null || bats tests/*.bats 2>&1 | grep -vE "(tput:|printf: write error)" || true)
             
             # Extract test counts (before formatting)
             TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
