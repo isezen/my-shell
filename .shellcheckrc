@@ -1,0 +1,18 @@
+# ShellCheck configuration for my-shell project
+
+# SC2139: Aliases intentionally expand variables when defined
+# This is intentional behavior for dynamic alias creation
+disable=SC2139
+
+# SC2262/SC2263: Alias definition and usage in same parsing unit
+# Some aliases are intentionally defined and checked in the same function
+disable=SC2262,SC2263
+
+# SC2032: Alias can't be invoked via xargs
+# This is a known limitation, documented in code
+disable=SC2032
+
+# SC2317: Unreachable code
+# Some code paths are intentionally unreachable (error handling)
+disable=SC2317
+

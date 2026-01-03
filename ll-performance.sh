@@ -10,32 +10,32 @@ _ts_total_run_time=$(( $(date +%s%N)/1000000 ))
 
 # Native ls performance
 _total=0
-_numoffiles=$(ls -1 "$_path" | wc -l)
-for i in $(seq 1 $_n);do
+_numoffiles=$(find "$_path" -mindepth 1 -maxdepth 1 | wc -l)
+for _ in $(seq 1 $_n);do
   _tsmp=$(( $(date +%s%N)/1000000 ))
-  vcl=$(ls -l "$_path")
+  ls -l "$_path" > /dev/null
   # ls -l "$_path"
-  _val=$(( $(date +%s%N)/1000000 - $_tsmp ))
-  _total=$(( $_total + $_val ))
+  _val=$(( $(date +%s%N)/1000000 - _tsmp ))
+  _total=$(( _total + _val ))
 done
 _lsruntime=$(bc <<< "scale = 3; ($_total/$_n)")
 _ls_perf_per_file=$(bc <<< "scale = 3; ($_lsruntime/$_numoffiles)")
 
 # ll performance
 _total=0
-for i in $(seq 1 $_n);do
+for _ in $(seq 1 $_n);do
   _tsmp=$(( $(date +%s%N)/1000000 ))
-  vcl=$(ll -h "$_path")
+  ll -h "$_path" > /dev/null
   # ll "$_path"
-  _val=$(( $(date +%s%N)/1000000 - $_tsmp ))
-  _total=$(( $_total + $_val ))
+  _val=$(( $(date +%s%N)/1000000 - _tsmp ))
+  _total=$(( _total + _val ))
 done
 _llruntime=$(bc <<< "scale = 3; ($_total/$_n)")
 _ll_perf_per_file=$(bc <<< "scale = 3; ($_llruntime/$_numoffiles)")
 
 # How much faster or slower?
 _comp_ll_ls=$(bc <<< "scale = 3; ($_llruntime/$_lsruntime)")
-_ts_total_run_time=$(( $(date +%s%N)/1000000 - $_ts_total_run_time ))
+_ts_total_run_time=$(( $(date +%s%N)/1000000 - _ts_total_run_time ))
 
 
 date

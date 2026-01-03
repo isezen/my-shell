@@ -43,6 +43,7 @@ elif [ "${SHELL}" == fish ];then
   URL="https://raw.githubusercontent.com/isezen/my-shell/master/my_settings.fish"
   mkdir -p "${HOME}/.config/fish"
   SCRIPT="${HOME}/.config/fish/config.fish"
+  # shellcheck disable=SC2016  # Fish shell syntax, needs literal {$HOME}
   HOME_PREFIX='{$HOME}'
   SHELL_AND='; and'
   curl -sL "${URL}" | fish

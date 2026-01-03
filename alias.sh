@@ -11,9 +11,9 @@ mem () {
   SPECULATIVE_BLOCKS=$(vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
   TOTALRAM=$(system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')
 
-  FREE=$((($FREE_BLOCKS+SPECULATIVE_BLOCKS)*4096/(1024*1024)))
-  INACTIVE=$(($INACTIVE_BLOCKS*4096/(1024*1024)))
-  TOTAL=$((($FREE+$INACTIVE)))
+  FREE=$(((FREE_BLOCKS+SPECULATIVE_BLOCKS)*4096/(1024*1024)))
+  INACTIVE=$((INACTIVE_BLOCKS*4096/(1024*1024)))
+  TOTAL=$((FREE+INACTIVE))
   TOTAL=$(echo "scale=2; $TOTAL/1024" | bc)
   echo "Free Memory: $TOTAL""GB of $TOTALRAM"
 }
@@ -40,14 +40,16 @@ cd_aliases () {
 }
 
 ls_aliases () {
+  # shellcheck disable=SC2139  # Aliases intentionally expand variables when defined
   local gnu_ls_suffix="--color --group-directories-first"
 
   # Listing aliases
   local _ls="ls"
   local _ll="$_ls -l"
   if hash ls 2>/dev/null;then
-    local gnuls="$(ls --version 2>/dev/null)"
-    if [ -n gnuls ];then
+    local gnuls
+    gnuls="$(ls --version 2>/dev/null)"
+    if [ -n "$gnuls" ];then
       _ls="$_ls $gnu_ls_suffix"
       _ll='ls -lhF --color'
     fi
@@ -55,14 +57,14 @@ ls_aliases () {
 
   alias dir="$_ls -C -b"
   if hash dir 2>/dev/null;then
-    if [ -n "$(dir --version 2>/dev/null)" ];then
+    if [ -n "$(command dir --version 2>/dev/null)" ];then
       alias dir="dir $gnu_ls_suffix"
     fi
   fi
 
   alias vdir="$_ls -l -b"
   if hash vdir 2>/dev/null;then
-    if [ -n "$(vdir --version 2>/dev/null)" ];then
+    if [ -n "$(command vdir --version 2>/dev/null)" ];then
       alias vdir="vdir $gnu_ls_suffix"
     fi
   fi
@@ -114,44 +116,48 @@ ls_aliases () {
 }
 
 # mkdir a directory and move into that directory
-mcd () { mkdir -p "$1";cd "$1"; }
+mcd () { mkdir -p "$1" && cd "$1" || return; }
 
 FindFiles () {
-  local _searchfile='$1'
-  local _search_command='find . -type f \( -name "*'$_searchfile'*" \)'
+  local _searchfile="$1"
+  local _search_command="find . -type f \\( -name \"*${_searchfile}*\" \\)"
   eval "$_search_command"
 }
 
 dushf () {
   echo "Calculating disk usage of all hidden files in $PWD"
-  local _filelist=$(find . -type f -a -iname "*.pdf" -print0 | xargs -r0 \du -ach | sort -h);
-  echo "Number of files:"$(expr $(echo "$_filelist"| wc -l) - 1);
+  local _filelist
+  _filelist=$(find . -type f -a -iname "*.pdf" -print0 | xargs -r0 command du -ach | sort -h)
+  echo "Number of files: $(( $(echo "$_filelist" | wc -l) - 1 ))"
   tail -n 1 <<< "$_filelist"
 }
 
 dufiles () {
-  local file="$1"
-  local _search_command='find . -type f \( -name "*.'$1'" \) -print0 | xargs -r0 \du -ch | sort -h'
-  local _filelist=$(eval $_search_command)
+  local _search_command
+  _search_command="find . -type f \\( -name \"*.${1}\" \\) -print0 | xargs -r0 command du -ch | sort -h"
+  local _filelist
+  _filelist=$(eval "$_search_command")
   echo "$_filelist"
-  echo "Number of $1 files:"$(expr $(echo "$_filelist"| wc -l) - 1);
+  echo "Number of $1 files: $(( $(echo "$_filelist" | wc -l) - 1 ))"
   tail -n 1 <<< "$_filelist"
 }
 
 # Only Directories
 dusd () {
-  let x=-1
-  _filelist=$(eval $_findAllDirectories' | xargs -r0 \du -hcd 0 | sed -E "s:./::" | sort -h');
+  local _findAllDirectories
+  _findAllDirectories="find . -maxdepth 1 -type d \\( -not -iname \".\" \\) -print0 | sed -e \"s:./::g\""
+  local _filelist
+  _filelist=$(eval "$_findAllDirectories | xargs -r0 command du -hcd 0 | sed -E \"s:./::\" | sort -h")
   print_files "$_filelist"
-  echo "Number of Dirs:"$(expr $(echo "$_filelist"| wc -l) - 1);
+  echo "Number of Dirs: $(( $(echo "$_filelist" | wc -l) - 1 ))"
 }
 
 print_files () {
   while IFS=$'\t' read -r size line;
-    do printf "%s\t%s" $size "$line"
+    do printf "%s\t%s" "$size" "$line"
     [[ -d $line ]] && printf "/"
     echo
-    x=$(( $x + 1 ))
+    x=$(( x + 1 ))
   done <<< "$1"
 }
 
@@ -184,11 +190,13 @@ alias wget="wget -c"
 
 alias h='history'
 # Statistics of history
-alias hs="history|
-  awk '{CMD[\$2]++;count++;}END { for (a in CMD)print CMD[a] \" \" CMD[a]/count*100 \"% \" a;}'|
-  grep -v \"./\"|
-  column -c3 -s \" \" -t|
-  sort -nr | nl |  head -n10"
+hs() {
+  history |
+    awk '{CMD[$2]++;count++;}END { for (a in CMD)print CMD[a] " " CMD[a]/count*100 "% " a;}' |
+    grep -v "./" |
+    column -c3 -s " " -t |
+    sort -nr | nl | head -n10
+}
 # Search history
 alias hg="history | grep"
 # Clear history
@@ -226,9 +234,11 @@ fi
 if hash free 2>/dev/null; then
   alias free="free -mt"
 else
-  alias free="vm_stat | perl -ne '/page size of (\d+)/ and \$size=\$1; \
-   /Pages\s+([^:]+)[^\d]+(\d+)/ and printf(\"%-16s % 16.2f Mb\n\", \"\$1:\", \
-    \$2 * \$size / 1048576);'"
+  free() {
+    vm_stat | perl -ne '/page size of (\d+)/ and $size=$1; \
+     /Pages\s+([^:]+)[^\d]+(\d+)/ and printf("%-16s % 16.2f Mb\n", "$1:", \
+      $2 * $size / 1048576);'
+  }
 fi
 
 # Stop after sending count ECHO_REQUEST packets #
@@ -244,7 +254,8 @@ alias ports='netstat -tulanp'
 
 _distro="unknown"
 get_distro() {
-  local _myos=$(uname)
+  local _myos
+  _myos=$(uname)
   if [[ "$_myos" == 'Linux' ]]; then
     _distro=$(lsb_release -si)
   elif [[ "$_myos" == 'Darwin' ]]; then
