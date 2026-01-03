@@ -60,13 +60,16 @@ PROMPT_COMMAND=bash_prompt_command
 bash_prompt
 unset bash_prompt
 
-gnuls="$(ls --version 2>/dev/null)"
+gnuls="$(ls --version 2>/dev/null)" || true
 if [ -n "$gnuls" ];then
   # Set dircolors
   if [ ! -f ~/.dircolors ]; then
-    curl -sLo ~/.dircolors https://raw.github.com/trapd00r/LS_COLORS/master/LS_COLORS
-  else
-    eval "$(dircolors -b ~/.dircolors)"
+    if command -v curl >/dev/null 2>&1; then
+      curl -sLo ~/.dircolors https://raw.github.com/trapd00r/LS_COLORS/master/LS_COLORS || true
+    fi
+  fi
+  if [ -f ~/.dircolors ] && command -v dircolors >/dev/null 2>&1; then
+    eval "$(dircolors -b ~/.dircolors)" || true
   fi
 fi
 

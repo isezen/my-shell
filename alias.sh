@@ -48,7 +48,7 @@ ls_aliases () {
   local _ll="$_ls -l"
   if hash ls 2>/dev/null;then
     local gnuls
-    gnuls="$(ls --version 2>/dev/null)"
+    gnuls="$(ls --version 2>/dev/null)" || true
     if [ -n "$gnuls" ];then
       _ls="$_ls $gnu_ls_suffix"
       _ll='ls -lhF --color'
