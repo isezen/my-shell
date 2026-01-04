@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Created `docs/IMPROVEMENTS.md` with comprehensive project improvement analysis
 - Created `CHANGELOG.md` to track project changes
 - Added `.pre-commit-config.yaml` with ShellCheck and fish syntax checking hooks
 - Added `Makefile` with convenient commands for linting, formatting, and testing
@@ -33,9 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Testing information
   - CI/CD information
 - Created `REQUIREMENTS.md` with system requirements and dependencies documentation
-
-### Changed
-- Moved `IMPROVEMENTS.md` to `docs/` directory for better organization
+- Added environment activation system (`env/` directory):
+  - `activate` - Global shell switcher (executable script)
+  - `activate.bash` - Bash environment activation script
+  - `activate.zsh` - Zsh environment activation script
+  - `activate.fish` - Fish environment activation script
+  - `reactivate` function - Reload environment files without deactivating
+  - `deactivate` function - Cleanly deactivate environment
+  - Features:
+    - Automatic PATH management (adds `scripts/` directory)
+    - Shell-specific configuration loading
+    - Prompt indicator `(my-shell)` prefix
+    - Shell switching support (switch between bash/zsh/fish)
+    - Development-friendly: reload files with `reactivate` command
 
 ### Fixed
 - Fixed critical ShellCheck error in `alias.sh:50`: Added missing quotes around variable in `[ -n "$gnuls" ]` check

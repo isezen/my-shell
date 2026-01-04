@@ -1,0 +1,75 @@
+#!/bin/bash
+# activate - my-shell environment switcher
+# Usage: activate [bash|zsh|fish]
+#   If no argument, activates current shell's environment
+
+# Proje root dizinini bul (env/ dizininden bir üst)
+_ACTIVATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_ENV_DIR="$_ACTIVATE_DIR/env"
+
+# Shell tipini belirle
+_REQUESTED_SHELL="${1:-}"
+_CURRENT_SHELL=""
+
+# Mevcut shell'i tespit et
+if [ -n "$ZSH_VERSION" ]; then
+    _CURRENT_SHELL="zsh"
+elif [ -n "$BASH_VERSION" ]; then
+    _CURRENT_SHELL="bash"
+elif [ -n "$FISH_VERSION" ]; then
+    _CURRENT_SHELL="fish"
+else
+    _CURRENT_SHELL="$(basename "$SHELL")"
+fi
+
+# Eğer shell belirtilmemişse, mevcut shell'i kullan
+if [ -z "$_REQUESTED_SHELL" ]; then
+    _REQUESTED_SHELL="$_CURRENT_SHELL"
+fi
+
+_REQUESTED_SHELL="$(echo "$_REQUESTED_SHELL" | tr '[:upper:]' '[:lower:]')"
+
+# Geçerli shell kontrolü
+case "$_REQUESTED_SHELL" in
+    bash|zsh|fish)
+        ;;
+    *)
+        echo "Error: Unknown shell '$_REQUESTED_SHELL'. Supported: bash, zsh, fish" >&2
+        exit 1
+        ;;
+esac
+
+# Eğer farklı bir shell isteniyorsa, o shell'e geç
+if [ "$_REQUESTED_SHELL" != "$_CURRENT_SHELL" ]; then
+    case "$_REQUESTED_SHELL" in
+        bash)
+            echo "Switching to bash and activating my-shell environment..."
+            exec bash -c "source '$_ENV_DIR/activate.bash'; exec bash"
+            ;;
+        zsh)
+            echo "Switching to zsh and activating my-shell environment..."
+            exec zsh -c "source '$_ENV_DIR/activate.zsh'; exec zsh"
+            ;;
+        fish)
+            echo "Switching to fish and activating my-shell environment..."
+            exec fish -c "source '$_ENV_DIR/activate.fish'; exec fish"
+            ;;
+    esac
+else
+    # Mevcut shell için activate script'ini source et
+    case "$_CURRENT_SHELL" in
+        bash)
+            source "$_ENV_DIR/activate.bash"
+            ;;
+        zsh)
+            source "$_ENV_DIR/activate.zsh"
+            ;;
+        fish)
+            # Fish'den bash script source edilemez, bu yüzden hata ver
+            echo "Error: Cannot source bash script from fish shell." >&2
+            echo "Please use: source env/activate.fish" >&2
+            exit 1
+            ;;
+    esac
+fi
+

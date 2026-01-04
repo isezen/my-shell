@@ -178,6 +178,41 @@ The project is tested on:
 - **macOS**: 13.6 (Darwin 23.6.0) with Bash 5.3.3, Fish 4.3.2
 - **Linux**: Ubuntu 20.04+ with Bash 5.0+, Fish 3.0+
 
+## Environment Activation System
+
+The project includes an environment activation system (similar to Python virtual environments) located in the `env/` directory:
+
+- **`activate`**: Global shell switcher (executable)
+- **`activate.bash`**: Bash environment activation
+- **`activate.zsh`**: Zsh environment activation
+- **`activate.fish`**: Fish environment activation
+
+### Usage
+
+```bash
+# Activate environment
+source env/activate.bash  # For bash
+source env/activate.zsh   # For zsh
+source env/activate.fish  # For fish
+
+# Or use the global switcher
+./env/activate bash       # Switch to bash
+./env/activate zsh        # Switch to zsh
+./env/activate fish       # Switch to fish
+
+# Reload files after changes
+reactivate
+
+# Deactivate
+deactivate
+```
+
+### Requirements
+
+- No additional dependencies required
+- Works with existing shell installations
+- Automatically manages PATH and configuration loading
+
 ## Checking Your System
 
 ### Check Shell Versions

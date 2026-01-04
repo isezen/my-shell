@@ -77,7 +77,20 @@ Before you begin, ensure you have the following installed:
    pre-commit install
    ```
 
-5. **Verify your setup**:
+5. **Activate development environment** (optional but recommended):
+   ```bash
+   # Activate my-shell environment for development
+   source env/activate.bash  # For bash
+   # or
+   source env/activate.zsh  # For zsh
+   # or
+   source env/activate.fish # For fish
+   
+   # After making changes to alias.sh, bash.sh, or my_settings.fish:
+   reactivate  # Reload files without deactivating
+   ```
+
+6. **Verify your setup**:
    ```bash
    make lint      # Check code quality
    make test-bats # Run tests
@@ -159,8 +172,27 @@ We use **feature branches** for all changes:
 
 - Shell scripts (`.sh`) in the root directory
 - Fish scripts (`.fish`) in the root directory
+- Environment activation scripts in `env/` directory
 - Test files in `tests/` directory
 - Documentation in `docs/` directory
+
+### Development Environment
+
+For active development, you can use the environment activation system:
+
+```bash
+# Activate environment
+source env/activate.bash  # or activate.zsh / activate.fish
+
+# Make changes to alias.sh, bash.sh, or my_settings.fish
+# Then reload without deactivating:
+reactivate
+
+# When done, deactivate
+deactivate
+```
+
+This allows you to test changes immediately without restarting your shell session.
 
 ### Pre-commit Hooks
 
