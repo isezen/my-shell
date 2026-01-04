@@ -49,10 +49,11 @@ source env/activate.fish  # Fish
 2. If `MY_SHELL_ACTIVATED` is already set, print `"my-shell environment is already activated"` and return (no-op).
 3. Set `MY_SHELL_ACTIVATION_MODE=source`.
 4. Save a PATH snapshot to `MY_SHELL_OLD_PATH` for exact restoration.
-5. Prepend `"$MY_SHELL_ROOT/scripts"` to `PATH`.
-6. Source shell-specific config:
-   - Bash/Zsh: `alias.sh`, `bash.sh`
-   - Fish: `my_settings.fish`
+5. Prepend `"$MY_SHELL_ROOT/scripts/bin"` to `PATH`.
+6. Source shell-specific config via single entrypoint:
+   - Bash: `shell/bash/init.bash`
+   - Zsh: `shell/zsh/init.zsh`
+   - Fish: `shell/fish/init.fish`
 7. Define `colortable`:
    - Bash/Zsh: alias calling the underlying script
    - Fish: function calling the underlying script
@@ -264,9 +265,10 @@ reactivate
 **Behavior:**
 1. If `MY_SHELL_ACTIVATED` is not set, print `"my-shell environment is not activated"` and return.
 2. Print `"Reloading my-shell environment files..."`.
-3. Re-source shell-specific files:
-   - Bash/Zsh: `alias.sh`, `bash.sh`
-   - Fish: `my_settings.fish`
+3. Re-source shell-specific files via single entrypoint:
+   - Bash: `shell/bash/init.bash`
+   - Zsh: `shell/zsh/init.zsh`
+   - Fish: `shell/fish/init.fish`
 4. Re-define `colortable`.
 5. Ensure prompt prefix is present.
 6. Print `"my-shell environment reloaded"`.
@@ -322,7 +324,7 @@ reactivate
 
 ### 6.3 `colortable`
 
-- Displays the color table by invoking `scripts/colortable.sh` (or equivalent).
+- Displays the color table by invoking `colortable.sh` (or equivalent).
 - Bash/Zsh: alias
 - Fish: function
 

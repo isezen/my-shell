@@ -16,7 +16,7 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 - **Time utilities**: Quick date/time commands (`now`, `nowtime`, `nowdate`)
 
 ### 🐟 Fish Shell Support
-- Full fish shell configuration (`my_settings.fish`)
+- Full fish shell configuration (`shell/fish/init.fish`)
 - Fish-specific functions and aliases
 - Colorful prompt with git integration
 - Directory colors support
@@ -49,10 +49,12 @@ curl -sL https://git.io/vVftO | bash
 curl -sL https://git.io/vVftO | fish
 ```
 
-This downloads and installs:
-- `alias.sh` → `~/.myaliases.sh` (aliases and functions)
-- `bash.sh` → `~/.bash.sh` (bash prompt settings)
-- `my_settings.fish` → `~/.config/fish/config.fish` (fish settings)
+This downloads and installs to `~/.my-shell/`:
+- `shell/bash/init.bash` → `~/.my-shell/bash/init.bash` (bash initialization)
+- `shell/zsh/init.zsh` → `~/.my-shell/zsh/init.zsh` (zsh initialization)
+- `shell/fish/init.fish` → `~/.my-shell/fish/init.fish` (fish initialization)
+
+Each init file sources the appropriate aliases, prompt, and environment settings.
 
 #### Utility Scripts
 
@@ -60,7 +62,7 @@ This downloads and installs:
 curl -sL https://git.io/vVfYB | sudo bash
 ```
 
-This installs scripts from `scripts/` directory to `/usr/local/bin`:
+This installs scripts from `scripts/bin/` directory to `/usr/local/bin`:
 - `ll` - Colorful long listing
 - `dus` - Disk usage script
 - `dusf` - File-based disk usage
@@ -76,19 +78,19 @@ This installs scripts from `scripts/` directory to `/usr/local/bin`:
 
 2. **Install shell settings:**
    ```sh
-   ./install_shell_settings.sh
+   ./install_shell_settings.sh --local --repo-root "$(pwd)"
    ```
 
 3. **Install utility scripts:**
    ```sh
-   sudo ./install_shell_scripts.sh
+   sudo ./install_shell_scripts.sh --local --repo-root "$(pwd)"
    ```
 
 ### Uninstallation
 
 **Shell Settings:**
-- Delete `~/.myaliases.sh` and `~/.bash.sh` (or fish config entries)
-- Remove relevant lines from your `~/.profile`, `~/.bashrc`, or `~/.config/fish/config.fish`
+- Delete `~/.my-shell/` directory
+- Remove source lines from your `~/.profile`, `~/.bash_profile`, `~/.zshrc`, or `~/.config/fish/config.fish`
 
 **Utility Scripts:**
 ```sh
@@ -172,20 +174,38 @@ dus -v      # Verbose output
 
 ```
 my-shell/
-├── alias.sh              # Bash aliases and functions
-├── bash.sh               # Bash prompt configuration
-├── my_settings.fish      # Fish shell configuration
-├── colortable.sh         # Color table utility
+├── shell/                # Shell-specific configurations
+│   ├── bash/            # Bash configuration
+│   │   ├── init.bash    # Bash initialization entrypoint
+│   │   ├── aliases.bash # Bash aliases and functions
+│   │   ├── prompt.bash  # Bash prompt configuration
+│   │   └── env.bash     # Bash environment settings
+│   ├── zsh/             # Zsh configuration
+│   │   ├── init.zsh     # Zsh initialization entrypoint
+│   │   ├── aliases.zsh  # Zsh aliases and functions
+│   │   ├── prompt.zsh   # Zsh prompt configuration
+│   │   └── env.zsh      # Zsh environment settings
+│   └── fish/            # Fish configuration
+│       ├── init.fish    # Fish initialization entrypoint
+│       ├── aliases.fish # Fish aliases and functions
+│       ├── prompt.fish  # Fish prompt configuration
+│       └── env.fish     # Fish environment settings
+├── scripts/bin/          # Utility scripts (executables)
+│   ├── ll              # Colorful long listing
+│   ├── dus             # Disk usage script
+│   ├── dusf            # File-based disk usage
+│   └── dusf.            # Alternative disk usage
+├── lib/                 # Shared libraries
+│   └── provider.sh     # Remote/local file fetching provider
+├── env/                 # Environment activation scripts
+│   ├── activate.bash   # Bash activation
+│   ├── activate.zsh    # Zsh activation
+│   └── activate.fish   # Fish activation
 ├── install_shell_settings.sh    # Installation script for settings
 ├── install_shell_scripts.sh     # Installation script for scripts
-├── scripts/              # Utility scripts
-│   ├── ll               # Colorful long listing
-│   ├── dus              # Disk usage script
-│   ├── dusf             # File-based disk usage
-│   └── dusf.             # Alternative disk usage
 ├── tests/                # BATS test suite
-│   ├── alias.bats       # Tests for alias.sh
-│   ├── bash.bats        # Tests for bash.sh
+│   ├── alias.bats       # Tests for aliases.bash
+│   ├── bash.bats        # Tests for prompt.bash and env.bash
 │   ├── scripts_ll.bats  # Tests for ll script
 │   └── scripts_dus.bats # Tests for dus script
 ├── Makefile             # Development commands
