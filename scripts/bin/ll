@@ -261,16 +261,17 @@ if [ ! -z ${ASIZE+x} ]; then # if -s is set
   _CURCOL=$((_CURCOL+1)) ###### PERF:~5ms
   if [ -z ${HUMANREADABLE+x} ]; then # if -h is not set ###### PERF:~60ms
     _len_sizes=$(echo "$_sizes" | wc -L) ###### PERF:~17ms
-    mapfile -t arr <<< "$_sizes" ###### PERF:~9ms
-    _sizes=$(for x in "${arr[@]}" ; do ###### PERF:~50ms
-      _formatted=""
-      printf -v _formatted "%${_len_sizes}d" "$x"
-      if [[ $x -lt $_SIZE_KB ]]; then printf '%s%s%s\n' "$_cb" "$_formatted" "$_creset";continue; fi
-      if [[ $x -lt $_SIZE_MB ]]; then printf '%s%s%s\n' "$_ck" "$_formatted" "$_creset";continue; fi
-      if [[ $x -lt $_SIZE_GB ]]; then printf '%s%s%s\n' "$_cm" "$_formatted" "$_creset";continue; fi
-      if [[ $x -lt $_SIZE_TB ]]; then printf '%s%s%s\n' "$_cg" "$_formatted" "$_creset";continue; fi
-      if [[ $x -ge $_SIZE_TB ]]; then printf '%s%s%s\n' "$_ct" "$_formatted" "$_creset";continue; fi
-      done;)
+    _sizes=$(
+      printf '%s\n' "$_sizes" | while IFS= read -r x; do ###### PERF:~50ms
+        _formatted=""
+        printf -v _formatted "%${_len_sizes}d" "$x"
+        if [[ $x -lt $_SIZE_KB ]]; then printf '%s%s%s\n' "$_cb" "$_formatted" "$_creset"; continue; fi
+        if [[ $x -lt $_SIZE_MB ]]; then printf '%s%s%s\n' "$_ck" "$_formatted" "$_creset"; continue; fi
+        if [[ $x -lt $_SIZE_GB ]]; then printf '%s%s%s\n' "$_cm" "$_formatted" "$_creset"; continue; fi
+        if [[ $x -lt $_SIZE_TB ]]; then printf '%s%s%s\n' "$_cg" "$_formatted" "$_creset"; continue; fi
+        printf '%s%s%s\n' "$_ct" "$_formatted" "$_creset"
+      done
+    )
   else # if -h is set ###### PERF:~62ms
     #Colorize B,K,M,G,T
     _prgx="[0-9]*\.*[0-9]*"
@@ -350,16 +351,17 @@ _sizes=$(echo "$ll_res" | cut -d" " -f $_CURCOL) ###### PERF:~14ms
 _CURCOL=$((_CURCOL+1))
 if [ -z ${HUMANREADABLE+x} ]; then # if -h is not set ###### PERF:~67ms
   _len_sizes=$(echo "$_sizes" | wc -L) ###### PERF:~15ms
-  mapfile -t arr <<< "$_sizes" ###### PERF:~9ms
-  _sizes=$(for x in "${arr[@]}" ; do  ###### PERF:~55ms
-    _formatted=""
-    printf -v _formatted "%${_len_sizes}d" "$x"
-    if [[ $x -lt $_SIZE_KB ]]; then printf '%s%s%s\n' "$_cb" "$_formatted" "$_creset";continue; fi
-    if [[ $x -lt $_SIZE_MB ]]; then printf '%s%s%s\n' "$_ck" "$_formatted" "$_creset";continue; fi
-    if [[ $x -lt $_SIZE_GB ]]; then printf '%s%s%s\n' "$_cm" "$_formatted" "$_creset";continue; fi
-    if [[ $x -lt $_SIZE_TB ]]; then printf '%s%s%s\n' "$_cg" "$_formatted" "$_creset";continue; fi
-    if [[ $x -ge $_SIZE_TB ]]; then printf '%s%s%s\n' "$_ct" "$_formatted" "$_creset";continue; fi
-  done;)
+  _sizes=$(
+    printf '%s\n' "$_sizes" | while IFS= read -r x; do  ###### PERF:~55ms
+      _formatted=""
+      printf -v _formatted "%${_len_sizes}d" "$x"
+      if [[ $x -lt $_SIZE_KB ]]; then printf '%s%s%s\n' "$_cb" "$_formatted" "$_creset"; continue; fi
+      if [[ $x -lt $_SIZE_MB ]]; then printf '%s%s%s\n' "$_ck" "$_formatted" "$_creset"; continue; fi
+      if [[ $x -lt $_SIZE_GB ]]; then printf '%s%s%s\n' "$_cm" "$_formatted" "$_creset"; continue; fi
+      if [[ $x -lt $_SIZE_TB ]]; then printf '%s%s%s\n' "$_cg" "$_formatted" "$_creset"; continue; fi
+      printf '%s%s%s\n' "$_ct" "$_formatted" "$_creset"
+    done
+  )
 else # if -h is set ###### PERF:~56ms
   #Colorize B,K,M,G,T
   _prgx="[0-9]*\.*[0-9]*"
@@ -380,18 +382,19 @@ fi
 res=$(paste -d" " <(echo "$res") <(echo "$_sizes")) ###### PERF:~25ms
 
 # DATES
-#          # Convert to array         # cut 6th column  # subtract from current date
-mapfile -t arr <<< "$(echo "$ll_res" | cut -d" " -f $_CURCOL | awk '{print strftime("%s") - $1}')" ###### PERF:~36ms
+#                   # cut time column  # subtract from current date
+_dates2=$(
+  echo "$ll_res" | cut -d" " -f $_CURCOL | awk '{print strftime("%s") - $1}' | while IFS= read -r x; do ###### PERF:~80ms
+    _formatted=""
+    if [[ $x -lt $_TIME_2MIN ]]; then printf -v _formatted '%2d %3s' "$x" "$_lsec"; printf '%s\n' "$_formatted"; continue; fi
+    if [[ $x -lt $_TIME_HOUR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_MIN)) "$_lmin"; printf '%s\n' "$_formatted"; continue; fi
+    if [[ $x -lt $_TIME_2DAYS ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_HOUR)) "$_lhrs"; printf '%s\n' "$_formatted"; continue; fi
+    if [[ $x -lt $_TIME_45DAYS ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_DAY)) "$_lday"; printf '%s\n' "$_formatted"; continue; fi
+    if [[ $x -lt $_TIME_YEAR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_30DAYS)) "$_lmon"; printf '%s\n' "$_formatted"; continue; fi
+    printf -v _formatted '%2d %3s' $((x / _TIME_YEAR)) "$_lyr"; printf '%s\n' "$_formatted"
+  done
+)
 _CURCOL=$((_CURCOL+1))
-_dates2=$(for x in "${arr[@]}" ; do ###### PERF:~80ms
-  _formatted=""
-  if [[ $x -lt $_TIME_2MIN ]]; then printf -v _formatted '%2d %3s' "$x" "$_lsec"; printf '%s\n' "$_formatted";continue; fi
-  if [[ $x -lt $_TIME_HOUR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_MIN)) "$_lmin"; printf '%s\n' "$_formatted";continue; fi
-  if [[ $x -lt $_TIME_2DAYS ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_HOUR)) "$_lhrs"; printf '%s\n' "$_formatted";continue; fi
-  if [[ $x -lt $_TIME_45DAYS ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_DAY)) "$_lday"; printf '%s\n' "$_formatted";continue; fi
-  if [[ $x -lt $_TIME_YEAR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_30DAYS)) "$_lmon"; printf '%s\n' "$_formatted";continue; fi
-  if [[ $x -ge $_TIME_YEAR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_YEAR)) "$_lyr"; printf '%s\n' "$_formatted";continue; fi
-done;)
 
 #Colorize New Passed times
 _prgx="[0-9]*[[:blank:]]*"

@@ -11,7 +11,9 @@ setup() {
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
   
   # Source shell/bash/env.bash and shell/bash/prompt.bash
+  # shellcheck disable=SC1091
   source "$PROJECT_ROOT/shell/bash/env.bash"
+  # shellcheck disable=SC1091
   source "$PROJECT_ROOT/shell/bash/prompt.bash"
 }
 
