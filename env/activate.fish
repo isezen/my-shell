@@ -81,50 +81,6 @@ function deactivate -d "Deactivate my-shell environment"
         return 1
     end
 
-    # Check for shell switching (Scenario 3.2 takes precedence)
-    if set -q MY_SHELL_SWITCHED_FROM
-        set -l switched_from $MY_SHELL_SWITCHED_FROM
-        
-        # Restore PATH to exact snapshot
-        set -gx PATH $MY_SHELL_OLD_PATH
-        set -e MY_SHELL_OLD_PATH
-
-        # Restore fish_prompt (Scenario 7.2)
-        if functions -q __my_shell_old_fish_prompt
-            functions -e fish_prompt
-            functions -c __my_shell_old_fish_prompt fish_prompt
-            functions -e __my_shell_old_fish_prompt
-        end
-        functions -e __my_shell_prompt_prefix
-        functions -e colortable
-        functions -e deactivate
-        functions -e reactivate
-
-        # Clean up activation variables
-        set -e MY_SHELL_ACTIVATED
-        set -e MY_SHELL_ACTIVATION_MODE
-        set -e MY_SHELL_ROOT
-        
-        # Clean up temporary artifacts (best-effort)
-        if set -q MY_SHELL_TMPDIR
-            if test -d "$MY_SHELL_TMPDIR"
-                rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null; or true
-            end
-            set -e MY_SHELL_TMPDIR
-        end
-        
-        set -e MY_SHELL_SWITCHED_FROM
-        if set -q MY_SHELL_FISH_SPAWNED
-            set -e MY_SHELL_FISH_SPAWNED
-        end
-
-        echo "- my-shell environment deactivated"
-        echo "- Bye..."
-        echo "- Returning to $switched_from shell..."
-        exec $switched_from
-        return
-    end
-
     # Normal deactivation (Scenario 3.1) or Fish exec deactivation (Scenario 3.3)
     # Restore PATH to exact snapshot
     set -gx PATH $MY_SHELL_OLD_PATH
@@ -141,16 +97,26 @@ function deactivate -d "Deactivate my-shell environment"
     functions -e deactivate
     functions -e reactivate
 
-    # Check if Fish session was spawned by activation before cleanup (Scenario 3.3)
-    set -l fish_spawned 0
-    if set -q MY_SHELL_FISH_SPAWNED
-        set fish_spawned 1
+    # Check if this session was spawned by ./env/activate before cleanup
+    set -l spawned_session 0
+    if set -q MY_SHELL_SESSION_SPAWNED
+        if test "$MY_SHELL_SESSION_SPAWNED" = "1"
+            set spawned_session 1
+        end
     end
 
     # Clean up activation variables
     set -e MY_SHELL_ACTIVATED
     set -e MY_SHELL_ACTIVATION_MODE
     set -e MY_SHELL_ROOT
+    if set -q MY_SHELL_SESSION_SPAWNED
+        set -e MY_SHELL_SESSION_SPAWNED
+    end
+    if set -q MY_SHELL_SPAWNED_SHELL
+        set -e MY_SHELL_SPAWNED_SHELL
+    end
+
+    # Backward-compat marker (optional)
     if set -q MY_SHELL_FISH_SPAWNED
         set -e MY_SHELL_FISH_SPAWNED
     end
@@ -158,8 +124,8 @@ function deactivate -d "Deactivate my-shell environment"
     echo "- my-shell environment deactivated"
     echo "- Bye..."
     
-    # If Fish session was spawned by activation, exit (Scenario 3.3)
-    if test $fish_spawned -eq 1
+    # If this session was spawned by ./env/activate, exit back to the parent shell.
+    if test $spawned_session -eq 1
         exit
     end
 end

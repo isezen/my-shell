@@ -29,11 +29,10 @@ if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
     source "$MY_SHELL_ROOT/alias.sh"
 fi
 
-# Source bash.sh and update prompt
+# Source bash.sh (bash.sh owns the prompt formatting, including the (my-shell) prefix)
 if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
     export MY_SHELL_OLD_PS1="$PS1"
     source "$MY_SHELL_ROOT/bash.sh"
-    export PS1="(my-shell) $PS1"
 fi
 
 # Define colortable alias
@@ -54,13 +53,9 @@ reactivate() {
         source "$MY_SHELL_ROOT/alias.sh"
     fi
 
-    # Re-source bash.sh and update prompt
+    # Re-source bash.sh (bash.sh owns the prompt formatting, including the (my-shell) prefix)
     if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
         source "$MY_SHELL_ROOT/bash.sh"
-        # Update prompt (add prefix if not present)
-        if [[ "$PS1" != "(my-shell)"* ]]; then
-            export PS1="(my-shell) $PS1"
-        fi
     fi
 
     # Redefine colortable alias
@@ -89,8 +84,7 @@ deactivate() {
     # Remove colortable alias
     unalias colortable 2>/dev/null || true
 
-    # Check for shell switching (Scenario 3.2)
-    _SWITCHED_FROM="$MY_SHELL_SWITCHED_FROM"
+    # Spawn marker: ./env/activate always starts a new interactive shell
     _SESSION_SPAWNED="$MY_SHELL_SESSION_SPAWNED"
     
     # Clean up activation variables
@@ -103,8 +97,8 @@ deactivate() {
     # Clean up temporary artifacts (best-effort)
     if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
         rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null || true
-        unset MY_SHELL_TMPDIR
     fi
+    unset MY_SHELL_TMPDIR
     
     # Remove functions
     unset -f deactivate
@@ -113,16 +107,9 @@ deactivate() {
     echo "- my-shell environment deactivated"
     echo "- Bye..."
     
-    # If switched from another shell, return to it (Scenario 3.2)
-    if [ -n "$_SWITCHED_FROM" ]; then
-        unset MY_SHELL_SWITCHED_FROM
-        echo "- Returning to $_SWITCHED_FROM shell..."
-        exec "$_SWITCHED_FROM"
-    fi
 
-    # If this Bash session was started by the switcher (same-shell activation), exit after cleanup.
-    # This returns control to the invoking shell (typically the user's previous Bash).
-    if [ -n "$_SESSION_SPAWNED" ]; then
+    # If this Bash session was spawned by ./env/activate, exit after cleanup.
+    if [ "$_SESSION_SPAWNED" = "1" ]; then
         exit 0
     fi
 }

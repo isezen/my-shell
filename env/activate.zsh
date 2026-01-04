@@ -102,15 +102,23 @@ deactivate() {
     # Remove colortable alias
     unalias colortable 2>/dev/null || true
 
-    # Check for shell switching (Scenario 3.2)
-    _SWITCHED_FROM="$MY_SHELL_SWITCHED_FROM"
+    # Capture spawn flag (./env/activate always spawns a new shell)
+    _SPAWNED_SESSION="$MY_SHELL_SESSION_SPAWNED"
     
     # Clean up activation variables
     unset MY_SHELL_ACTIVATED
     unset MY_SHELL_ACTIVATION_MODE
     unset MY_SHELL_ROOT
     
+    # Clean up temporary artifacts (best-effort)
+    if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
+        rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null || true
+    fi
     unset MY_SHELL_TMPDIR
+
+    # Spawn marker cleanup
+    unset MY_SHELL_SESSION_SPAWNED
+    unset MY_SHELL_SPAWNED_SHELL
     
     # Remove functions
     unset -f deactivate
@@ -119,11 +127,9 @@ deactivate() {
     echo "- my-shell environment deactivated"
     echo "- Bye..."
     
-    # If switched from another shell, return to it (Scenario 3.2)
-    if [ -n "$_SWITCHED_FROM" ]; then
-        unset MY_SHELL_SWITCHED_FROM
-        echo "- Returning to $_SWITCHED_FROM shell..."
-        exec "$_SWITCHED_FROM"
+    # If this session was spawned by ./env/activate, exit back to the parent shell.
+    if [ "$_SPAWNED_SESSION" = "1" ]; then
+        exit
     fi
 }
 

@@ -12,8 +12,7 @@
 # User: \u
 # Host: \h
 # Path: \${NEW_PWD}
-# PS1="[\D{%y-%m-%d} \t]\n\u@\h \${NEW_PWD} \\$ "
-PS1="\h\xE2\x98\x98 \${NEW_PWD} [\$] "
+PS1="\[\e[0;36m\](my-shell)\[\e[0m\] \h\xE2\x98\x98 \${NEW_PWD} [\$] "
 export CLICOLOR=1
 
 # append to the history file, don't overwrite it
@@ -50,7 +49,7 @@ bash_prompt() {
             sed -r "s/\\\u/\\\[\\\033[1;39m\\\]\\\u${D}/g"|
             sed -r "s/@/\\\[\\\033[1;33m\\\]@${D}/g"|
             sed -r "s/\\\h/\\\[\\\033[1;36m\\\]\\\h${D}/g"|
-            sed -r "s/\\\$\{NEW_PWD\}/\\\[\\\033[1;32m\\\]\$\{NEW_PWD\}${D}/g"|
+            sed -r "s/\\\$\{NEW_PWD\}/\\\[\\\033[1;32m\\\]\\\$\{NEW_PWD\}${D}/g"|
             sed -r "s/\[\\\$\]/\\\[\\\033[0;31m\\\]\\\\\$${D}/g")
     fi
   fi
@@ -74,5 +73,3 @@ if [ -n "$gnuls" ];then
 fi
 
 unset gnuls
-
-

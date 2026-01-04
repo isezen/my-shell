@@ -1,7 +1,7 @@
 #!/bin/bash
 # activate - my-shell environment switcher
 # Usage: activate [bash|zsh|fish]
-#   If no argument, activates current shell's environment
+#   If no argument, spawns the detected current shell and activates my-shell in that spawned session.
 
 # Determine project root directory (one level up from env/)
 _ACTIVATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,10 +32,6 @@ case "$_PARENT_COMM" in
         # Do NOT use $BASH_VERSION to infer the user's interactive shell.
         if [ "$_PARENT_SHELL" = "fish" ] || [ "$_PARENT_SHELL" = "bash" ] || [ "$_PARENT_SHELL" = "zsh" ]; then
             _CURRENT_SHELL="$_PARENT_SHELL"
-        elif [ -n "$ZSH_VERSION" ]; then
-            _CURRENT_SHELL="zsh"
-        elif [ -n "$FISH_VERSION" ]; then
-            _CURRENT_SHELL="fish"
         elif [ -n "$_PARENT_SHELL" ]; then
             _CURRENT_SHELL="$_PARENT_SHELL"
         else
@@ -61,93 +57,42 @@ case "$_REQUESTED_SHELL" in
         ;;
 esac
 
-# If different shell requested, switch to it
-if [ "$_REQUESTED_SHELL" != "$_CURRENT_SHELL" ]; then
-    # Scenario D: Shell Switching (Switch Mode)
-    export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
-    export MY_SHELL_ACTIVATION_MODE="switch"
-    
-    # Create temporary directory for switch artifacts
-    _TMPDIR=$(mktemp -d)
-    export MY_SHELL_TMPDIR="$_TMPDIR"
-    
-    case "$_REQUESTED_SHELL" in
-        bash)
-            echo "- Switching to bash and activating my-shell environment..."
-            # Create temporary rcfile
-            _TMP_RCFILE="$_TMPDIR/rcfile"
-            cat > "$_TMP_RCFILE" <<EOF
-export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
-export MY_SHELL_ACTIVATION_MODE="switch"
-export MY_SHELL_ROOT="$MY_SHELL_ROOT"
-export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
-source "$MY_SHELL_ROOT/env/activate.bash"
-EOF
-            exec env -u MY_SHELL_ACTIVATED bash --rcfile "$_TMP_RCFILE" -i
-            ;;
-        zsh)
-            echo "- Switching to zsh and activating my-shell environment..."
-            # Create temporary zshrc
-            mkdir -p "$_TMPDIR"
-            cat > "$_TMPDIR/.zshrc" <<EOF
-export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
-export MY_SHELL_ACTIVATION_MODE="switch"
-export MY_SHELL_ROOT="$MY_SHELL_ROOT"
-export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
+# Always spawn a new interactive shell for activation.
+# Rationale: `./env/activate` is executed, not sourced. Spawning guarantees that activation changes
+# (functions, prompt, PATH) apply to the interactive session, and `deactivate` can reliably `exit`.
 
-# Keep zsh history in a stable location; ZDOTDIR is a temporary directory.
-export HISTFILE="\$HOME/.zsh_history"
-: >| "\$HISTFILE" 2>/dev/null || true
+export MY_SHELL_ACTIVATION_MODE="spawn"
+export MY_SHELL_SESSION_SPAWNED=1
+export MY_SHELL_SPAWNED_SHELL="$_REQUESTED_SHELL"
 
-source "\$MY_SHELL_ROOT/env/activate.zsh"
-EOF
-            exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
-            ;;
-        fish)
-            echo "- Switching to fish and activating my-shell environment..."
-            exec env -u MY_SHELL_ACTIVATED fish -c "set -gx MY_SHELL_SWITCHED_FROM '$_CURRENT_SHELL'; set -gx MY_SHELL_ACTIVATION_MODE 'switch'; set -gx MY_SHELL_ROOT '$MY_SHELL_ROOT'; set -gx MY_SHELL_TMPDIR '$MY_SHELL_TMPDIR'; set -gx MY_SHELL_FISH_SPAWNED 1; source '$MY_SHELL_ROOT/env/activate.fish'; exec fish -i"
-            ;;
-    esac
-else
-    # Same shell - activate in current shell
-    # Check if already activated
-    if [ -n "$MY_SHELL_ACTIVATED" ]; then
-        echo "my-shell environment is already activated"
-        exit 0
-    fi
-    
-    case "$_CURRENT_SHELL" in
-        bash)
-            # Scenario B: Same shell activation (Bash)
-            # NOTE: This switcher is executed (./env/activate), so sourcing activate.bash here would
-            # only affect this script process, not the user's interactive bash. Therefore we re-exec
-            # an interactive bash that sources activate.bash via a temporary rcfile.
-            echo "- Switching to bash and activating my-shell environment..."
-            _TMPDIR=$(mktemp -d)
-            _TMP_RCFILE="$_TMPDIR/rcfile"
-            cat > "$_TMP_RCFILE" <<EOF
+# Create temporary directory for spawn artifacts (cleaned up by deactivate)
+_TMPDIR=$(mktemp -d)
+export MY_SHELL_TMPDIR="$_TMPDIR"
+
+case "$_REQUESTED_SHELL" in
+    bash)
+        echo "- Spawning bash and activating my-shell environment..."
+        _TMP_RCFILE="$_TMPDIR/rcfile"
+        cat > "$_TMP_RCFILE" <<EOF
 export MY_SHELL_ROOT="$MY_SHELL_ROOT"
-export MY_SHELL_ACTIVATION_MODE="source"
+export MY_SHELL_ACTIVATION_MODE="spawn"
 export MY_SHELL_SESSION_SPAWNED=1
 export MY_SHELL_SPAWNED_SHELL="bash"
-# Ensure we are not in switch-return mode
-unset MY_SHELL_SWITCHED_FROM
+export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
 # Source the bash activator (absolute path)
 source "$MY_SHELL_ROOT/env/activate.bash"
-# Cleanup temp artifacts created by the switcher itself
-rm -rf "$_TMPDIR" 2>/dev/null || true
 EOF
-            exec env -u MY_SHELL_ACTIVATED bash --rcfile "$_TMP_RCFILE" -i
-            ;;
-        zsh)
-            # Scenario B: Same shell activation (Zsh)
-            # Same reasoning as Bash: we must exec an interactive zsh so activation affects the session.
-            echo "- Switching to zsh and activating my-shell environment..."
-            _TMPDIR=$(mktemp -d)
-            cat > "$_TMPDIR/.zshrc" <<EOF
+        exec env -u MY_SHELL_ACTIVATED bash --rcfile "$_TMP_RCFILE" -i
+        ;;
+
+    zsh)
+        echo "- Spawning zsh and activating my-shell environment..."
+        cat > "$_TMPDIR/.zshrc" <<EOF
 export MY_SHELL_ROOT="$MY_SHELL_ROOT"
-export MY_SHELL_ACTIVATION_MODE="source"
-unset MY_SHELL_SWITCHED_FROM
+export MY_SHELL_ACTIVATION_MODE="spawn"
+export MY_SHELL_SESSION_SPAWNED=1
+export MY_SHELL_SPAWNED_SHELL="zsh"
+export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
 
 # Keep zsh history in a stable location; ZDOTDIR is a temporary directory.
 export HISTFILE="\$HOME/.zsh_history"
@@ -155,23 +100,23 @@ export HISTFILE="\$HOME/.zsh_history"
 
 source "\$MY_SHELL_ROOT/env/activate.zsh"
 EOF
-            exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
-            ;;
-        fish)
-            # Scenario C: Fish exec-activation
-            echo "- Activating my-shell environment in fish..."
-            export MY_SHELL_ACTIVATION_MODE="exec"
-            export MY_SHELL_FISH_SPAWNED=1
-            # Create temporary init file to ensure functions persist in new fish instance
-            _TMP_INIT=$(mktemp)
-            cat > "$_TMP_INIT" <<EOF
-# Temporary init file for my-shell activation
-set -gx MY_SHELL_ACTIVATION_MODE "exec"
-set -gx MY_SHELL_FISH_SPAWNED 1
+        exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
+        ;;
+
+    fish)
+        echo "- Spawning fish and activating my-shell environment..."
+        _TMP_INIT=$(mktemp)
+        cat > "$_TMP_INIT" <<EOF
+# Temporary init file for my-shell activation (spawn)
 set -gx MY_SHELL_ROOT "$MY_SHELL_ROOT"
-source '$MY_SHELL_ROOT/env/activate.fish'
+set -gx MY_SHELL_ACTIVATION_MODE "spawn"
+set -gx MY_SHELL_SESSION_SPAWNED 1
+set -gx MY_SHELL_SPAWNED_SHELL "fish"
+set -gx MY_SHELL_TMPDIR "$MY_SHELL_TMPDIR"
+set -gx MY_SHELL_FISH_SPAWNED 1
+source "$MY_SHELL_ROOT/env/activate.fish"
 EOF
-            exec env -u MY_SHELL_ACTIVATED fish --init-command "source '$_TMP_INIT'; rm -f '$_TMP_INIT'" -i
-            ;;
-    esac
-fi
+        exec env -u MY_SHELL_ACTIVATED fish --init-command "source '$_TMP_INIT'; rm -f '$_TMP_INIT'" -i
+        ;;
+
+esac
