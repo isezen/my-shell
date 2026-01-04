@@ -92,7 +92,12 @@ export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
 export MY_SHELL_ACTIVATION_MODE="switch"
 export MY_SHELL_ROOT="$MY_SHELL_ROOT"
 export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
-source "$MY_SHELL_ROOT/env/activate.zsh"
+
+# Keep zsh history in a stable location; ZDOTDIR is a temporary directory.
+export HISTFILE="\$HOME/.zsh_history"
+: >| "\$HISTFILE" 2>/dev/null || true
+
+source "\$MY_SHELL_ROOT/env/activate.zsh"
 EOF
             exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
             ;;
@@ -141,8 +146,12 @@ EOF
 export MY_SHELL_ROOT="$MY_SHELL_ROOT"
 export MY_SHELL_ACTIVATION_MODE="source"
 unset MY_SHELL_SWITCHED_FROM
-source "$MY_SHELL_ROOT/env/activate.zsh"
-rm -rf "$_TMPDIR" 2>/dev/null || true
+
+# Keep zsh history in a stable location; ZDOTDIR is a temporary directory.
+export HISTFILE="\$HOME/.zsh_history"
+: >| "\$HISTFILE" 2>/dev/null || true
+
+source "\$MY_SHELL_ROOT/env/activate.zsh"
 EOF
             exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
             ;;

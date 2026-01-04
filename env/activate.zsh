@@ -24,16 +24,27 @@ export MY_SHELL_OLD_PATH="$PATH"
 # Prepend scripts/ to PATH
 export PATH="$MY_SHELL_ROOT/scripts:$PATH"
 
-# Source alias.sh
-if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
-    source "$MY_SHELL_ROOT/alias.sh"
+# Source alias.zsh
+if [ -f "$MY_SHELL_ROOT/alias.zsh" ]; then
+    source "$MY_SHELL_ROOT/alias.zsh"
 fi
 
-# Source bash.sh and update prompt
-if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
+
+# Source zsh.sh and update prompt (Zsh-native)
+# Note: zsh.sh must NOT source bash.sh.
+if [ -f "$MY_SHELL_ROOT/zsh.sh" ]; then
     export MY_SHELL_OLD_PS1="$PS1"
-    source "$MY_SHELL_ROOT/bash.sh"
-    export PS1="(my-shell) $PS1"
+    source "$MY_SHELL_ROOT/zsh.sh"
+    # Add prefix if not present
+    if [[ "$PS1" != "(my-shell)"* ]]; then
+        PS1="(my-shell) $PS1"
+    fi
+else
+    # Fallback: only add a prefix to existing prompt
+    export MY_SHELL_OLD_PS1="$PS1"
+    if [[ "$PS1" != "(my-shell)"* ]]; then
+        PS1="(my-shell) $PS1"
+    fi
 fi
 
 # Define colortable alias
@@ -49,18 +60,19 @@ reactivate() {
 
     echo "Reloading my-shell environment files..."
 
-    # Re-source alias.sh
-    if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
-        source "$MY_SHELL_ROOT/alias.sh"
+    # Re-source alias.zsh
+    if [ -f "$MY_SHELL_ROOT/alias.zsh" ]; then
+        source "$MY_SHELL_ROOT/alias.zsh"
     fi
 
-    # Re-source bash.sh and update prompt
-    if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
-        source "$MY_SHELL_ROOT/bash.sh"
-        # Update prompt (add prefix if not present)
-        if [[ "$PS1" != "(my-shell)"* ]]; then
-            export PS1="(my-shell) $PS1"
-        fi
+    # Re-source zsh.sh (do not source bash.sh)
+    if [ -f "$MY_SHELL_ROOT/zsh.sh" ]; then
+        source "$MY_SHELL_ROOT/zsh.sh"
+    fi
+
+    # Ensure prefix exists
+    if [[ "$PS1" != "(my-shell)"* ]]; then
+        PS1="(my-shell) $PS1"
     fi
 
     # Redefine colortable alias
@@ -86,6 +98,7 @@ deactivate() {
         unset MY_SHELL_OLD_PS1
     fi
 
+
     # Remove colortable alias
     unalias colortable 2>/dev/null || true
 
@@ -97,11 +110,7 @@ deactivate() {
     unset MY_SHELL_ACTIVATION_MODE
     unset MY_SHELL_ROOT
     
-    # Clean up temporary artifacts (best-effort)
-    if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
-        rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null || true
-        unset MY_SHELL_TMPDIR
-    fi
+    unset MY_SHELL_TMPDIR
     
     # Remove functions
     unset -f deactivate
