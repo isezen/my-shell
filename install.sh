@@ -68,6 +68,10 @@ prompt_overwrite() {
   if [ "$YES" = "1" ]; then
     return 0
   fi
+  # Dry-run mode requires -y/--yes to avoid interactive prompts
+  if [ "$DRY_RUN" = "1" ]; then
+    die "Dry-run mode requires -y/--yes to avoid interactive prompts"
+  fi
   if [ -f "$dest" ] || [ -e "$dest" ]; then
     echo "File exists: $dest"
     echo -n "Overwrite? [y/N] "
@@ -252,7 +256,6 @@ if [ "$DRY_RUN" = "1" ]; then
   fi
   # Normalize trailing slash
   DRY_RUN_ROOT="${DRY_RUN_ROOT%/}"
-  log "DRY-RUN: sandbox=$DRY_RUN_ROOT"
 fi
 
 # Show help if requested
@@ -283,13 +286,8 @@ fi
 RC_BASE="$EFFECTIVE_HOME"
 EFFECTIVE_RC_FILE=""
 if [ "$shell_name" = "bash" ]; then
-  if [ -f "${RC_BASE}/.bash_profile" ]; then
-    EFFECTIVE_RC_FILE="${RC_BASE}/.bash_profile"
-  elif [ -f "${RC_BASE}/.profile" ]; then
-    EFFECTIVE_RC_FILE="${RC_BASE}/.profile"
-  else
-    EFFECTIVE_RC_FILE="${RC_BASE}/.bash_profile"
-  fi
+  # Always use .bash_profile for deterministic behavior
+  EFFECTIVE_RC_FILE="${RC_BASE}/.bash_profile"
 elif [ "$shell_name" = "zsh" ]; then
   EFFECTIVE_RC_FILE="${RC_BASE}/.zshrc"
 elif [ "$shell_name" = "fish" ]; then
@@ -303,6 +301,7 @@ fi
 ensure_file "$EFFECTIVE_RC_FILE"
 
 # Detect OS early (die on unknown OS)
+# OS check is only a guard; default BIN_PREFIX is identical on macOS and Linux
 OS="$(uname -s)"
 if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
   die "Unsupported OS: $OS. Supported OS: Darwin (macOS), Linux"
@@ -328,6 +327,9 @@ if [ "$DRY_RUN" = "1" ]; then
   if [ "$USER_MODE" = "1" ] && [ -z "$BIN_PREFIX_OVERRIDE" ] && [ -z "$MY_SHELL_BIN_PREFIX" ]; then
     # User mode: map to EFFECTIVE_HOME/.local/bin
     EFFECTIVE_BIN_PREFIX="$EFFECTIVE_HOME/.local/bin"
+  elif [ "${BIN_PREFIX_REAL#"$HOME"}" != "$BIN_PREFIX_REAL" ]; then
+    # BIN_PREFIX_REAL starts with $HOME/: map to EFFECTIVE_HOME + suffix
+    EFFECTIVE_BIN_PREFIX="$EFFECTIVE_HOME${BIN_PREFIX_REAL#"$HOME"}"
   else
     # Absolute path: map to DRY_RUN_ROOT + path
     EFFECTIVE_BIN_PREFIX="$DRY_RUN_ROOT$BIN_PREFIX_REAL"
@@ -458,4 +460,3 @@ fi
 
 log "Installation complete!"
 log "Restart shell or source your rc file: source $EFFECTIVE_RC_FILE"
-
