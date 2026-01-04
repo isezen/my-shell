@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Created `tests/TEST_COVERAGE.md` with detailed test coverage documentation
 - Added GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`)
 - Created `CONTRIBUTING.md` with contribution guidelines
+  - Introduced comprehensive CONTRIBUTING.md file outlining code of conduct, development workflow, coding standards, testing requirements, and pull request process
+  - Included detailed instructions for setting up the development environment and making contributions
+  - Established commit message guidelines to maintain consistency across contributions
 - Significantly expanded `README.md` with:
   - Features overview
   - Detailed installation instructions
@@ -45,6 +48,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Prompt indicator `(my-shell)` prefix
     - Shell switching support (switch between bash/zsh/fish)
     - Development-friendly: reload files with `reactivate` command
+- Added Zsh support with new alias and prompt scripts:
+  - Introduced `alias.zsh` and `zsh.zsh` files to provide Zsh-native aliases and prompt configurations
+  - Enhanced prompt customization and history handling in Zsh to align with user expectations and Bash behavior
+  - Improved prompt formatting in `zsh.zsh` to include brackets around the prompt character for better visibility
+  - Enhanced prompt prefix rendering to use cyan color for better user experience
+
+### Changed
+- Updated documentation and enhanced project structure:
+  - Added comprehensive GitHub Actions CI/CD pipeline for automated testing
+  - Moved `IMPROVEMENTS.md` to the `docs/` directory for better organization
+- Refactored script for improved readability and performance:
+  - Corrected spelling errors in comments for clarity
+  - Introduced size and time constants to enhance code maintainability
+  - Refactored functions to use local variables and improved formatting for better readability
+  - Optimized size and time calculations for performance improvements
+  - Updated comments for better understanding of the code flow
+- Refactored environment activation scripts for improved usability and functionality:
+  - Enhanced the `activate`, `reactivate`, and `deactivate` functions across Bash, Zsh, and Fish scripts
+  - Updated `CONTRIBUTING.md` to clarify the new activation options and usage instructions
+  - Improved error handling and user feedback during activation and deactivation processes
+  - Removed global function saving in `my_settings.fish` to simplify function management
+  - Added support for shell switching and temporary directory management during activation
+- Enhanced shell detection and activation process in environment scripts:
+  - Improved the detection of the current shell by utilizing the parent process command for better accuracy
+  - Refactored activation logic to handle shell switching more effectively, ensuring that the user's interactive shell is properly activated
+  - Added cleanup procedures in the `deactivate` function to manage temporary artifacts and session states
+  - Enhanced user feedback during shell switching to improve the overall activation experience
+- Updated activation messages in environment script for improved clarity
+- Refactored shell detection logic in activation script for improved accuracy
+- Enhanced environment activation scripts for improved user experience:
+  - Updated prompt formatting in `bash.sh` to include a clear (my-shell) prefix
+  - Refactored the `activate` scripts across Bash, Zsh, and Fish to ensure consistent spawning of new interactive shells during activation
+  - Simplified the deactivation process by removing unnecessary shell switching logic and ensuring proper cleanup of temporary artifacts
+  - Improved user feedback during activation and deactivation to enhance clarity and usability
+- Refactored Zsh prompt configuration and activation script for improved clarity:
+  - Simplified the activation logic in `activate.zsh` to source `zsh.zsh` directly and ensure consistent prompt prefixing
 
 ### Fixed
 - Fixed critical ShellCheck error in `alias.sh:50`: Added missing quotes around variable in `[ -n "$gnuls" ]` check
