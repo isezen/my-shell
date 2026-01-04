@@ -92,6 +92,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Moved `(my-shell)` prefix management to activation scripts (`activate.bash`, `activate.zsh`, `activate.fish`) for centralized control
   - Changed prefix color from cyan to magenta for better visual distinction
   - Activation scripts now add the prefix after sourcing prompt configuration files, ensuring consistent behavior across all shells
+- Major refactor: Restructured project directory layout for better organization and maintainability:
+  - **New directory structure**: 
+    - `scripts/bin/` - All executable scripts moved from `scripts/` to `scripts/bin/` for clearer separation
+    - `shell/{bash,zsh,fish}/` - Shell-specific configurations organized by shell type
+      - Each shell has `init.*` (entrypoint), `aliases.*`, `prompt.*`, and `env.*` files
+  - **Config file organization**: Split monolithic config files into modular components:
+    - Bash: `alias.sh` and `bash.sh` → `shell/bash/{init,aliases,prompt,env}.bash`
+    - Zsh: `alias.zsh` and `zsh.zsh` → `shell/zsh/{init,aliases,prompt,env}.zsh`
+    - Fish: `my_settings.fish` → `shell/fish/{init,aliases,prompt,env}.fish`
+  - **Activation system**: Updated to use single entrypoint (`init.*`) files:
+    - Activation scripts now source `shell/*/init.*` instead of multiple files
+    - PATH updated to use `scripts/bin/` instead of `scripts/`
+    - Simplified activation logic with better separation of concerns
+  - **Installer modernization**: Enhanced installation scripts with provider layer:
+    - Added `lib/provider.sh` for unified remote/local file fetching
+    - Added `--local` and `--repo-root` options for local installation
+    - Settings installer now installs to `~/.my-shell/{bash,zsh,fish}/` with single source line in profile
+    - Scripts installer now uses `scripts/bin/` path and supports all shells (bash, zsh, fish)
+  - **Test updates**: Updated all test files to reference new directory structure
+
+### Removed
+- Removed old root-level config files after migration to new structure:
+  - `alias.sh` - Replaced by `shell/bash/aliases.bash`
+  - `alias.zsh` - Replaced by `shell/zsh/aliases.zsh`
+  - `bash.sh` - Replaced by `shell/bash/prompt.bash` and `shell/bash/env.bash`
+  - `zsh.zsh` - Replaced by `shell/zsh/prompt.zsh` and `shell/zsh/env.zsh`
+  - `my_settings.fish` - Replaced by `shell/fish/{init,aliases,prompt,env}.fish`
 
 ### Fixed
 - Fixed critical ShellCheck error in `alias.sh:50`: Added missing quotes around variable in `[ -n "$gnuls" ]` check
