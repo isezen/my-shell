@@ -98,9 +98,8 @@ for file in "${FILES[@]}"; do
         echo "  Copying from local repository: $MY_SHELL_REPO_ROOT/$rel_path"
         cp "$MY_SHELL_REPO_ROOT/$rel_path" "$dest_path" || die "Could not copy $file"
     else
-        local remote_base
         remote_base="${MY_SHELL_REMOTE_BASE:-https://raw.githubusercontent.com/isezen/my-shell/master}"
-        local url="${remote_base}/${rel_path}"
+        url="${remote_base}/${rel_path}"
         echo "  Downloading from: $url"
         curl -fsSL "$url" > "$dest_path" || die "Could not download $file"
     fi
