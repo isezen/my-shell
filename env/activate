@@ -13,26 +13,34 @@ _REQUESTED_SHELL="${1:-}"
 _CURRENT_SHELL=""
 
 # Detect current shell
-# First check $SHELL environment variable (shows parent shell)
+# $SHELL often points to the login shell; we use PPID to infer the invoking shell when possible.
 _PARENT_SHELL="$(basename "$SHELL" 2>/dev/null || echo '')"
+_PARENT_COMM=""
 
-# If $SHELL is fish and script is running in bash, parent shell is fish
-if [ "$_PARENT_SHELL" = "fish" ] && [ -n "$BASH_VERSION" ]; then
-    _CURRENT_SHELL="fish"
-elif [ -n "$ZSH_VERSION" ]; then
-    _CURRENT_SHELL="zsh"
-elif [ -n "$BASH_VERSION" ]; then
-    _CURRENT_SHELL="bash"
-elif [ -n "$FISH_VERSION" ]; then
-    _CURRENT_SHELL="fish"
-else
-    # Use $SHELL variable
-    if [ -n "$_PARENT_SHELL" ]; then
-        _CURRENT_SHELL="$_PARENT_SHELL"
-    else
-        _CURRENT_SHELL="bash"  # Default
-    fi
+if command -v ps >/dev/null 2>&1; then
+    # macOS: `ps -p <pid> -o comm=` works; awk trims whitespace.
+    _PARENT_COMM="$(ps -p "$PPID" -o comm= 2>/dev/null | awk '{print $1}')"
 fi
+
+case "$_PARENT_COMM" in
+    fish|bash|zsh)
+        _CURRENT_SHELL="$_PARENT_COMM"
+        ;;
+    *)
+        # Fallbacks
+        if [ -n "$ZSH_VERSION" ]; then
+            _CURRENT_SHELL="zsh"
+        elif [ -n "$BASH_VERSION" ]; then
+            _CURRENT_SHELL="bash"
+        elif [ -n "$FISH_VERSION" ]; then
+            _CURRENT_SHELL="fish"
+        elif [ -n "$_PARENT_SHELL" ]; then
+            _CURRENT_SHELL="$_PARENT_SHELL"
+        else
+            _CURRENT_SHELL="bash"  # Default
+        fi
+        ;;
+esac
 
 # If shell not specified, use current shell
 if [ -z "$_REQUESTED_SHELL" ]; then
@@ -104,11 +112,39 @@ else
     case "$_CURRENT_SHELL" in
         bash)
             # Scenario B: Same shell activation (Bash)
-            source "$_ENV_DIR/activate.bash"
+            # NOTE: This switcher is executed (./env/activate), so sourcing activate.bash here would
+            # only affect this script process, not the user's interactive bash. Therefore we re-exec
+            # an interactive bash that sources activate.bash via a temporary rcfile.
+            echo "Switching to bash and activating my-shell environment..."
+            _TMPDIR=$(mktemp -d)
+            _TMP_RCFILE="$_TMPDIR/rcfile"
+            cat > "$_TMP_RCFILE" <<EOF
+export MY_SHELL_ROOT="$MY_SHELL_ROOT"
+export MY_SHELL_ACTIVATION_MODE="source"
+export MY_SHELL_SESSION_SPAWNED=1
+export MY_SHELL_SPAWNED_SHELL="bash"
+# Ensure we are not in switch-return mode
+unset MY_SHELL_SWITCHED_FROM
+# Source the bash activator (absolute path)
+source "$MY_SHELL_ROOT/env/activate.bash"
+# Cleanup temp artifacts created by the switcher itself
+rm -rf "$_TMPDIR" 2>/dev/null || true
+EOF
+            exec env -u MY_SHELL_ACTIVATED bash --rcfile "$_TMP_RCFILE" -i
             ;;
         zsh)
             # Scenario B: Same shell activation (Zsh)
-            source "$_ENV_DIR/activate.zsh"
+            # Same reasoning as Bash: we must exec an interactive zsh so activation affects the session.
+            echo "Switching to zsh and activating my-shell environment..."
+            _TMPDIR=$(mktemp -d)
+            cat > "$_TMPDIR/.zshrc" <<EOF
+export MY_SHELL_ROOT="$MY_SHELL_ROOT"
+export MY_SHELL_ACTIVATION_MODE="source"
+unset MY_SHELL_SWITCHED_FROM
+source "$MY_SHELL_ROOT/env/activate.zsh"
+rm -rf "$_TMPDIR" 2>/dev/null || true
+EOF
+            exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
             ;;
         fish)
             # Scenario C: Fish exec-activation

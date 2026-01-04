@@ -91,11 +91,14 @@ deactivate() {
 
     # Check for shell switching (Scenario 3.2)
     _SWITCHED_FROM="$MY_SHELL_SWITCHED_FROM"
+    _SESSION_SPAWNED="$MY_SHELL_SESSION_SPAWNED"
     
     # Clean up activation variables
     unset MY_SHELL_ACTIVATED
     unset MY_SHELL_ACTIVATION_MODE
     unset MY_SHELL_ROOT
+    unset MY_SHELL_SESSION_SPAWNED
+    unset MY_SHELL_SPAWNED_SHELL
     
     # Clean up temporary artifacts (best-effort)
     if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
@@ -115,6 +118,12 @@ deactivate() {
         unset MY_SHELL_SWITCHED_FROM
         echo "- Returning to $_SWITCHED_FROM shell..."
         exec "$_SWITCHED_FROM"
+    fi
+
+    # If this Bash session was started by the switcher (same-shell activation), exit after cleanup.
+    # This returns control to the invoking shell (typically the user's previous Bash).
+    if [ -n "$_SESSION_SPAWNED" ]; then
+        exit 0
     fi
 }
 
