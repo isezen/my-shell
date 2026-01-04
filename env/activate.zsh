@@ -30,21 +30,16 @@ if [ -f "$MY_SHELL_ROOT/alias.zsh" ]; then
 fi
 
 
-# Source zsh.sh and update prompt (Zsh-native)
-# Note: zsh.sh must NOT source bash.sh.
-if [ -f "$MY_SHELL_ROOT/zsh.sh" ]; then
-    export MY_SHELL_OLD_PS1="$PS1"
-    source "$MY_SHELL_ROOT/zsh.sh"
-    # Add prefix if not present
-    if [[ "$PS1" != "(my-shell)"* ]]; then
-        PS1="(my-shell) $PS1"
-    fi
-else
-    # Fallback: only add a prefix to existing prompt
-    export MY_SHELL_OLD_PS1="$PS1"
-    if [[ "$PS1" != "(my-shell)"* ]]; then
-        PS1="(my-shell) $PS1"
-    fi
+# Source zsh.zsh and update prompt (Zsh-native)
+# Note: zsh.zsh must NOT source bash.sh.
+export MY_SHELL_OLD_PS1="$PS1"
+if [ -f "$MY_SHELL_ROOT/zsh.zsh" ]; then
+    source "$MY_SHELL_ROOT/zsh.zsh"
+fi
+
+# Activation owns the (my-shell) prefix; render it in cyan.
+if [[ "$PS1" != *"(my-shell)"* ]]; then
+    PS1="%F{cyan}(my-shell)%f $PS1"
 fi
 
 # Define colortable alias
@@ -65,14 +60,14 @@ reactivate() {
         source "$MY_SHELL_ROOT/alias.zsh"
     fi
 
-    # Re-source zsh.sh (do not source bash.sh)
-    if [ -f "$MY_SHELL_ROOT/zsh.sh" ]; then
-        source "$MY_SHELL_ROOT/zsh.sh"
+    # Re-source zsh.zsh (do not source bash.sh)
+    if [ -f "$MY_SHELL_ROOT/zsh.zsh" ]; then
+        source "$MY_SHELL_ROOT/zsh.zsh"
     fi
 
-    # Ensure prefix exists
-    if [[ "$PS1" != "(my-shell)"* ]]; then
-        PS1="(my-shell) $PS1"
+    # Ensure prefix exists (cyan)
+    if [[ "$PS1" != *"(my-shell)"* ]]; then
+        PS1="%F{cyan}(my-shell)%f $PS1"
     fi
 
     # Redefine colortable alias

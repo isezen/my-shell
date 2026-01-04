@@ -5,9 +5,9 @@
 # Enable prompt substitution
 setopt PROMPT_SUBST
 
-# USER PROMPT SETTINGS (bash.sh uyumlu)
+# USER PROMT SETTINGS (bash.sh uyumlu)
 # Host + ☘ + truncated path + prompt char
-PS1='%m☘ ${NEW_PWD} %# '
+PS1='%m☘ ${NEW_PWD} [%#] '
 export CLICOLOR=1
 
 # History behavior (bash.sh karşılığı)
@@ -42,7 +42,7 @@ add-zsh-hook precmd __my_shell_zsh_prompt_command
 __my_shell_zsh_prompt_command
 
 # Colors (bash.sh’deki sed zincirinin Zsh karşılığı)
-PS1='%F{cyan}%m%f☘ %F{green}${NEW_PWD}%f %F{red}%#%f '
+PS1='%F{cyan}%m%f☘ %F{green}${NEW_PWD}%f [%F{red}%#%f] '
 
 # dircolors (GNU ls varsa)
 if command ls --version >/dev/null 2>&1; then
