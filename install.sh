@@ -1,8 +1,40 @@
 #!/bin/bash
 # Unified installer for my-shell
 # Installs both shell settings and utility scripts
-# Usage: sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)"
-#        ./install.sh --local [--repo-root PATH] [--settings-only|--scripts-only] [-y]
+#
+# Usage:
+#   Remote installation:
+#     sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)"
+#     sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- --settings-only
+#     sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- --scripts-only
+#
+#   Local installation:
+#     ./install.sh --local
+#     ./install.sh --local --repo-root /path/to/repo
+#     ./install.sh --local --user
+#     ./install.sh --local --bin-prefix /custom/path
+#     ./install.sh --local --dry-run=/tmp/test-install
+#
+# Options:
+#   --local              Use local repository instead of remote
+#   --repo-root PATH     Specify repository root path (for local mode)
+#   --settings-only      Install only shell settings (aliases, prompt, etc.)
+#   --scripts-only       Install only utility scripts (ll, dus, etc.)
+#   --user               Install scripts to $HOME/.local/bin (user mode, no sudo required)
+#   --bin-prefix PATH    Install scripts to custom PATH (overrides --user and MY_SHELL_BIN_PREFIX)
+#   --dry-run=PATH       Sandbox mode: install to sandbox directory instead of real system (PATH must be absolute)
+#   -y, --yes            Overwrite existing files without prompting
+#   -h, --help           Show help message
+#
+# Environment variables:
+#   MY_SHELL_REMOTE_BASE    Override remote base URL
+#   MY_SHELL_BIN_PREFIX     Override binary installation prefix (overridden by --bin-prefix)
+#
+# BIN_PREFIX precedence (highest to lowest):
+#   1. --bin-prefix PATH (command line)
+#   2. MY_SHELL_BIN_PREFIX (environment variable)
+#   3. --user flag => $HOME/.local/bin
+#   4. Default => /usr/local/bin (requires sudo)
 
 # Helper functions
 die() {
@@ -103,20 +135,20 @@ Examples:
   # Install only settings
   sh -c "\$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- --settings-only
 
-  # Install from local repository
+  # Install from local repository (script must be in repo root)
   ./install.sh --local
 
-  # Install with custom repo root
+  # Install with explicit repo root (recommended if script is not in repo root)
   ./install.sh --local --repo-root /path/to/repo
 
-  # Install to user directory
+  # Install to user directory (no sudo required)
   ./install.sh --local --user
 
   # Install to custom directory
   ./install.sh --local --bin-prefix /custom/path
 
-  # Dry-run (sandbox mode) - install to sandbox directory
-  ./install.sh --local --dry-run=/tmp/test-install
+  # Dry-run (sandbox mode) - install to sandbox directory for testing
+  ./install.sh --local --repo-root /path/to/repo --dry-run=/tmp/test-install
 
 Environment variables:
   MY_SHELL_REMOTE_BASE    Override remote base URL
@@ -145,6 +177,12 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --repo-root)
+      if [ -z "$2" ]; then
+        echo "Error: --repo-root requires a path argument" >&2
+        echo "" >&2
+        usage >&2
+        exit 1
+      fi
       REPO_ROOT="$2"
       shift 2
       ;;
@@ -301,6 +339,15 @@ fi
 # Set EFFECTIVE_INSTALL_DIR
 EFFECTIVE_INSTALL_DIR="$EFFECTIVE_HOME/.my-shell"
 
+# Dry-run banner: show all effective paths
+if [ "$DRY_RUN" = "1" ]; then
+  log "DRY-RUN: sandbox=$DRY_RUN_ROOT"
+  log "DRY-RUN: effective_home=$EFFECTIVE_HOME"
+  log "DRY-RUN: effective_rc=$EFFECTIVE_RC_FILE"
+  log "DRY-RUN: effective_bin_prefix=$EFFECTIVE_BIN_PREFIX (real=$BIN_PREFIX_REAL)"
+  log ""
+fi
+
 # Install settings if requested
 if [ "$DO_SETTINGS" = "1" ]; then
   EFFECTIVE_SHELL_DIR="${EFFECTIVE_INSTALL_DIR}/${shell_name}"
@@ -316,10 +363,6 @@ if [ "$DO_SETTINGS" = "1" ]; then
   fi
   
   log "Installing my-shell configuration for $shell_name..."
-  if [ "$DRY_RUN" = "1" ]; then
-    log "RC file: $EFFECTIVE_RC_FILE"
-    log "Install dir: $EFFECTIVE_INSTALL_DIR"
-  fi
   for file in $FILES; do
     rel_path="shell/${shell_name}/${file}"
     dest_path="${EFFECTIVE_SHELL_DIR}/${file}"
@@ -340,16 +383,16 @@ if [ "$DO_SETTINGS" = "1" ]; then
   # Add source line to RC file
   SOURCE_LINE=""
   if [ "$DRY_RUN" = "1" ]; then
-    # Dry-run: use sandbox path in SOURCE_LINE
+    # Dry-run: use EFFECTIVE_HOME (absolute sandbox path)
     if [ "$shell_name" = "bash" ]; then
-      SOURCE_LINE="source \"$DRY_RUN_ROOT/HOME/.my-shell/bash/init.bash\""
+      SOURCE_LINE="source \"$EFFECTIVE_HOME/.my-shell/bash/init.bash\""
     elif [ "$shell_name" = "zsh" ]; then
-      SOURCE_LINE="source \"$DRY_RUN_ROOT/HOME/.my-shell/zsh/init.zsh\""
+      SOURCE_LINE="source \"$EFFECTIVE_HOME/.my-shell/zsh/init.zsh\""
     elif [ "$shell_name" = "fish" ]; then
-      SOURCE_LINE="source \"$DRY_RUN_ROOT/HOME/.my-shell/fish/init.fish\""
+      SOURCE_LINE="source \"$EFFECTIVE_HOME/.my-shell/fish/init.fish\""
     fi
   else
-    # Normal mode: use real HOME
+    # Normal mode: use $HOME literal (portable for shell rc)
     if [ "$shell_name" = "bash" ]; then
       SOURCE_LINE="source \"\$HOME/.my-shell/bash/init.bash\""
     elif [ "$shell_name" = "zsh" ]; then
@@ -386,9 +429,6 @@ if [ "$DO_SCRIPTS" = "1" ]; then
   SCRIPTS="ll dus dusf dusf."
   
   log "Installing utility scripts to $EFFECTIVE_BIN_PREFIX..."
-  if [ "$DRY_RUN" = "1" ]; then
-    log "Bin prefix: $EFFECTIVE_BIN_PREFIX (real=$BIN_PREFIX_REAL)"
-  fi
   for script in $SCRIPTS; do
     rel_path="scripts/bin/${script}"
     dest_path="${EFFECTIVE_BIN_PREFIX}/${script}"
@@ -417,5 +457,5 @@ if [ "$DO_SCRIPTS" = "1" ]; then
 fi
 
 log "Installation complete!"
-log "Restart shell or source your rc file: source $RC_FILE"
+log "Restart shell or source your rc file: source $EFFECTIVE_RC_FILE"
 
