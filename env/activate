@@ -71,7 +71,7 @@ if [ "$_REQUESTED_SHELL" != "$_CURRENT_SHELL" ]; then
     
     case "$_REQUESTED_SHELL" in
         bash)
-            echo "Switching to bash and activating my-shell environment..."
+            echo "- Switching to bash and activating my-shell environment..."
             # Create temporary rcfile
             _TMP_RCFILE="$_TMPDIR/rcfile"
             cat > "$_TMP_RCFILE" <<EOF
@@ -84,7 +84,7 @@ EOF
             exec env -u MY_SHELL_ACTIVATED bash --rcfile "$_TMP_RCFILE" -i
             ;;
         zsh)
-            echo "Switching to zsh and activating my-shell environment..."
+            echo "- Switching to zsh and activating my-shell environment..."
             # Create temporary zshrc
             mkdir -p "$_TMPDIR"
             cat > "$_TMPDIR/.zshrc" <<EOF
@@ -102,7 +102,7 @@ EOF
             exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
             ;;
         fish)
-            echo "Switching to fish and activating my-shell environment..."
+            echo "- Switching to fish and activating my-shell environment..."
             exec env -u MY_SHELL_ACTIVATED fish -c "set -gx MY_SHELL_SWITCHED_FROM '$_CURRENT_SHELL'; set -gx MY_SHELL_ACTIVATION_MODE 'switch'; set -gx MY_SHELL_ROOT '$MY_SHELL_ROOT'; set -gx MY_SHELL_TMPDIR '$MY_SHELL_TMPDIR'; set -gx MY_SHELL_FISH_SPAWNED 1; source '$MY_SHELL_ROOT/env/activate.fish'; exec fish -i"
             ;;
     esac
@@ -120,7 +120,7 @@ else
             # NOTE: This switcher is executed (./env/activate), so sourcing activate.bash here would
             # only affect this script process, not the user's interactive bash. Therefore we re-exec
             # an interactive bash that sources activate.bash via a temporary rcfile.
-            echo "Switching to bash and activating my-shell environment..."
+            echo "- Switching to bash and activating my-shell environment..."
             _TMPDIR=$(mktemp -d)
             _TMP_RCFILE="$_TMPDIR/rcfile"
             cat > "$_TMP_RCFILE" <<EOF
@@ -140,7 +140,7 @@ EOF
         zsh)
             # Scenario B: Same shell activation (Zsh)
             # Same reasoning as Bash: we must exec an interactive zsh so activation affects the session.
-            echo "Switching to zsh and activating my-shell environment..."
+            echo "- Switching to zsh and activating my-shell environment..."
             _TMPDIR=$(mktemp -d)
             cat > "$_TMPDIR/.zshrc" <<EOF
 export MY_SHELL_ROOT="$MY_SHELL_ROOT"
