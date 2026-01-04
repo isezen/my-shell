@@ -1,0 +1,34 @@
+#!/bin/bash
+# sezenismail@gmail.com
+# 2014-11-24
+# Disk Usage Info Sorted Only Regular Files
+
+regfiles=$(find $1 -maxdepth 1 -type f -a ! -iname ".*" | sed -r "s:\./::")
+
+du_res=$(echo "$regfiles"| tr "\n" "\0" | xargs -0 \du -achld 1) # Calculate du for files
+du_total=$(echo "$regfiles"| tr "\n" "\0" | xargs -0 \du -achld 1 | tail -n 1) # get total size
+du_res=$(echo "$du_res" | head -n -1) # get sizes
+du_file_list=$(echo "$du_res" | cut --complement -f 1) # Get file list form du result
+du_sizes=$(echo "$du_res" | cut -f 1) # Only sizes column
+ls_res=$(echo "$du_file_list" | tr "\n" "\0" | xargs -0 \ls -AUF1 --color) # get list of files consistent with du result
+
+
+# du_file_list=$(echo "$du_res" | cut --complement -f 1 | sed -e 's/$/\|/' | tr -d '\n' |  sed '$s/.$//')
+# du_file_list=$(echo "$du_file_list" | sed -e 's/[]\/$*.^|[]/\\&/g')
+# echo "$regfiles" | xargs \ls -AUF1 | grep -w "$du_file_list"
+
+res=$(paste <(echo "$du_sizes") <(echo "$ls_res")) # combine size and file names
+res=$(echo "$res") # Sort
+
+# sed -e 's/$/string after each line/'
+# echo "$regfiles" | xargs \du -ach | cut --complement -f 1 | sed -e 's/$/\|/' | tr -d '\n' |  sed '$s/.$//'
+
+# Colorize Sizes
+res=$(echo "$res" | GREP_COLORS='mt=00;35' egrep --color=always '^[0-9]*\.?[0-9][K]|$')
+res=$(echo "$res" | GREP_COLORS='mt=00;32' egrep --color=always '^[0-9]*\.?[0-9][M]|$')
+res=$(echo "$res" | GREP_COLORS='mt=01;31' egrep --color=always '^[0-9]*\.?[0-9]+[G]|$')
+
+echo "$res" # Print result
+echo "------------"
+echo -e "\033[41m$du_total\033[0m" # Print Total
+echo "Number of files:"$(expr $(echo "$res"| wc -l) );
