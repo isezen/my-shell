@@ -101,6 +101,7 @@ append_line_if_missing() {
 fetch_or_copy() {
   local rel_path="$1"
   local dest_path="$2"
+  local file_mode="${3:-0755}"
   
   prompt_overwrite "$dest_path"
   
@@ -115,6 +116,8 @@ fetch_or_copy() {
     local url="$base/$rel_path"
     curl -fsSL "$url" > "$dest_path" || die "Could not download $url"
   fi
+  
+  chmod "$file_mode" "$dest_path" || die "Could not set permissions on $dest_path"
 }
 
 usage() {
@@ -264,6 +267,11 @@ if [ "$SHOW_HELP" = "1" ]; then
   exit 0
 fi
 
+# Validate --repo-root usage
+if [ -n "$REPO_ROOT" ] && [ "$SOURCE_MODE" = "remote" ]; then
+  die "Error: --repo-root can only be used with --local"
+fi
+
 # If local mode and no repo root specified, try to detect from script location
 if [ "$SOURCE_MODE" = "local" ] && [ -z "$REPO_ROOT" ]; then
   REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -376,8 +384,7 @@ if [ "$DO_SETTINGS" = "1" ]; then
       base="${MY_SHELL_REMOTE_BASE:-https://raw.githubusercontent.com/isezen/my-shell/master}"
       log "  Downloading from: $base/$rel_path"
     fi
-    fetch_or_copy "$rel_path" "$dest_path"
-    chmod 0644 "$dest_path" || die "Could not set permissions on $dest_path"
+    fetch_or_copy "$rel_path" "$dest_path" 0644
     log "  Done."
   done
   log ""
@@ -443,7 +450,6 @@ if [ "$DO_SCRIPTS" = "1" ]; then
       log "  Downloading from: $base/$rel_path"
     fi
     fetch_or_copy "$rel_path" "$dest_path"
-    chmod +x "$dest_path" || die "Could not make $dest_path executable"
     log "  Done."
   done
   log ""
