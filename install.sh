@@ -92,6 +92,7 @@ Options:
   --scripts-only       Install only utility scripts (ll, dus, etc.)
   --user               Install scripts to \$HOME/.local/bin (user mode)
   --bin-prefix PATH    Install scripts to custom PATH (overrides --user and MY_SHELL_BIN_PREFIX)
+  --dry-run=PATH       Sandbox mode: install to sandbox directory instead of real system (PATH must be absolute)
   -y, --yes            Overwrite existing files without prompting
   -h, --help           Show this help message
 
@@ -114,6 +115,9 @@ Examples:
   # Install to custom directory
   ./install.sh --local --bin-prefix /custom/path
 
+  # Dry-run (sandbox mode) - install to sandbox directory
+  ./install.sh --local --dry-run=/tmp/test-install
+
 Environment variables:
   MY_SHELL_REMOTE_BASE    Override remote base URL
   MY_SHELL_BIN_PREFIX     Override binary installation prefix (overridden by --bin-prefix)
@@ -131,6 +135,8 @@ SETTINGS_ONLY_SET=0
 SCRIPTS_ONLY_SET=0
 USER_MODE=0
 BIN_PREFIX_OVERRIDE=""
+DRY_RUN=0
+DRY_RUN_ROOT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -172,6 +178,11 @@ while [ $# -gt 0 ]; do
       BIN_PREFIX_OVERRIDE="$2"
       shift 2
       ;;
+    --dry-run=*)
+      DRY_RUN_ROOT="${1#*=}"
+      DRY_RUN=1
+      shift
+      ;;
     -h|--help)
       SHOW_HELP=1
       shift
@@ -193,6 +204,19 @@ if [ "$SETTINGS_ONLY_SET" = "1" ] && [ "$SCRIPTS_ONLY_SET" = "1" ]; then
   exit 1
 fi
 
+# Validate dry-run
+if [ "$DRY_RUN" = "1" ]; then
+  if [ -z "$DRY_RUN_ROOT" ]; then
+    die "Error: --dry-run requires a path argument"
+  fi
+  if [ "${DRY_RUN_ROOT#/}" = "$DRY_RUN_ROOT" ]; then
+    die "Error: --dry-run path must be absolute (start with /)"
+  fi
+  # Normalize trailing slash
+  DRY_RUN_ROOT="${DRY_RUN_ROOT%/}"
+  log "DRY-RUN: sandbox=$DRY_RUN_ROOT"
+fi
+
 # Show help if requested
 if [ "$SHOW_HELP" = "1" ]; then
   usage
@@ -210,27 +234,35 @@ if [ "$shell_name" != "bash" ] && [ "$shell_name" != "zsh" ] && [ "$shell_name" 
   die "Unsupported shell: $shell_name. Supported shells: bash, zsh, fish"
 fi
 
-# Determine RC file
-RC_FILE=""
+# Set up effective paths (dry-run sandbox mapping)
+if [ "$DRY_RUN" = "1" ]; then
+  EFFECTIVE_HOME="$DRY_RUN_ROOT/HOME"
+else
+  EFFECTIVE_HOME="$HOME"
+fi
+
+# Determine RC file using EFFECTIVE_HOME
+RC_BASE="$EFFECTIVE_HOME"
+EFFECTIVE_RC_FILE=""
 if [ "$shell_name" = "bash" ]; then
-  if [ -f "${HOME}/.bash_profile" ]; then
-    RC_FILE="${HOME}/.bash_profile"
-  elif [ -f "${HOME}/.profile" ]; then
-    RC_FILE="${HOME}/.profile"
+  if [ -f "${RC_BASE}/.bash_profile" ]; then
+    EFFECTIVE_RC_FILE="${RC_BASE}/.bash_profile"
+  elif [ -f "${RC_BASE}/.profile" ]; then
+    EFFECTIVE_RC_FILE="${RC_BASE}/.profile"
   else
-    RC_FILE="${HOME}/.bash_profile"
+    EFFECTIVE_RC_FILE="${RC_BASE}/.bash_profile"
   fi
 elif [ "$shell_name" = "zsh" ]; then
-  RC_FILE="${HOME}/.zshrc"
+  EFFECTIVE_RC_FILE="${RC_BASE}/.zshrc"
 elif [ "$shell_name" = "fish" ]; then
   if ! command -v fish >/dev/null 2>&1; then
     die "fish binary not found. Please install fish shell first."
   fi
-  RC_FILE="${HOME}/.config/fish/config.fish"
+  EFFECTIVE_RC_FILE="${RC_BASE}/.config/fish/config.fish"
 fi
 
 # Ensure RC file exists
-ensure_file "$RC_FILE"
+ensure_file "$EFFECTIVE_RC_FILE"
 
 # Detect OS early (die on unknown OS)
 OS="$(uname -s)"
@@ -238,26 +270,41 @@ if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
   die "Unsupported OS: $OS. Supported OS: Darwin (macOS), Linux"
 fi
 
-# Determine BIN_PREFIX with precedence:
+# Determine BIN_PREFIX_REAL with precedence:
 # 1) --bin-prefix (command line, highest priority)
 # 2) MY_SHELL_BIN_PREFIX (env var)
 # 3) --user flag => $HOME/.local/bin
 # 4) OS default => /usr/local/bin
 if [ -n "$BIN_PREFIX_OVERRIDE" ]; then
-  BIN_PREFIX="$BIN_PREFIX_OVERRIDE"
+  BIN_PREFIX_REAL="$BIN_PREFIX_OVERRIDE"
 elif [ -n "$MY_SHELL_BIN_PREFIX" ]; then
-  BIN_PREFIX="$MY_SHELL_BIN_PREFIX"
+  BIN_PREFIX_REAL="$MY_SHELL_BIN_PREFIX"
 elif [ "$USER_MODE" = "1" ]; then
-  BIN_PREFIX="$HOME/.local/bin"
+  BIN_PREFIX_REAL="$HOME/.local/bin"
 else
-  BIN_PREFIX="/usr/local/bin"
+  BIN_PREFIX_REAL="/usr/local/bin"
 fi
+
+# Map to EFFECTIVE_BIN_PREFIX (dry-run sandbox mapping)
+if [ "$DRY_RUN" = "1" ]; then
+  if [ "$USER_MODE" = "1" ] && [ -z "$BIN_PREFIX_OVERRIDE" ] && [ -z "$MY_SHELL_BIN_PREFIX" ]; then
+    # User mode: map to EFFECTIVE_HOME/.local/bin
+    EFFECTIVE_BIN_PREFIX="$EFFECTIVE_HOME/.local/bin"
+  else
+    # Absolute path: map to DRY_RUN_ROOT + path
+    EFFECTIVE_BIN_PREFIX="$DRY_RUN_ROOT$BIN_PREFIX_REAL"
+  fi
+else
+  EFFECTIVE_BIN_PREFIX="$BIN_PREFIX_REAL"
+fi
+
+# Set EFFECTIVE_INSTALL_DIR
+EFFECTIVE_INSTALL_DIR="$EFFECTIVE_HOME/.my-shell"
 
 # Install settings if requested
 if [ "$DO_SETTINGS" = "1" ]; then
-  INSTALL_DIR="${HOME}/.my-shell"
-  SHELL_DIR="${INSTALL_DIR}/${shell_name}"
-  ensure_dir "$SHELL_DIR"
+  EFFECTIVE_SHELL_DIR="${EFFECTIVE_INSTALL_DIR}/${shell_name}"
+  ensure_dir "$EFFECTIVE_SHELL_DIR"
   
   # Determine files to install based on shell
   if [ "$shell_name" = "bash" ]; then
@@ -269,9 +316,13 @@ if [ "$DO_SETTINGS" = "1" ]; then
   fi
   
   log "Installing my-shell configuration for $shell_name..."
+  if [ "$DRY_RUN" = "1" ]; then
+    log "RC file: $EFFECTIVE_RC_FILE"
+    log "Install dir: $EFFECTIVE_INSTALL_DIR"
+  fi
   for file in $FILES; do
     rel_path="shell/${shell_name}/${file}"
-    dest_path="${SHELL_DIR}/${file}"
+    dest_path="${EFFECTIVE_SHELL_DIR}/${file}"
     
     log "Installing: $file"
     if [ "$SOURCE_MODE" = "local" ]; then
@@ -288,44 +339,59 @@ if [ "$DO_SETTINGS" = "1" ]; then
   
   # Add source line to RC file
   SOURCE_LINE=""
-  if [ "$shell_name" = "bash" ]; then
-    SOURCE_LINE="source \"\$HOME/.my-shell/bash/init.bash\""
-  elif [ "$shell_name" = "zsh" ]; then
-    SOURCE_LINE="source \"\$HOME/.my-shell/zsh/init.zsh\""
-  elif [ "$shell_name" = "fish" ]; then
-    SOURCE_LINE="source \"\$HOME/.my-shell/fish/init.fish\""
+  if [ "$DRY_RUN" = "1" ]; then
+    # Dry-run: use sandbox path in SOURCE_LINE
+    if [ "$shell_name" = "bash" ]; then
+      SOURCE_LINE="source \"$DRY_RUN_ROOT/HOME/.my-shell/bash/init.bash\""
+    elif [ "$shell_name" = "zsh" ]; then
+      SOURCE_LINE="source \"$DRY_RUN_ROOT/HOME/.my-shell/zsh/init.zsh\""
+    elif [ "$shell_name" = "fish" ]; then
+      SOURCE_LINE="source \"$DRY_RUN_ROOT/HOME/.my-shell/fish/init.fish\""
+    fi
+  else
+    # Normal mode: use real HOME
+    if [ "$shell_name" = "bash" ]; then
+      SOURCE_LINE="source \"\$HOME/.my-shell/bash/init.bash\""
+    elif [ "$shell_name" = "zsh" ]; then
+      SOURCE_LINE="source \"\$HOME/.my-shell/zsh/init.zsh\""
+    elif [ "$shell_name" = "fish" ]; then
+      SOURCE_LINE="source \"\$HOME/.my-shell/fish/init.fish\""
+    fi
   fi
   
-  append_line_if_missing "$RC_FILE" "$SOURCE_LINE"
+  append_line_if_missing "$EFFECTIVE_RC_FILE" "$SOURCE_LINE"
 fi
 
 # Install scripts if requested
 if [ "$DO_SCRIPTS" = "1" ]; then
-  # Ensure BIN_PREFIX directory exists and is writable
-  if ! mkdir -p "$BIN_PREFIX" 2>/dev/null; then
+  # Ensure EFFECTIVE_BIN_PREFIX directory exists and is writable
+  if ! mkdir -p "$EFFECTIVE_BIN_PREFIX" 2>/dev/null; then
     # Cannot create directory
-    if [ "$BIN_PREFIX" = "/usr/local/bin" ]; then
-      die "Cannot write to $BIN_PREFIX. Please run with sudo: sudo $0 [args], OR use --user, OR use --bin-prefix PATH"
+    if [ "$BIN_PREFIX_REAL" = "/usr/local/bin" ]; then
+      die "Cannot write to $EFFECTIVE_BIN_PREFIX. Please run with sudo: sudo $0 [args], OR use --user, OR use --bin-prefix PATH"
     else
-      die "Cannot write to $BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
+      die "Cannot write to $EFFECTIVE_BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
     fi
   fi
   
   # Check if directory is writable (mkdir -p might succeed even if not writable)
-  if [ ! -w "$BIN_PREFIX" ]; then
-    if [ "$BIN_PREFIX" = "/usr/local/bin" ]; then
-      die "Cannot write to $BIN_PREFIX. Please run with sudo: sudo $0 [args], OR use --user, OR use --bin-prefix PATH"
+  if [ ! -w "$EFFECTIVE_BIN_PREFIX" ]; then
+    if [ "$BIN_PREFIX_REAL" = "/usr/local/bin" ]; then
+      die "Cannot write to $EFFECTIVE_BIN_PREFIX. Please run with sudo: sudo $0 [args], OR use --user, OR use --bin-prefix PATH"
     else
-      die "Cannot write to $BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
+      die "Cannot write to $EFFECTIVE_BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
     fi
   fi
   
   SCRIPTS="ll dus dusf dusf."
   
-  log "Installing utility scripts to $BIN_PREFIX..."
+  log "Installing utility scripts to $EFFECTIVE_BIN_PREFIX..."
+  if [ "$DRY_RUN" = "1" ]; then
+    log "Bin prefix: $EFFECTIVE_BIN_PREFIX (real=$BIN_PREFIX_REAL)"
+  fi
   for script in $SCRIPTS; do
     rel_path="scripts/bin/${script}"
-    dest_path="${BIN_PREFIX}/${script}"
+    dest_path="${EFFECTIVE_BIN_PREFIX}/${script}"
     
     log "Installing script: $script"
     if [ "$SOURCE_MODE" = "local" ]; then
@@ -342,12 +408,12 @@ if [ "$DO_SCRIPTS" = "1" ]; then
   
   # Add PATH line to RC file (idempotent)
   if [ "$shell_name" = "fish" ]; then
-    PATH_LINE="set -gx PATH \"$BIN_PREFIX\" \$PATH"
+    PATH_LINE="set -gx PATH \"$EFFECTIVE_BIN_PREFIX\" \$PATH"
   else
-    PATH_LINE="export PATH=\"$BIN_PREFIX:\$PATH\""
+    PATH_LINE="export PATH=\"$EFFECTIVE_BIN_PREFIX:\$PATH\""
   fi
   
-  append_line_if_missing "$RC_FILE" "$PATH_LINE"
+  append_line_if_missing "$EFFECTIVE_RC_FILE" "$PATH_LINE"
 fi
 
 log "Installation complete!"

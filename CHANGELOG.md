@@ -129,6 +129,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced error messages: actionable suggestions when `/usr/local/bin` is not writable (suggests sudo, `--user`, or `--bin-prefix`)
   - Fixed file permissions: settings files use `0644`, scripts use `+x` (executable)
   - Early OS validation: installer dies immediately on unsupported OS (Darwin/Linux only)
+  - Added `--dry-run=PATH` option for sandbox mode testing:
+    - All file operations (installations, RC file modifications) are redirected to sandbox directory
+    - No modifications to real system files (HOME, RC files, /usr/local/bin, etc.)
+    - Effective path mapping: HOME → `$DRY_RUN_ROOT/HOME`, absolute paths → `$DRY_RUN_ROOT$PATH`
+    - Supports both local and remote source modes in dry-run
+    - Useful for testing installer behavior without affecting real system
+    - Debug logging shows effective paths for easier test assertions
   - **Test updates**: Updated all test files to reference new directory structure
 
 ### Removed
