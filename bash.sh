@@ -42,11 +42,11 @@ bash_prompt() {
     ncolors=$(tput colors 2>/dev/null)
     if test -n "$ncolors" && test "$ncolors" -ge 8; then
       # Build a colored PS1 that matches fish/zsh intent:
-      # - username (\u) cyan (non-bold)
+      # - host (\h) cyan (non-bold)
       # - path green (non-bold)
       # - prompt char red
       # Use bash \[...\] markers so readline calculates width correctly.
-      PS1='\[\033[0;36m\]\u\[\033[0m\] ☘ \[\033[0;32m\]${NEW_PWD}\[\033[0m\] \[\033[0;31m\][\$]\[\033[0m\] '
+      PS1='\[\033[0;36m\]\h\[\033[0m\]☘ \[\033[0;32m\]${NEW_PWD}\[\033[0m\] \[\033[0;31m\][\$]\[\033[0m\] '
     fi
   fi
 }
