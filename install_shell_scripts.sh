@@ -13,6 +13,7 @@ function die() {
 # Source provider layer if available (for local mode)
 # If running from repo, use local provider
 if [ -f "$(dirname "$0")/lib/provider.sh" ]; then
+    # shellcheck disable=SC1091
     source "$(dirname "$0")/lib/provider.sh"
 fi
 
