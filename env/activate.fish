@@ -21,12 +21,12 @@ end
 # Save PATH snapshot for exact restoration
 set -gx MY_SHELL_OLD_PATH $PATH
 
-# Prepend scripts/ to PATH
-set -gx PATH "$MY_SHELL_ROOT/scripts" $PATH
+# Prepend scripts/bin/ to PATH
+set -gx PATH "$MY_SHELL_ROOT/scripts/bin" $PATH
 
-# Source my_settings.fish
-if test -f "$MY_SHELL_ROOT/my_settings.fish"
-    source "$MY_SHELL_ROOT/my_settings.fish"
+# Source shell/fish/init.fish (single entrypoint)
+if test -f "$MY_SHELL_ROOT/shell/fish/init.fish"
+    source "$MY_SHELL_ROOT/shell/fish/init.fish"
 end
 
 # Define colortable function (global scope)
@@ -61,9 +61,9 @@ function reactivate -d "Reload my-shell environment files"
 
     echo "Reloading my-shell environment files..."
 
-    # Re-source my_settings.fish
-    if test -f "$MY_SHELL_ROOT/my_settings.fish"
-        source "$MY_SHELL_ROOT/my_settings.fish"
+    # Re-source shell/fish/init.fish
+    if test -f "$MY_SHELL_ROOT/shell/fish/init.fish"
+        source "$MY_SHELL_ROOT/shell/fish/init.fish"
     end
 
     # Redefine colortable function

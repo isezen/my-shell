@@ -21,20 +21,15 @@ fi
 # Save PATH snapshot for exact restoration
 export MY_SHELL_OLD_PATH="$PATH"
 
-# Prepend scripts/ to PATH
-export PATH="$MY_SHELL_ROOT/scripts:$PATH"
+# Prepend scripts/bin/ to PATH
+export PATH="$MY_SHELL_ROOT/scripts/bin:$PATH"
 
-# Source alias.zsh
-if [ -f "$MY_SHELL_ROOT/alias.zsh" ]; then
-    source "$MY_SHELL_ROOT/alias.zsh"
-fi
-
-
-# Source zsh.zsh and update prompt (Zsh-native)
-# Note: zsh.zsh must NOT source bash.sh.
+# Save PS1 before sourcing init
 export MY_SHELL_OLD_PS1="$PS1"
-if [ -f "$MY_SHELL_ROOT/zsh.zsh" ]; then
-    source "$MY_SHELL_ROOT/zsh.zsh"
+
+# Source shell/zsh/init.zsh (single entrypoint)
+if [ -f "$MY_SHELL_ROOT/shell/zsh/init.zsh" ]; then
+    source "$MY_SHELL_ROOT/shell/zsh/init.zsh"
 fi
 
 # Activation owns the (my-shell) prefix; render it in magenta.
@@ -55,14 +50,9 @@ reactivate() {
 
     echo "Reloading my-shell environment files..."
 
-    # Re-source alias.zsh
-    if [ -f "$MY_SHELL_ROOT/alias.zsh" ]; then
-        source "$MY_SHELL_ROOT/alias.zsh"
-    fi
-
-    # Re-source zsh.zsh (do not source bash.sh)
-    if [ -f "$MY_SHELL_ROOT/zsh.zsh" ]; then
-        source "$MY_SHELL_ROOT/zsh.zsh"
+    # Re-source shell/zsh/init.zsh
+    if [ -f "$MY_SHELL_ROOT/shell/zsh/init.zsh" ]; then
+        source "$MY_SHELL_ROOT/shell/zsh/init.zsh"
     fi
 
     # Ensure prefix exists (magenta)

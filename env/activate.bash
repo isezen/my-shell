@@ -21,18 +21,15 @@ fi
 # Save PATH snapshot for exact restoration
 export MY_SHELL_OLD_PATH="$PATH"
 
-# Prepend scripts/ to PATH
-export PATH="$MY_SHELL_ROOT/scripts:$PATH"
+# Prepend scripts/bin/ to PATH
+export PATH="$MY_SHELL_ROOT/scripts/bin:$PATH"
 
-# Source alias.sh
-if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
-    source "$MY_SHELL_ROOT/alias.sh"
-fi
+# Save PS1 before sourcing init
+export MY_SHELL_OLD_PS1="$PS1"
 
-# Source bash.sh (bash.sh owns the prompt formatting, but NOT the (my-shell) prefix)
-if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
-    export MY_SHELL_OLD_PS1="$PS1"
-    source "$MY_SHELL_ROOT/bash.sh"
+# Source shell/bash/init.bash (single entrypoint)
+if [ -f "$MY_SHELL_ROOT/shell/bash/init.bash" ]; then
+    source "$MY_SHELL_ROOT/shell/bash/init.bash"
 fi
 
 # Activation owns the (my-shell) prefix; render it in magenta.
@@ -53,14 +50,9 @@ reactivate() {
 
     echo "Reloading my-shell environment files..."
 
-    # Re-source alias.sh
-    if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
-        source "$MY_SHELL_ROOT/alias.sh"
-    fi
-
-    # Re-source bash.sh (bash.sh owns the prompt formatting, but NOT the (my-shell) prefix)
-    if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
-        source "$MY_SHELL_ROOT/bash.sh"
+    # Re-source shell/bash/init.bash
+    if [ -f "$MY_SHELL_ROOT/shell/bash/init.bash" ]; then
+        source "$MY_SHELL_ROOT/shell/bash/init.bash"
     fi
 
     # Ensure prefix exists (magenta)
