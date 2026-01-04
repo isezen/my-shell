@@ -38,7 +38,7 @@ case "$_PARENT_COMM" in
             _CURRENT_SHELL="bash"  # Default
         fi
         ;;
-esac
+ esac
 
 # If shell not specified, use current shell
 if [ -z "$_REQUESTED_SHELL" ]; then
@@ -55,7 +55,7 @@ case "$_REQUESTED_SHELL" in
         echo "Error: Unknown shell '$_REQUESTED_SHELL'. Supported: bash, zsh, fish" >&2
         exit 1
         ;;
-esac
+ esac
 
 # Always spawn a new interactive shell for activation.
 # Rationale: `./env/activate` is executed, not sourced. Spawning guarantees that activation changes
@@ -82,7 +82,7 @@ export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
 # Source the bash activator (absolute path)
 source "$MY_SHELL_ROOT/env/activate.bash"
 EOF
-        exec env -u MY_SHELL_ACTIVATED bash --noprofile --norc --rcfile "$_TMP_RCFILE" -i
+        exec env -u MY_SHELL_ACTIVATED bash --noprofile --rcfile "$_TMP_RCFILE" -i
         ;;
 
     zsh)

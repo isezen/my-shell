@@ -1,8 +1,7 @@
 #!/bin/bash
 # 2016-03-27
 # sezenismail@gmail.com
-# Shiny bash promt supoort and
-# dircolors supoort
+# Shiny bash promt support and dircolors support
 #
 
 
@@ -12,7 +11,9 @@
 # User: \u
 # Host: \h
 # Path: \${NEW_PWD}
-PS1="\[\e[0;36m\](my-shell)\[\e[0m\] \h\xE2\x98\x98 \${NEW_PWD} [\$] "
+# Base prompt template. Keep bash prompt escapes literal.
+# Use single quotes so `${NEW_PWD}` is expanded at *prompt render* time (after PROMPT_COMMAND updates it).
+PS1='\h ☘ ${NEW_PWD} [\$] '
 export CLICOLOR=1
 
 # append to the history file, don't overwrite it
@@ -38,19 +39,14 @@ bash_prompt_command() {
 
 bash_prompt() {
   if test -t 1; then
-    ncolors=$(tput colors)
+    ncolors=$(tput colors 2>/dev/null)
     if test -n "$ncolors" && test "$ncolors" -ge 8; then
-      local D="\\\[\\\033[0m\\\]"
-      local dt="\\\D{%y-%m-%d}"
-      local tm="\\\t"
-      PS1=$(echo -e "$PS1" |
-            sed "s/${dt}/\\\[\\\033[0;36m\\\]${dt}${D}/g"|
-            sed "s/${tm}/\\\[\\\033[0;32m\\\]${tm}${D}/g"|
-            sed -r "s/\\\u/\\\[\\\033[1;39m\\\]\\\u${D}/g"|
-            sed -r "s/@/\\\[\\\033[1;33m\\\]@${D}/g"|
-            sed -r "s/\\\h/\\\[\\\033[1;36m\\\]\\\h${D}/g"|
-            sed -r "s/\\\$\{NEW_PWD\}/\\\[\\\033[1;32m\\\]\\\$\{NEW_PWD\}${D}/g"|
-            sed -r "s/\[\\\$\]/\\\[\\\033[0;31m\\\]\\\\\$${D}/g")
+      # Build a colored PS1 that matches fish/zsh intent:
+      # - username (\u) cyan (non-bold)
+      # - path green (non-bold)
+      # - prompt char red
+      # Use bash \[...\] markers so readline calculates width correctly.
+      PS1='\[\033[0;36m\]\u\[\033[0m\] ☘ \[\033[0;32m\]${NEW_PWD}\[\033[0m\] \[\033[0;31m\][\$]\[\033[0m\] '
     fi
   fi
 }

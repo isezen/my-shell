@@ -36,8 +36,8 @@ end
 
 # Define prompt prefix function (global scope)
 function __my_shell_prompt_prefix
-    # Use cyan color for (my-shell) prefix to make it visually distinct
-    set_color cyan
+    # Use magenta color for (my-shell) prefix to make it visually distinct
+    set_color magenta
     echo -n "(my-shell) "
     set_color normal
 end

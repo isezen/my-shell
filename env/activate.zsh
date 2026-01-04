@@ -37,9 +37,9 @@ if [ -f "$MY_SHELL_ROOT/zsh.zsh" ]; then
     source "$MY_SHELL_ROOT/zsh.zsh"
 fi
 
-# Activation owns the (my-shell) prefix; render it in cyan.
+# Activation owns the (my-shell) prefix; render it in magenta.
 if [[ "$PS1" != *"(my-shell)"* ]]; then
-    PS1="%F{cyan}(my-shell)%f $PS1"
+    PS1="%F{magenta}(my-shell)%f $PS1"
 fi
 
 # Define colortable alias
@@ -65,9 +65,9 @@ reactivate() {
         source "$MY_SHELL_ROOT/zsh.zsh"
     fi
 
-    # Ensure prefix exists (cyan)
+    # Ensure prefix exists (magenta)
     if [[ "$PS1" != *"(my-shell)"* ]]; then
-        PS1="%F{cyan}(my-shell)%f $PS1"
+        PS1="%F{magenta}(my-shell)%f $PS1"
     fi
 
     # Redefine colortable alias

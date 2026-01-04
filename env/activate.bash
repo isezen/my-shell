@@ -29,10 +29,15 @@ if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
     source "$MY_SHELL_ROOT/alias.sh"
 fi
 
-# Source bash.sh (bash.sh owns the prompt formatting, including the (my-shell) prefix)
+# Source bash.sh (bash.sh owns the prompt formatting, but NOT the (my-shell) prefix)
 if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
     export MY_SHELL_OLD_PS1="$PS1"
     source "$MY_SHELL_ROOT/bash.sh"
+fi
+
+# Activation owns the (my-shell) prefix; render it in magenta.
+if [[ "$PS1" != *"(my-shell)"* ]]; then
+    PS1="\[\e[0;35m\](my-shell)\[\e[0m\] $PS1"
 fi
 
 # Define colortable alias
@@ -53,9 +58,14 @@ reactivate() {
         source "$MY_SHELL_ROOT/alias.sh"
     fi
 
-    # Re-source bash.sh (bash.sh owns the prompt formatting, including the (my-shell) prefix)
+    # Re-source bash.sh (bash.sh owns the prompt formatting, but NOT the (my-shell) prefix)
     if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
         source "$MY_SHELL_ROOT/bash.sh"
+    fi
+
+    # Ensure prefix exists (magenta)
+    if [[ "$PS1" != *"(my-shell)"* ]]; then
+        PS1="\[\e[0;35m\](my-shell)\[\e[0m\] $PS1"
     fi
 
     # Redefine colortable alias

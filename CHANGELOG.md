@@ -87,6 +87,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated activation scripts to prevent loading user startup files:
   - Modified the Bash and Fish activation commands to use `--noprofile` and `--no-config` options, respectively, ensuring that user-specific startup files are not loaded during shell activation
   - Enhanced the isolation of the Zsh environment by keeping `ZDOTDIR` isolated, allowing for a clean startup without user configurations
+- Refactored prompt prefix management for better separation of concerns:
+  - Removed `(my-shell)` prefix from `bash.sh` and `zsh.zsh` files - these files now only handle prompt formatting
+  - Moved `(my-shell)` prefix management to activation scripts (`activate.bash`, `activate.zsh`, `activate.fish`) for centralized control
+  - Changed prefix color from cyan to magenta for better visual distinction
+  - Activation scripts now add the prefix after sourcing prompt configuration files, ensuring consistent behavior across all shells
 
 ### Fixed
 - Fixed critical ShellCheck error in `alias.sh:50`: Added missing quotes around variable in `[ -n "$gnuls" ]` check
