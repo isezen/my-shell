@@ -39,6 +39,7 @@
 │   │       └── load.bash
 │   ├── alias.bats
 │   ├── bash.bats
+│   ├── install.bats
 │   ├── README.md
 │   ├── scripts_dus.bats
 │   ├── scripts_ll.bats
@@ -57,5 +58,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 42 files
+14 directories, 43 files
 ```
