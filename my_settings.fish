@@ -6,8 +6,8 @@
 
 set -xU CLICOLOR 1
 
-function c; clear; end; funcsave c
-function cdh; cd ~/ $argv; echo "You are at $HOME"; end; funcsave cdh
+function c; clear; end
+function cdh; cd ~/ $argv; echo "You are at $HOME"; end
 
 function fish_greeting
 	command --search fortune >/dev/null; and begin
@@ -17,7 +17,7 @@ function fish_greeting
 		fortune -a
 		echo
 	end
-end; funcsave fish_greeting
+end
 
 
 function fish_prompt
@@ -110,7 +110,7 @@ function fish_prompt
 	end
 
 	echo -n -s (set_color $fish_color_host) "$__fish_prompt_hostname" $normal ☘' ' (set_color $color_cwd) (prompt_pwd) $normal (__fish_git_prompt) $normal $prompt_status "$mode_str" (set_color $fish_color_status) "> " $normal
-end; funcsave fish_prompt
+end
 
 
 function free
@@ -119,13 +119,13 @@ function free
 	end; or begin
 	    vm_stat | perl -ne '/page size of (\d+)/ and $size=$1;    /Pages\s+([^:]+)[^\d]+(\d+)/ and printf("%-16s % 16.2f Mb\n", "$1:",     $2 * $size / 1048576);' $argv;
 	end
-end; funcsave free
+end
 
 function FindFiles
 	set _searchfile "$1"
   set _search_command 'find . -type f \( -name "*'$_searchfile'*" \)'
   eval "$_search_command"
-end;funcsave FindFiles
+end
 
 function df
     command --search hash dfc >/dev/null; and begin
@@ -133,7 +133,7 @@ function df
     end; or begin
         command df $argv
     end
-end; funcsave df
+end
 
 function dir
   set -l param
@@ -148,23 +148,23 @@ function dir
   end; or begin
     eval "ls -C -b"
   end
-end; funcsave dir
+end
 
-function du; command du -ahd 1 $argv 2>/dev/null; end; funcsave du
-function du.; command du -ahd 0 $argv 2>/dev/null;end; funcsave du.
+function du; command du -ahd 1 $argv 2>/dev/null; end
+function du.; command du -ahd 0 $argv 2>/dev/null;end
 function du2
   command --search ncdu >/dev/null; and begin
 	 command ncdu $argv
 	end; or begin
 		echo Install ncdu
 	end
-end; funcsave du2
+end
 
-function grep; command grep --color=auto $argv;end; funcsave grep
+function grep; command grep --color=auto $argv;end
 
-function h;history $argv;end; funcsave h
-function hc;history --clear $argv;end; funcsave hc
-function hg;history | grep $argv;end; funcsave hg
+function h;history $argv;end
+function hc;history --clear $argv;end
+function hg;history | grep $argv;end
 
 function head
     set x (tput cols)
@@ -179,11 +179,11 @@ function head
         end
     end
     eval $cmd
-end; funcsave head
+end
 
 function internalip
     ifconfig en0 | grep inet | grep -v inet6 | cut -d ' ' -f2
-end; funcsave internalip
+end
 
 function laf
   set -l param
@@ -191,9 +191,9 @@ function laf
     set param $param --color --group-directories-first
   end
 	find . -maxdepth 1 -type f -print0 | sed -e "s:./::g" | xargs -0r ls $param $argv
-end; funcsave laf
+end
 
-function ld; ls $argv -d -- *; end; funcsave ld
+function ld; ls $argv -d -- *; end
 
 function lf
   set -l param
@@ -201,18 +201,17 @@ function lf
     set param $param --color --group-directories-first
   end
   find . -maxdepth 1 -type f -a ! -iname ".*" -print0 | sed -e "s:./::g"  | xargs -0r ls $param $argv
-end; funcsave lf
+end
 
 function lh
     set -l matches .*
     ls $argv -Ad $matches
 end
-; funcsave lh
 
 function lhd
     set -l matches .*/
     ls -d $matches;
-end; funcsave lhd
+end
 
 function lhf
   set -l param
@@ -220,7 +219,7 @@ function lhf
     set param $param --color --group-directories-first
   end
   find . -maxdepth 1 -type f -a -iname ".*" -print0 | sed -e "s:./::g" | xargs -0r ls $param $argv
-end; funcsave lhf
+end
 
 function ll
 	command --search ll >/dev/null; and begin
@@ -228,37 +227,37 @@ function ll
 	end; or begin
 	  ls -lh $argv
 	end
-end; funcsave ll
+end
 
-function lla; ll -A $argv;end; funcsave lla
+function lla; ll -A $argv;end
 
 function llad
 	find . -maxdepth 1 -type d \( -not -iname "." \) -print0 | sed -e "s:./::g" | xargs -0r ll -hGd $argv
-end; funcsave llad
+end
 
 function llaf
 	find . -maxdepth 1 -type f -print0 | sed -e "s:./::g" | xargs -0r ll -hGd $argv
-end; funcsave llaf
+end
 
-function lld;ll -dhGg */ $argv;end; funcsave lld
+function lld;ll -dhGg */ $argv;end
 
 function llf
 	find . -maxdepth 1 -type f -a ! -iname ".*" -print0 | sed -e "s:./::g"  | xargs -0r ll -hGd $argv
-end; funcsave llf
+end
 
 function llh
     set -l matches .*
     ll $argv -hGgAd $matches;
-end; funcsave llh
+end
 
 function llhd
     set -l matches .*/
     ll $argv -dhGg $matches;
-end; funcsave llhd
+end
 
 function llhf
 	find . -maxdepth 1 -type f -a -iname ".*" -print0 | sed -e "s:./::g" | xargs -0r ll -hGgd $argv
-end; funcsave llhf
+end
 
 function ls
   command --search ls >/dev/null; and begin
@@ -280,13 +279,13 @@ function ls
   end; or begin
     echo "ls does not exist"
   end
-end; funcsave ls
+end
 
-function j; jobs -l $argv; end; funcsave j
+function j; jobs -l $argv; end
 
-function l; ls -CF $argv; end; funcsave l
+function l; ls -CF $argv; end
 
-function la; ls -AF $argv; end; funcsave la
+function la; ls -AF $argv; end
 
 function lad
   set -l param
@@ -294,9 +293,9 @@ function lad
     set param $param --color --group-directories-first
   end
 	find . -maxdepth 1 -type d \( -not -iname "." \) -print0 | sed -e "s:./::g" | xargs -0r ls -dF $param $argv
-end; funcsave lad
+end
 
-function mcd; mkdir -p $argv; cd $argv;end; funcsave mcd
+function mcd; mkdir -p $argv; cd $argv;end
 
 function mem
   set -l FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
@@ -309,21 +308,21 @@ function mem
   set -l INACTIVE (math "$INACTIVE_BLOCKS*4096/(1024*1024)")
   set -l TOTAL (echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)
   echo -n -s 'Free Memory: ' (set_color purple) $TOTAL 'GB' (set_color normal) ' of ' (set_color yellow) "$TOTALRAM" (set_color normal)
-end; funcsave mem
+end
 
-function mkdir;command mkdir -pv $argv;end; funcsave mkdir
+function mkdir;command mkdir -pv $argv;end
 
-function myip;curl http://ipecho.net/plain; echo $argv;end; funcsave myip
+function myip;curl http://ipecho.net/plain; echo $argv;end
 
-function now;date +"%Y-%m-%d %T";end; funcsave now
-function nowtime;date +"%T";end; funcsave nowtime
-function nowdate;date +"%Y-%m-%d";end; funcsave nowdate
+function now;date +"%Y-%m-%d %T";end
+function nowtime;date +"%T";end
+function nowdate;date +"%Y-%m-%d";end
 
-function path;echo -e $PATH | sed 's/ /\n/g';end; funcsave path
+function path;echo -e $PATH | sed 's/ /\n/g';end
 
 function pfind
     command ps aux | grep "$argv" | command head -1 | cut -d " " -f 5
-end; funcsave pfind
+end
 
 function ping
   command --search grc >/dev/null; and begin
@@ -331,9 +330,9 @@ function ping
 	end; or begin
 		ping -c 10 $argv
 	end
-end; funcsave ping
+end
 
-function ports;netstat -tulanp $argv;end; funcsave ports
+function ports;netstat -tulanp $argv;end
 
 # function print_files
 # 	while IFS=$'\t' read -r size line
@@ -350,11 +349,11 @@ function ps
 	end; or begin
 		ps aux $argv
 	end
-end; funcsave ps
+end
 
 # function psg;ps aux $argv | grep -v grep | grep -i -e VSZ -e;end
 
-function rm!;rm -Rf $argv;end; funcsave rm!
+function rm!;rm -Rf $argv;end
 
 function set_dircolors
 	if not test -e ~/.dircolors
@@ -371,11 +370,11 @@ function set_dircolors
 			end
 		end
 	end
-end; funcsave set_dircolors
+end
 
-function sl;ls $argv;end; funcsave sl
+function sl;ls $argv;end
 
-function sourceme;source ~/.config/fish/config.fish $argv;end; funcsave sourceme
+function sourceme;source ~/.config/fish/config.fish $argv;end
 
 
 function tail
@@ -391,7 +390,7 @@ function tail
         end
     end
     eval $cmd
-end; funcsave tail
+end
 
 function top
 	command --search htop >/dev/null; and begin
@@ -399,9 +398,9 @@ function top
 	end; or begin
 		command top $argv
 	end
-end; funcsave top
+end
 
-function topme;top -u $USER $argv;end; funcsave topme
+function topme;top -u $USER $argv;end
 
 function update
     if [ (uname) = 'Darwin' ]
@@ -419,7 +418,7 @@ function update
             end
         end
     end
-end; funcsave update
+end
 
 function vdir
   set -l param
@@ -435,7 +434,7 @@ function vdir
 	    eval "ls -l -b"
 	  end
 	end
-end; funcsave vdir
+end
 
 function webify
 	command --search mogrify >/dev/null; and begin
@@ -443,9 +442,9 @@ function webify
 	end; or begin
 		echo install mogrify
 	end
-end; funcsave webify
+end
 
-function wget;command wget -c $argv;end; funcsave wget
+function wget;command wget -c $argv;end
 
-function r;command radian $argv;end; funcsave r
+function r;command radian $argv;end
 

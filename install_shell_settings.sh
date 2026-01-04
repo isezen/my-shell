@@ -46,7 +46,15 @@ elif [ "${SHELL}" == fish ];then
   # shellcheck disable=SC2016  # Fish shell syntax, needs literal {$HOME}
   HOME_PREFIX='{$HOME}'
   SHELL_AND='; and'
-  curl -sL "${URL}" | fish
+  # Download my_settings.fish but don't execute it (funcsave removed)
+  echo "Downloading my_settings.fish..."
+  curl -sL "${URL}" > "${HOME}/.config/fish/my_settings.fish" || die "Couldn't download my_settings.fish"
+  echo "my_settings.fish downloaded to ${HOME}/.config/fish/my_settings.fish"
+  echo ""
+  echo "Note: Functions are no longer saved globally."
+  echo "To use these functions, activate the my-shell environment:"
+  echo "  source /path/to/my-shell/env/activate.fish"
+  echo ""
   save_to_config="if type set_dircolors > /dev/null; set_dircolors; end"
   echo "Checking if ${SCRIPT} contains set_dircolors"
   grep "$save_to_config" "${SCRIPT}" > /dev/null 2>&1 || (echo "Appending source command to ${SCRIPT}..."; echo "" >> "${SCRIPT}"; echo "$save_to_config" >> "${SCRIPT}")

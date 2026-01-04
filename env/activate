@@ -3,33 +3,45 @@
 # Usage: activate [bash|zsh|fish]
 #   If no argument, activates current shell's environment
 
-# Proje root dizinini bul (env/ dizininden bir üst)
+# Determine project root directory (one level up from env/)
 _ACTIVATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 _ENV_DIR="$_ACTIVATE_DIR/env"
+export MY_SHELL_ROOT="$_ACTIVATE_DIR"
 
-# Shell tipini belirle
+# Determine shell type
 _REQUESTED_SHELL="${1:-}"
 _CURRENT_SHELL=""
 
-# Mevcut shell'i tespit et
-if [ -n "$ZSH_VERSION" ]; then
+# Detect current shell
+# First check $SHELL environment variable (shows parent shell)
+_PARENT_SHELL="$(basename "$SHELL" 2>/dev/null || echo '')"
+
+# If $SHELL is fish and script is running in bash, parent shell is fish
+if [ "$_PARENT_SHELL" = "fish" ] && [ -n "$BASH_VERSION" ]; then
+    _CURRENT_SHELL="fish"
+elif [ -n "$ZSH_VERSION" ]; then
     _CURRENT_SHELL="zsh"
 elif [ -n "$BASH_VERSION" ]; then
     _CURRENT_SHELL="bash"
 elif [ -n "$FISH_VERSION" ]; then
     _CURRENT_SHELL="fish"
 else
-    _CURRENT_SHELL="$(basename "$SHELL")"
+    # Use $SHELL variable
+    if [ -n "$_PARENT_SHELL" ]; then
+        _CURRENT_SHELL="$_PARENT_SHELL"
+    else
+        _CURRENT_SHELL="bash"  # Default
+    fi
 fi
 
-# Eğer shell belirtilmemişse, mevcut shell'i kullan
+# If shell not specified, use current shell
 if [ -z "$_REQUESTED_SHELL" ]; then
     _REQUESTED_SHELL="$_CURRENT_SHELL"
 fi
 
 _REQUESTED_SHELL="$(echo "$_REQUESTED_SHELL" | tr '[:upper:]' '[:lower:]')"
 
-# Geçerli shell kontrolü
+# Validate shell
 case "$_REQUESTED_SHELL" in
     bash|zsh|fish)
         ;;
@@ -39,37 +51,80 @@ case "$_REQUESTED_SHELL" in
         ;;
 esac
 
-# Eğer farklı bir shell isteniyorsa, o shell'e geç
+# If different shell requested, switch to it
 if [ "$_REQUESTED_SHELL" != "$_CURRENT_SHELL" ]; then
+    # Scenario D: Shell Switching (Switch Mode)
+    export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
+    export MY_SHELL_ACTIVATION_MODE="switch"
+    
+    # Create temporary directory for switch artifacts
+    _TMPDIR=$(mktemp -d)
+    export MY_SHELL_TMPDIR="$_TMPDIR"
+    
     case "$_REQUESTED_SHELL" in
         bash)
             echo "Switching to bash and activating my-shell environment..."
-            exec bash -c "source '$_ENV_DIR/activate.bash'; exec bash"
+            # Create temporary rcfile
+            _TMP_RCFILE="$_TMPDIR/rcfile"
+            cat > "$_TMP_RCFILE" <<EOF
+export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
+export MY_SHELL_ACTIVATION_MODE="switch"
+export MY_SHELL_ROOT="$MY_SHELL_ROOT"
+export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
+source "$MY_SHELL_ROOT/env/activate.bash"
+EOF
+            exec env -u MY_SHELL_ACTIVATED bash --rcfile "$_TMP_RCFILE" -i
             ;;
         zsh)
             echo "Switching to zsh and activating my-shell environment..."
-            exec zsh -c "source '$_ENV_DIR/activate.zsh'; exec zsh"
+            # Create temporary zshrc
+            mkdir -p "$_TMPDIR"
+            cat > "$_TMPDIR/.zshrc" <<EOF
+export MY_SHELL_SWITCHED_FROM="$_CURRENT_SHELL"
+export MY_SHELL_ACTIVATION_MODE="switch"
+export MY_SHELL_ROOT="$MY_SHELL_ROOT"
+export MY_SHELL_TMPDIR="$MY_SHELL_TMPDIR"
+source "$MY_SHELL_ROOT/env/activate.zsh"
+EOF
+            exec env -u MY_SHELL_ACTIVATED ZDOTDIR="$_TMPDIR" zsh -i
             ;;
         fish)
             echo "Switching to fish and activating my-shell environment..."
-            exec fish -c "source '$_ENV_DIR/activate.fish'; exec fish"
+            exec env -u MY_SHELL_ACTIVATED fish -c "set -gx MY_SHELL_SWITCHED_FROM '$_CURRENT_SHELL'; set -gx MY_SHELL_ACTIVATION_MODE 'switch'; set -gx MY_SHELL_ROOT '$MY_SHELL_ROOT'; set -gx MY_SHELL_TMPDIR '$MY_SHELL_TMPDIR'; set -gx MY_SHELL_FISH_SPAWNED 1; source '$MY_SHELL_ROOT/env/activate.fish'; exec fish -i"
             ;;
     esac
 else
-    # Mevcut shell için activate script'ini source et
+    # Same shell - activate in current shell
+    # Check if already activated
+    if [ -n "$MY_SHELL_ACTIVATED" ]; then
+        echo "my-shell environment is already activated"
+        exit 0
+    fi
+    
     case "$_CURRENT_SHELL" in
         bash)
+            # Scenario B: Same shell activation (Bash)
             source "$_ENV_DIR/activate.bash"
             ;;
         zsh)
+            # Scenario B: Same shell activation (Zsh)
             source "$_ENV_DIR/activate.zsh"
             ;;
         fish)
-            # Fish'den bash script source edilemez, bu yüzden hata ver
-            echo "Error: Cannot source bash script from fish shell." >&2
-            echo "Please use: source env/activate.fish" >&2
-            exit 1
+            # Scenario C: Fish exec-activation
+            echo "- Activating my-shell environment in fish..."
+            export MY_SHELL_ACTIVATION_MODE="exec"
+            export MY_SHELL_FISH_SPAWNED=1
+            # Create temporary init file to ensure functions persist in new fish instance
+            _TMP_INIT=$(mktemp)
+            cat > "$_TMP_INIT" <<EOF
+# Temporary init file for my-shell activation
+set -gx MY_SHELL_ACTIVATION_MODE "exec"
+set -gx MY_SHELL_FISH_SPAWNED 1
+set -gx MY_SHELL_ROOT "$MY_SHELL_ROOT"
+source '$MY_SHELL_ROOT/env/activate.fish'
+EOF
+            exec env -u MY_SHELL_ACTIVATED fish --init-command "source '$_TMP_INIT'; rm -f '$_TMP_INIT'" -i
             ;;
     esac
 fi
-

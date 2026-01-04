@@ -79,12 +79,16 @@ Before you begin, ensure you have the following installed:
 
 5. **Activate development environment** (optional but recommended):
    ```bash
-   # Activate my-shell environment for development
+   # Option 1: Use global switcher (works from any shell)
+   ./env/activate          # Activate current shell
+   ./env/activate bash     # Switch to bash and activate
+   ./env/activate zsh      # Switch to zsh and activate
+   ./env/activate fish     # Switch to fish and activate
+   
+   # Option 2: Source shell-specific script
    source env/activate.bash  # For bash
-   # or
-   source env/activate.zsh  # For zsh
-   # or
-   source env/activate.fish # For fish
+   source env/activate.zsh   # For zsh
+   source env/activate.fish  # For fish
    
    # After making changes to alias.sh, bash.sh, or my_settings.fish:
    reactivate  # Reload files without deactivating
@@ -181,8 +185,16 @@ We use **feature branches** for all changes:
 For active development, you can use the environment activation system:
 
 ```bash
-# Activate environment
-source env/activate.bash  # or activate.zsh / activate.fish
+# Option 1: Use global switcher (recommended)
+./env/activate          # Activate current shell
+./env/activate bash     # Switch to bash
+./env/activate zsh      # Switch to zsh
+./env/activate fish     # Switch to fish
+
+# Option 2: Source shell-specific script
+source env/activate.bash  # For bash
+source env/activate.zsh   # For zsh
+source env/activate.fish  # For fish
 
 # Make changes to alias.sh, bash.sh, or my_settings.fish
 # Then reload without deactivating:
@@ -192,7 +204,10 @@ reactivate
 deactivate
 ```
 
-This allows you to test changes immediately without restarting your shell session.
+This allows you to:
+- Test changes immediately without restarting your shell session
+- Switch between different shells easily
+- Keep your development environment isolated
 
 ### Pre-commit Hooks
 

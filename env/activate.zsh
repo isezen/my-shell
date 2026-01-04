@@ -2,37 +2,44 @@
 # activate.zsh - Zsh environment activation
 # Usage: source activate.zsh
 
-# Proje root dizinini bul
+# Determine project root directory
 if [ -z "$MY_SHELL_ROOT" ]; then
     MY_SHELL_ROOT="$(cd "$(dirname "${(%):-%x}")/.." && pwd)"
 fi
 
-# Zaten aktif mi kontrol et
+# Check if already activated
 if [ -n "$MY_SHELL_ACTIVATED" ]; then
     echo "my-shell environment is already activated"
     return 0
 fi
 
-# PATH'e scripts/ ekle
+# Set activation mode (default to source if not set)
+if [ -z "$MY_SHELL_ACTIVATION_MODE" ]; then
+    export MY_SHELL_ACTIVATION_MODE="source"
+fi
+
+# Save PATH snapshot for exact restoration
 export MY_SHELL_OLD_PATH="$PATH"
+
+# Prepend scripts/ to PATH
 export PATH="$MY_SHELL_ROOT/scripts:$PATH"
 
-# alias.sh'i source et
+# Source alias.sh
 if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
     source "$MY_SHELL_ROOT/alias.sh"
 fi
 
-# bash.sh'i source et ve prompt'u güncelle
+# Source bash.sh and update prompt
 if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
     export MY_SHELL_OLD_PS1="$PS1"
     source "$MY_SHELL_ROOT/bash.sh"
     export PS1="(my-shell) $PS1"
 fi
 
-# colortable.sh alias'ı
+# Define colortable alias
 alias colortable="$MY_SHELL_ROOT/colortable.sh"
 
-# Reactivate fonksiyonu
+# Reactivate function
 reactivate() {
     if [ -z "$MY_SHELL_ACTIVATED" ]; then
         echo "my-shell environment is not activated"
@@ -42,56 +49,75 @@ reactivate() {
 
     echo "Reloading my-shell environment files..."
 
-    # alias.sh'i yeniden source et
+    # Re-source alias.sh
     if [ -f "$MY_SHELL_ROOT/alias.sh" ]; then
         source "$MY_SHELL_ROOT/alias.sh"
     fi
 
-    # bash.sh'i yeniden source et ve prompt'u güncelle
+    # Re-source bash.sh and update prompt
     if [ -f "$MY_SHELL_ROOT/bash.sh" ]; then
         source "$MY_SHELL_ROOT/bash.sh"
-        # Prompt'u güncelle (eğer (my-shell) prefix yoksa ekle)
+        # Update prompt (add prefix if not present)
         if [[ "$PS1" != "(my-shell)"* ]]; then
             export PS1="(my-shell) $PS1"
         fi
     fi
 
-    # colortable.sh alias'ını yeniden tanımla
+    # Redefine colortable alias
     alias colortable="$MY_SHELL_ROOT/colortable.sh"
 
     echo "my-shell environment reloaded"
 }
 
-# Deactivate fonksiyonu
+# Deactivate function
 deactivate() {
     if [ -z "$MY_SHELL_ACTIVATED" ]; then
         echo "my-shell environment is not activated"
         return 1
     fi
 
-    # PATH'i geri yükle
+    # Restore PATH to exact snapshot
     export PATH="$MY_SHELL_OLD_PATH"
     unset MY_SHELL_OLD_PATH
 
-    # PS1'i geri yükle
+    # Restore PS1
     if [ -n "$MY_SHELL_OLD_PS1" ]; then
         export PS1="$MY_SHELL_OLD_PS1"
         unset MY_SHELL_OLD_PS1
     fi
 
-    # Alias'ları kaldır
+    # Remove colortable alias
     unalias colortable 2>/dev/null || true
 
-    # Değişkenleri temizle
+    # Check for shell switching (Scenario 3.2)
+    _SWITCHED_FROM="$MY_SHELL_SWITCHED_FROM"
+    
+    # Clean up activation variables
     unset MY_SHELL_ACTIVATED
+    unset MY_SHELL_ACTIVATION_MODE
     unset MY_SHELL_ROOT
+    
+    # Clean up temporary artifacts (best-effort)
+    if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
+        rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null || true
+        unset MY_SHELL_TMPDIR
+    fi
+    
+    # Remove functions
     unset -f deactivate
     unset -f reactivate
 
-    echo "my-shell environment deactivated"
+    echo "- my-shell environment deactivated"
+    echo "- Bye..."
+    
+    # If switched from another shell, return to it (Scenario 3.2)
+    if [ -n "$_SWITCHED_FROM" ]; then
+        unset MY_SHELL_SWITCHED_FROM
+        echo "- Returning to $_SWITCHED_FROM shell..."
+        exec "$_SWITCHED_FROM"
+    fi
 }
 
 export MY_SHELL_ACTIVATED=1
 export MY_SHELL_ROOT
-echo "my-shell environment activated (zsh)"
-
+echo "- my-shell environment activated (zsh)"
