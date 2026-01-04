@@ -84,6 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved user feedback during activation and deactivation to enhance clarity and usability
 - Refactored Zsh prompt configuration and activation script for improved clarity:
   - Simplified the activation logic in `activate.zsh` to source `zsh.zsh` directly and ensure consistent prompt prefixing
+- Updated activation scripts to prevent loading user startup files:
+  - Modified the Bash and Fish activation commands to use `--noprofile` and `--no-config` options, respectively, ensuring that user-specific startup files are not loaded during shell activation
+  - Enhanced the isolation of the Zsh environment by keeping `ZDOTDIR` isolated, allowing for a clean startup without user configurations
 
 ### Fixed
 - Fixed critical ShellCheck error in `alias.sh:50`: Added missing quotes around variable in `[ -n "$gnuls" ]` check
