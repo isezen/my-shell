@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Test suite for alias.sh
+# Test suite for shell/bash/aliases.bash
 
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
@@ -10,8 +10,8 @@ setup() {
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
   
-  # Source alias.sh
-  source "$PROJECT_ROOT/alias.sh"
+  # Source shell/bash/aliases.bash
+  source "$PROJECT_ROOT/shell/bash/aliases.bash"
 }
 
 @test "alias.sh can be sourced without errors" {
@@ -195,7 +195,7 @@ setup() {
   
   # mcd is run in a subshell, so we can't check PWD change
   # But we can check if directory is created
-  run bash -c "source '$PROJECT_ROOT/alias.sh' && mcd '$TEST_SUBDIR' && [ -d '$TEST_SUBDIR' ]"
+  run bash -c "source '$PROJECT_ROOT/shell/bash/aliases.bash' && mcd '$TEST_SUBDIR' && [ -d '$TEST_SUBDIR' ]"
   assert_success
   
   # Verify directory was created

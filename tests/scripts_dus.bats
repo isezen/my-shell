@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Test suite for scripts/dus
+# Test suite for scripts/bin/dus
 
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
@@ -8,7 +8,7 @@ load 'test_helper/bats-assert/load'
 setup() {
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
-  DUS_SCRIPT="$PROJECT_ROOT/scripts/dus"
+  DUS_SCRIPT="$PROJECT_ROOT/scripts/bin/dus"
   
   # Create a test directory with some files
   TEST_DIR_TMP=$(mktemp -d)

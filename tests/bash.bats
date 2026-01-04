@@ -1,17 +1,18 @@
 #!/usr/bin/env bats
-# Test suite for bash.sh
+# Test suite for shell/bash/prompt.bash and shell/bash/env.bash
 
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
-# Setup: Source the bash file before each test
+# Setup: Source the bash files before each test
 setup() {
   # Get the directory where this test file is located
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
   
-  # Source bash.sh
-  source "$PROJECT_ROOT/bash.sh"
+  # Source shell/bash/env.bash and shell/bash/prompt.bash
+  source "$PROJECT_ROOT/shell/bash/env.bash"
+  source "$PROJECT_ROOT/shell/bash/prompt.bash"
 }
 
 @test "bash.sh can be sourced without errors" {

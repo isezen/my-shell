@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Test suite for scripts/ll
+# Test suite for scripts/bin/ll
 
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
@@ -8,7 +8,7 @@ load 'test_helper/bats-assert/load'
 setup() {
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
-  LL_SCRIPT="$PROJECT_ROOT/scripts/ll"
+  LL_SCRIPT="$PROJECT_ROOT/scripts/bin/ll"
   
   # Create a test directory with some files
   TEST_DIR_TMP=$(mktemp -d)
