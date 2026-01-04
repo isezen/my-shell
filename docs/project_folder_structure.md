@@ -9,7 +9,6 @@
 │   ├── activate.fish
 │   └── activate.zsh
 ├── lib
-│   └── provider.sh
 ├── scripts
 │   └── bin
 │       ├── dus
@@ -46,18 +45,17 @@
 │   └── TEST_COVERAGE.md
 ├── wip
 │   ├── IMPROVEMENTS.md
-│   ├── new-structure-refator.md
+│   ├── plan.md
 │   └── SHELLCHECK_AND_PRE_COMMIT_EXPLANATION.md
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
-├── install_shell_scripts.sh
-├── install_shell_settings.sh
+├── install.sh
 ├── LICENSE
 ├── ll-performance.sh
 ├── Makefile
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 44 files
+14 directories, 42 files
 ```

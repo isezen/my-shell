@@ -1,0 +1,355 @@
+#!/bin/bash
+# Unified installer for my-shell
+# Installs both shell settings and utility scripts
+# Usage: sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)"
+#        ./install.sh --local [--repo-root PATH] [--settings-only|--scripts-only] [-y]
+
+# Helper functions
+die() {
+  echo "${1}" >&2
+  exit 1
+}
+
+log() {
+  echo "${1}"
+}
+
+ensure_dir() {
+  local dir="$1"
+  if ! mkdir -p "$dir" 2>/dev/null; then
+    die "Could not create directory: $dir"
+  fi
+}
+
+ensure_file() {
+  local file="$1"
+  local dir
+  dir="$(dirname "$file")"
+  ensure_dir "$dir"
+  if ! touch "$file" 2>/dev/null; then
+    die "Could not create file: $file"
+  fi
+}
+
+prompt_overwrite() {
+  local dest="$1"
+  if [ "$YES" = "1" ]; then
+    return 0
+  fi
+  if [ -f "$dest" ] || [ -e "$dest" ]; then
+    echo "File exists: $dest"
+    echo -n "Overwrite? [y/N] "
+    read -r ans
+    case "$ans" in
+      [yY]|[yY][eE][sS])
+        return 0
+        ;;
+      *)
+        die "Aborted by user."
+        ;;
+    esac
+  fi
+  return 0
+}
+
+append_line_if_missing() {
+  local file="$1"
+  local line="$2"
+  ensure_file "$file"
+  if ! grep -qF "$line" "$file" 2>/dev/null; then
+    echo "" >> "$file"
+    echo "$line" >> "$file"
+  fi
+}
+
+fetch_or_copy() {
+  local rel_path="$1"
+  local dest_path="$2"
+  
+  prompt_overwrite "$dest_path"
+  
+  if [ "$SOURCE_MODE" = "local" ]; then
+    local src="$REPO_ROOT/$rel_path"
+    if [ ! -f "$src" ]; then
+      die "Missing local source: $src"
+    fi
+    cp "$src" "$dest_path" || die "Could not copy $src to $dest_path"
+  else
+    local base="${MY_SHELL_REMOTE_BASE:-https://raw.githubusercontent.com/isezen/my-shell/master}"
+    local url="$base/$rel_path"
+    curl -fsSL "$url" > "$dest_path" || die "Could not download $url"
+  fi
+}
+
+usage() {
+  cat <<EOF
+Usage: $0 [OPTIONS]
+
+Options:
+  --local              Use local repository instead of remote
+  --repo-root PATH     Specify repository root path (for local mode)
+  --settings-only      Install only shell settings (aliases, prompt, etc.)
+  --scripts-only       Install only utility scripts (ll, dus, etc.)
+  --user               Install scripts to \$HOME/.local/bin (user mode)
+  --bin-prefix PATH    Install scripts to custom PATH (overrides --user and MY_SHELL_BIN_PREFIX)
+  -y, --yes            Overwrite existing files without prompting
+  -h, --help           Show this help message
+
+Examples:
+  # Install both settings and scripts (default)
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)"
+
+  # Install only settings
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- --settings-only
+
+  # Install from local repository
+  ./install.sh --local
+
+  # Install with custom repo root
+  ./install.sh --local --repo-root /path/to/repo
+
+  # Install to user directory
+  ./install.sh --local --user
+
+  # Install to custom directory
+  ./install.sh --local --bin-prefix /custom/path
+
+Environment variables:
+  MY_SHELL_REMOTE_BASE    Override remote base URL
+  MY_SHELL_BIN_PREFIX     Override binary installation prefix (overridden by --bin-prefix)
+EOF
+}
+
+# Parse command line arguments
+SOURCE_MODE="remote"
+REPO_ROOT=""
+YES=0
+DO_SETTINGS=1
+DO_SCRIPTS=1
+SHOW_HELP=0
+SETTINGS_ONLY_SET=0
+SCRIPTS_ONLY_SET=0
+USER_MODE=0
+BIN_PREFIX_OVERRIDE=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --local)
+      SOURCE_MODE="local"
+      shift
+      ;;
+    --repo-root)
+      REPO_ROOT="$2"
+      shift 2
+      ;;
+    --settings-only)
+      DO_SETTINGS=1
+      DO_SCRIPTS=0
+      SETTINGS_ONLY_SET=1
+      shift
+      ;;
+    --scripts-only)
+      DO_SETTINGS=0
+      DO_SCRIPTS=1
+      SCRIPTS_ONLY_SET=1
+      shift
+      ;;
+    -y|--yes)
+      YES=1
+      shift
+      ;;
+    --user)
+      USER_MODE=1
+      shift
+      ;;
+    --bin-prefix)
+      if [ -z "$2" ]; then
+        echo "Error: --bin-prefix requires a path argument" >&2
+        echo "" >&2
+        usage >&2
+        exit 1
+      fi
+      BIN_PREFIX_OVERRIDE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      SHOW_HELP=1
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Validate conflicting options
+if [ "$SETTINGS_ONLY_SET" = "1" ] && [ "$SCRIPTS_ONLY_SET" = "1" ]; then
+  echo "Error: --settings-only and --scripts-only cannot be used together" >&2
+  echo "" >&2
+  usage >&2
+  exit 1
+fi
+
+# Show help if requested
+if [ "$SHOW_HELP" = "1" ]; then
+  usage
+  exit 0
+fi
+
+# If local mode and no repo root specified, try to detect from script location
+if [ "$SOURCE_MODE" = "local" ] && [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+fi
+
+# Detect shell
+shell_name="$(basename "$SHELL")"
+if [ "$shell_name" != "bash" ] && [ "$shell_name" != "zsh" ] && [ "$shell_name" != "fish" ]; then
+  die "Unsupported shell: $shell_name. Supported shells: bash, zsh, fish"
+fi
+
+# Determine RC file
+RC_FILE=""
+if [ "$shell_name" = "bash" ]; then
+  if [ -f "${HOME}/.bash_profile" ]; then
+    RC_FILE="${HOME}/.bash_profile"
+  elif [ -f "${HOME}/.profile" ]; then
+    RC_FILE="${HOME}/.profile"
+  else
+    RC_FILE="${HOME}/.bash_profile"
+  fi
+elif [ "$shell_name" = "zsh" ]; then
+  RC_FILE="${HOME}/.zshrc"
+elif [ "$shell_name" = "fish" ]; then
+  if ! command -v fish >/dev/null 2>&1; then
+    die "fish binary not found. Please install fish shell first."
+  fi
+  RC_FILE="${HOME}/.config/fish/config.fish"
+fi
+
+# Ensure RC file exists
+ensure_file "$RC_FILE"
+
+# Detect OS early (die on unknown OS)
+OS="$(uname -s)"
+if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
+  die "Unsupported OS: $OS. Supported OS: Darwin (macOS), Linux"
+fi
+
+# Determine BIN_PREFIX with precedence:
+# 1) --bin-prefix (command line, highest priority)
+# 2) MY_SHELL_BIN_PREFIX (env var)
+# 3) --user flag => $HOME/.local/bin
+# 4) OS default => /usr/local/bin
+if [ -n "$BIN_PREFIX_OVERRIDE" ]; then
+  BIN_PREFIX="$BIN_PREFIX_OVERRIDE"
+elif [ -n "$MY_SHELL_BIN_PREFIX" ]; then
+  BIN_PREFIX="$MY_SHELL_BIN_PREFIX"
+elif [ "$USER_MODE" = "1" ]; then
+  BIN_PREFIX="$HOME/.local/bin"
+else
+  BIN_PREFIX="/usr/local/bin"
+fi
+
+# Install settings if requested
+if [ "$DO_SETTINGS" = "1" ]; then
+  INSTALL_DIR="${HOME}/.my-shell"
+  SHELL_DIR="${INSTALL_DIR}/${shell_name}"
+  ensure_dir "$SHELL_DIR"
+  
+  # Determine files to install based on shell
+  if [ "$shell_name" = "bash" ]; then
+    FILES="init.bash aliases.bash prompt.bash env.bash"
+  elif [ "$shell_name" = "zsh" ]; then
+    FILES="init.zsh aliases.zsh prompt.zsh env.zsh"
+  elif [ "$shell_name" = "fish" ]; then
+    FILES="init.fish aliases.fish prompt.fish env.fish"
+  fi
+  
+  log "Installing my-shell configuration for $shell_name..."
+  for file in $FILES; do
+    rel_path="shell/${shell_name}/${file}"
+    dest_path="${SHELL_DIR}/${file}"
+    
+    log "Installing: $file"
+    if [ "$SOURCE_MODE" = "local" ]; then
+      log "  Copying from local repository: $REPO_ROOT/$rel_path"
+    else
+      base="${MY_SHELL_REMOTE_BASE:-https://raw.githubusercontent.com/isezen/my-shell/master}"
+      log "  Downloading from: $base/$rel_path"
+    fi
+    fetch_or_copy "$rel_path" "$dest_path"
+    chmod 0644 "$dest_path" || die "Could not set permissions on $dest_path"
+    log "  Done."
+  done
+  log ""
+  
+  # Add source line to RC file
+  SOURCE_LINE=""
+  if [ "$shell_name" = "bash" ]; then
+    SOURCE_LINE="source \"\$HOME/.my-shell/bash/init.bash\""
+  elif [ "$shell_name" = "zsh" ]; then
+    SOURCE_LINE="source \"\$HOME/.my-shell/zsh/init.zsh\""
+  elif [ "$shell_name" = "fish" ]; then
+    SOURCE_LINE="source \"\$HOME/.my-shell/fish/init.fish\""
+  fi
+  
+  append_line_if_missing "$RC_FILE" "$SOURCE_LINE"
+fi
+
+# Install scripts if requested
+if [ "$DO_SCRIPTS" = "1" ]; then
+  # Ensure BIN_PREFIX directory exists and is writable
+  if ! mkdir -p "$BIN_PREFIX" 2>/dev/null; then
+    # Cannot create directory
+    if [ "$BIN_PREFIX" = "/usr/local/bin" ]; then
+      die "Cannot write to $BIN_PREFIX. Please run with sudo: sudo $0 [args], OR use --user, OR use --bin-prefix PATH"
+    else
+      die "Cannot write to $BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
+    fi
+  fi
+  
+  # Check if directory is writable (mkdir -p might succeed even if not writable)
+  if [ ! -w "$BIN_PREFIX" ]; then
+    if [ "$BIN_PREFIX" = "/usr/local/bin" ]; then
+      die "Cannot write to $BIN_PREFIX. Please run with sudo: sudo $0 [args], OR use --user, OR use --bin-prefix PATH"
+    else
+      die "Cannot write to $BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
+    fi
+  fi
+  
+  SCRIPTS="ll dus dusf dusf."
+  
+  log "Installing utility scripts to $BIN_PREFIX..."
+  for script in $SCRIPTS; do
+    rel_path="scripts/bin/${script}"
+    dest_path="${BIN_PREFIX}/${script}"
+    
+    log "Installing script: $script"
+    if [ "$SOURCE_MODE" = "local" ]; then
+      log "  Copying from local repository: $REPO_ROOT/$rel_path"
+    else
+      base="${MY_SHELL_REMOTE_BASE:-https://raw.githubusercontent.com/isezen/my-shell/master}"
+      log "  Downloading from: $base/$rel_path"
+    fi
+    fetch_or_copy "$rel_path" "$dest_path"
+    chmod +x "$dest_path" || die "Could not make $dest_path executable"
+    log "  Done."
+  done
+  log ""
+  
+  # Add PATH line to RC file (idempotent)
+  if [ "$shell_name" = "fish" ]; then
+    PATH_LINE="set -gx PATH \"$BIN_PREFIX\" \$PATH"
+  else
+    PATH_LINE="export PATH=\"$BIN_PREFIX:\$PATH\""
+  fi
+  
+  append_line_if_missing "$RC_FILE" "$PATH_LINE"
+fi
+
+log "Installation complete!"
+log "Restart shell or source your rc file: source $RC_FILE"
+

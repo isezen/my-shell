@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
+  - Supports both remote and local installation modes
+  - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`
+  - Interactive overwrite prompts (can be bypassed with `-y/--yes`)
+  - Automatic shell detection (bash, zsh, fish)
+  - Automatic OS detection (Darwin, Linux) with smart BIN_PREFIX selection
+  - Environment variable overrides: `MY_SHELL_REMOTE_BASE`, `MY_SHELL_BIN_PREFIX`
+  - Bash 3.2 compatible (no modern bash features)
 - Created `CHANGELOG.md` to track project changes
 - Added `.pre-commit-config.yaml` with ShellCheck and fish syntax checking hooks
 - Added `Makefile` with convenient commands for linting, formatting, and testing
@@ -105,11 +113,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Activation scripts now source `shell/*/init.*` instead of multiple files
     - PATH updated to use `scripts/bin/` instead of `scripts/`
     - Simplified activation logic with better separation of concerns
-  - **Installer modernization**: Enhanced installation scripts with provider layer:
-    - Added `lib/provider.sh` for unified remote/local file fetching
-    - Added `--local` and `--repo-root` options for local installation
-    - Settings installer now installs to `~/.my-shell/{bash,zsh,fish}/` with single source line in profile
-    - Scripts installer now uses `scripts/bin/` path and supports all shells (bash, zsh, fish)
+  - **Installer modernization**: Unified installation into single `install.sh` script:
+    - Combined settings and scripts installation into one installer
+    - Removed `lib/provider.sh` dependency (logic moved inline)
+    - Added interactive overwrite prompts with `-y/--yes` bypass option
+    - Enhanced CLI with `--settings-only`, `--scripts-only` options
+    - Automatic shell and OS detection with smart defaults
+    - Environment variable support for customization
+- Enhanced unified installer (`install.sh`) with flexible installation paths:
+  - Added `--user` flag to install scripts to `$HOME/.local/bin` (user mode)
+  - Added `--bin-prefix PATH` option for custom installation directory (overrides `--user` and `MY_SHELL_BIN_PREFIX`)
+  - Implemented BIN_PREFIX precedence: `--bin-prefix` > `MY_SHELL_BIN_PREFIX` > `--user` > default (`/usr/local/bin`)
+  - Simplified OS detection: removed Homebrew/MacPorts checks, always defaults to `/usr/local/bin` on Darwin/Linux
+  - Improved permission handling: BIN_PREFIX check only runs when installing scripts (allows settings-only installs without sudo)
+  - Enhanced error messages: actionable suggestions when `/usr/local/bin` is not writable (suggests sudo, `--user`, or `--bin-prefix`)
+  - Fixed file permissions: settings files use `0644`, scripts use `+x` (executable)
+  - Early OS validation: installer dies immediately on unsupported OS (Darwin/Linux only)
   - **Test updates**: Updated all test files to reference new directory structure
 
 ### Removed
@@ -119,6 +138,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `bash.sh` - Replaced by `shell/bash/prompt.bash` and `shell/bash/env.bash`
   - `zsh.zsh` - Replaced by `shell/zsh/prompt.zsh` and `shell/zsh/env.zsh`
   - `my_settings.fish` - Replaced by `shell/fish/{init,aliases,prompt,env}.fish`
+- Removed old installer scripts after unified installer implementation:
+  - `install_shell_settings.sh` - Replaced by unified `install.sh --settings-only`
+  - `install_shell_scripts.sh` - Replaced by unified `install.sh --scripts-only`
+  - `lib/provider.sh` - Provider logic moved inline into `install.sh`
 
 ### Fixed
 - Fixed critical ShellCheck error in `alias.sh:50`: Added missing quotes around variable in `[ -n "$gnuls" ]` check

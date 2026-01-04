@@ -37,36 +37,39 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 
 ### Quick Install (One-liner)
 
-#### Shell Settings (Aliases & Functions)
-
-**Bash/Zsh:**
+**Install both shell settings and utility scripts (default):**
 ```sh
-curl -sL https://git.io/vVftO | bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)"
 ```
 
-**Fish:**
+**Install only shell settings:**
 ```sh
-curl -sL https://git.io/vVftO | fish
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- --settings-only
 ```
 
-This downloads and installs to `~/.my-shell/`:
-- `shell/bash/init.bash` → `~/.my-shell/bash/init.bash` (bash initialization)
-- `shell/zsh/init.zsh` → `~/.my-shell/zsh/init.zsh` (zsh initialization)
-- `shell/fish/init.fish` → `~/.my-shell/fish/init.fish` (fish initialization)
-
-Each init file sources the appropriate aliases, prompt, and environment settings.
-
-#### Utility Scripts
-
+**Install only utility scripts:**
 ```sh
-curl -sL https://git.io/vVfYB | sudo bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- --scripts-only
 ```
 
-This installs scripts from `scripts/bin/` directory to `/usr/local/bin`:
-- `ll` - Colorful long listing
-- `dus` - Disk usage script
-- `dusf` - File-based disk usage
-- `dusf.` - Alternative disk usage format
+**Install without prompting (overwrite existing files):**
+```sh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/isezen/my-shell/master/install.sh)" -- -y
+```
+
+The installer will:
+- Detect your shell (bash, zsh, or fish)
+- Install shell settings to `~/.my-shell/<shell>/`:
+  - `init.*` - Shell initialization entrypoint
+  - `aliases.*` - Aliases and functions
+  - `prompt.*` - Prompt configuration
+  - `env.*` - Environment settings
+- Install utility scripts to `/usr/local/bin` (or `/opt/homebrew/bin` on macOS with Homebrew):
+  - `ll` - Colorful long listing
+  - `dus` - Disk usage script
+  - `dusf` - File-based disk usage
+  - `dusf.` - Alternative disk usage format
+- Add necessary configuration to your shell's RC file
 
 ### Manual Installation
 
@@ -76,14 +79,24 @@ This installs scripts from `scripts/bin/` directory to `/usr/local/bin`:
    cd my-shell
    ```
 
-2. **Install shell settings:**
+2. **Run the installer:**
    ```sh
-   ./install_shell_settings.sh --local --repo-root "$(pwd)"
+   ./install.sh --local
    ```
 
-3. **Install utility scripts:**
+   Or with custom options:
    ```sh
-   sudo ./install_shell_scripts.sh --local --repo-root "$(pwd)"
+   # Install only settings
+   ./install.sh --local --settings-only
+
+   # Install only scripts
+   ./install.sh --local --scripts-only
+
+   # Install with custom repo root
+   ./install.sh --local --repo-root /path/to/repo
+
+   # Install without prompting
+   ./install.sh --local -y
    ```
 
 ### Uninstallation
@@ -195,14 +208,11 @@ my-shell/
 │   ├── dus             # Disk usage script
 │   ├── dusf            # File-based disk usage
 │   └── dusf.            # Alternative disk usage
-├── lib/                 # Shared libraries
-│   └── provider.sh     # Remote/local file fetching provider
 ├── env/                 # Environment activation scripts
 │   ├── activate.bash   # Bash activation
 │   ├── activate.zsh    # Zsh activation
 │   └── activate.fish   # Fish activation
-├── install_shell_settings.sh    # Installation script for settings
-├── install_shell_scripts.sh     # Installation script for scripts
+├── install.sh           # Unified installation script
 ├── tests/                # BATS test suite
 │   ├── alias.bats       # Tests for aliases.bash
 │   ├── bash.bats        # Tests for prompt.bash and env.bash
