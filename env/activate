@@ -28,10 +28,12 @@ case "$_PARENT_COMM" in
         ;;
     *)
         # Fallbacks
-        if [ -n "$ZSH_VERSION" ]; then
+        # NOTE: This file is a bash script, so $BASH_VERSION is always set here.
+        # Do NOT use $BASH_VERSION to infer the user's interactive shell.
+        if [ "$_PARENT_SHELL" = "fish" ] || [ "$_PARENT_SHELL" = "bash" ] || [ "$_PARENT_SHELL" = "zsh" ]; then
+            _CURRENT_SHELL="$_PARENT_SHELL"
+        elif [ -n "$ZSH_VERSION" ]; then
             _CURRENT_SHELL="zsh"
-        elif [ -n "$BASH_VERSION" ]; then
-            _CURRENT_SHELL="bash"
         elif [ -n "$FISH_VERSION" ]; then
             _CURRENT_SHELL="fish"
         elif [ -n "$_PARENT_SHELL" ]; then
