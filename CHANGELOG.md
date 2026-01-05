@@ -63,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced prompt prefix rendering to use cyan color for better user experience
 
 ### Changed
+- Reorganized development scripts:
+  - Moved `check-aliases.sh` and `ll-performance.sh` from project root to `scripts/dev/` directory
+  - Updated `check-aliases.sh` to use `PROJECT_ROOT` variable for proper path resolution from new location
+  - Updated Makefile `check-aliases` target to reference `scripts/dev/check-aliases.sh`
+  - Updated `.pre-commit-config.yaml` to reference `scripts/dev/check-aliases.sh` for alias synchronization check
+- Enhanced pre-commit hook integration:
+  - Updated `.git/hooks/pre-commit` to call pre-commit framework, ensuring all hooks from `.pre-commit-config.yaml` (including `check-aliases-sync`) are executed
+  - `check-aliases.sh` is now managed exclusively through `.pre-commit-config.yaml` instead of direct hook integration
 - Updated documentation and enhanced project structure:
   - Added comprehensive GitHub Actions CI/CD pipeline for automated testing
   - Moved `IMPROVEMENTS.md` to the `docs/` directory for better organization

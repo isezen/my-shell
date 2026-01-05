@@ -10,11 +10,14 @@
 │   └── activate.zsh
 ├── lib
 ├── scripts
-│   └── bin
-│       ├── dus
-│       ├── dusf
-│       ├── dusf.
-│       └── ll
+│   ├── bin
+│   │   ├── dus
+│   │   ├── dusf
+│   │   ├── dusf.
+│   │   └── ll
+│   └── dev
+│       ├── check-aliases.sh
+│       └── ll-performance.sh
 ├── shell
 │   ├── bash
 │   │   ├── aliases.bash
@@ -26,11 +29,12 @@
 │   │   ├── env.fish
 │   │   ├── init.fish
 │   │   └── prompt.fish
-│   └── zsh
-│       ├── aliases.zsh
-│       ├── env.zsh
-│       ├── init.zsh
-│       └── prompt.zsh
+│   ├── zsh
+│   │   ├── aliases.zsh
+│   │   ├── env.zsh
+│   │   ├── init.zsh
+│   │   └── prompt.zsh
+│   └── aliases.yml
 ├── tests
 │   ├── test_helper
 │   │   ├── bats-assert
@@ -53,10 +57,9 @@
 ├── CONTRIBUTING.md
 ├── install.sh
 ├── LICENSE
-├── ll-performance.sh
 ├── Makefile
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 43 files
+15 directories, 45 files
 ```

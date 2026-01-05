@@ -1,0 +1,171 @@
+# Total aliases: 81 (70 regular + 11 dynamic)
+
+aliases:
+- name: c
+  description: 'clear terminal'
+- name: clhist
+  description: 'clear history'
+- name: df
+  description: 'dfc if available'
+- name: dir
+  description: 'list entries by columns'
+- name: du
+  description: 'disk usage'
+- name: du.
+  description: 'disk usage current directory'
+- name: du2
+  description: 'interactive disk usage'
+- name: dufiles
+  description: 'disk usage of files by extension'
+- name: dusd
+  description: 'disk usage of directories'
+- name: dushf
+  description: 'disk usage of hidden files'
+- name: egrep
+  description: 'colorize egrep'
+- name: fgrep
+  description: 'colorize fgrep'
+- name: fhere
+  description: 'find in current directory'
+- name: FindFiles
+  description: 'find files by name pattern'
+- name: fish_greeting
+  description: 'greeting for fish'
+  shell: fish
+- name: free
+  description: 'free memory'
+- name: grep
+  description: 'colorize grep'
+- name: h
+  description: 'history'
+- name: hc
+  description: 'history clear'
+- name: head
+  description: 'head with column width'
+- name: hg
+  description: 'search history'
+- name: hs
+  description: 'statistics of history'
+- name: internalip
+  description: 'show internal ip'
+- name: j
+  description: 'jobs list'
+- name: l
+  description: 'list entries by columns'
+- name: la
+  description: 'list regular + hidden'
+- name: lad
+  description: 'list all directories'
+- name: laf
+  description: 'list regular+hidden files'
+- name: ld
+  description: 'list regular directories'
+- name: lf
+  description: 'list regular files'
+- name: lh
+  description: 'list hidden items'
+- name: lhd
+  description: 'list hidden directories'
+- name: lhf
+  description: 'list hidden files'
+- name: ll
+  description: 'long list'
+- name: lla
+  description: 'long list all'
+- name: llad
+  description: 'long list all directories'
+- name: llaf
+  description: 'long list all files + hidden'
+- name: lld
+  description: 'long list regular directories'
+- name: llf
+  description: 'long list regular files'
+- name: llh
+  description: 'long list hidden'
+- name: llhd
+  description: 'long list hidden directories'
+- name: llhf
+  description: 'long list only hidden files'
+- name: ls
+  description: 'list files'
+- name: mcd
+  description: 'mkdir a directory and move into that directory'
+- name: mem
+  description: 'show free memory amount'
+- name: mkd
+  description: 'mkdir with parent directories and verbose output'
+- name: mkdir
+  description: 'mkdir with parent directories'
+- name: myip
+  description: 'show my ip'
+- name: nginxreload
+  description: 'reload nginx'
+- name: nginxtest
+  description: 'test nginx config'
+- name: now
+  description: 'current time'
+- name: nowdate
+  description: 'current date'
+- name: nowtime
+  description: 'current time'
+- name: showpath
+  description: 'show PATH'
+- name: pfind
+  description: 'find process'
+- name: ping
+  description: 'ping with count'
+- name: ports
+  description: 'netstat'
+- name: ps
+  description: 'process status'
+- name: psg
+  description: 'searchable process table'
+- name: r
+  description: 'radian'
+- name: rm!
+  description: 'permanently delete command'
+- name: sagi
+  description: 'sudo apt-get install'
+  os: linux
+- name: sl
+  description: 'typo correction for ls'
+- name: sourceme
+  description: 'source profile/config'
+- name: tail
+  description: 'tail with column width'
+- name: top
+  description: ''
+- name: topme
+  description: 'top for current user'
+- name: update
+  description: 'update Linux/macports'
+- name: vdir
+  description: 'vertical directory listing'
+- name: webify
+  description: 'resize images for web'
+- name: wget
+  description: 'continue download in case of interruption'
+
+dynamic_aliases:
+- name: '..'
+  description: 'Up 1 level'
+- name: '...'
+  description: 'Up 2 levels'
+- name: '....'
+  description: 'Up 3 levels'
+- name: '.....'
+  description: 'Up 4 levels'
+- name: '......'
+  description: 'Up 5 levels'
+- name: '.1'
+  description: 'Up 1 level'
+- name: '.2'
+  description: 'Up 2 levels'
+- name: '.3'
+  description: 'Up 3 levels'
+- name: '.4'
+  description: 'Up 4 levels'
+- name: '.5'
+  description: 'Up 5 levels'
+- name: cdh
+  description: 'Go to Home'

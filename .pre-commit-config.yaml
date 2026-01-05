@@ -54,3 +54,13 @@ repos:
         files: \.fish$
         pass_filenames: true
 
+  # Check aliases synchronization
+  - repo: local
+    hooks:
+      - id: check-aliases-sync
+        name: Check aliases synchronization
+        entry: bash scripts/dev/check-aliases.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
