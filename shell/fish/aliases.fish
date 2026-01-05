@@ -333,34 +333,40 @@ else if __my_shell_has grep
   function egrep; command grep -E --color=auto $argv; end
 end
 
-# head wrapper with optional colorizers
-function head
-  set -l x (tput cols)
-  set x (math "$x - 1")
-  set -l cmd "command head $argv | command cut -b 1-$x"
-
-  if __my_shell_has ccze
+if __my_shell_has ccze
+  # head wrapper with optional colorizers
+  function head
+    set -l x (tput cols)
+    set x (math "$x - 1")
+    set -l cmd "command head $argv | command cut -b 1-$x"
     set cmd "$cmd | command ccze -A"
-  else if __my_shell_has grc
-    set cmd "grc $cmd"
+    eval $cmd
   end
-
-  eval $cmd
-end
-
-# tail wrapper with optional colorizers
-function tail
-  set -l x (tput cols)
-  set x (math "$x - 1")
-  set -l cmd "command tail $argv | command cut -b 1-$x"
-
-  if __my_shell_has ccze
+  # tail wrapper with optional colorizers
+  function tail
+    set -l x (tput cols)
+    set x (math "$x - 1")
+    set -l cmd "command tail $argv | command cut -b 1-$x"
     set cmd "$cmd | command ccze -A"
-  else if __my_shell_has grc
-    set cmd "grc $cmd"
+    eval $cmd
   end
-
-  eval $cmd
+else if __my_shell_has grc
+  # head wrapper with optional colorizers
+  function head
+    set -l x (tput cols)
+    set x (math "$x - 1")
+    set -l cmd "command head $argv | command cut -b 1-$x"
+    set cmd "grc $cmd"
+    eval $cmd
+  end
+  # tail wrapper with optional colorizers
+  function tail
+    set -l x (tput cols)
+    set x (math "$x - 1")
+    set -l cmd "command tail $argv | command cut -b 1-$x"
+    set cmd "grc $cmd"
+    eval $cmd
+  end
 end
 
 # ============================================================================

@@ -25,29 +25,6 @@ if __my_shell_has clear; then
   c() { command clear; }
 fi
 
-# Greeting (only define if fortune exists)
-if __my_shell_has fortune; then
-  fish_greeting() {
-    # Colorized fortune (best-effort)
-    local -a cols
-    cols=(red green brown yellow blue magenta purple cyan white)
-    local i=$(( (RANDOM % 9) + 1 ))
-
-    if __my_shell_has tput; then
-      # Map to ANSI colors (best-effort; may vary by terminfo)
-      # Use setaf with a simple numeric palette
-      tput setaf $(( (RANDOM % 7) + 1 )) 2>/dev/null || true
-    fi
-
-    fortune -a
-    echo
-
-    if __my_shell_has tput; then
-      tput sgr0 2>/dev/null || true
-    fi
-  }
-fi
-
 # ============================================================================
 # Directory Navigation
 # ============================================================================
@@ -85,7 +62,7 @@ if __my_shell_has ls && __my_shell_has getopt; then
     local args
     args="$(getopt -s sh -l '' -o l -- "$@" 2>/dev/null)" || args=""
     if [[ "$args" == " -l --"* ]]; then
-      if __my_shell_has ll; then
+      if command -v ll >/dev/null 2>&1; then
         command ll -hGg "${param[@]}" "$@"
       else
         command ls "${param[@]}" "$@"
@@ -337,31 +314,45 @@ elif __my_shell_has grep; then
   egrep() { command grep -E --color=auto "$@"; }
 fi
 
-head() {
-  local x
-  x="$(tput cols 2>/dev/null || echo 80)"
-  x=$((x - 1))
-  if __my_shell_has ccze; then
-    command head "$@" | command cut -b "1-$x" | command ccze -A
-  elif __my_shell_has grc; then
-    grc command head "$@" | command cut -b "1-$x"
-  else
-    command head "$@" | command cut -b "1-$x"
-  fi
-}
-
-tail() {
-  local x
-  x="$(tput cols 2>/dev/null || echo 80)"
-  x=$((x - 1))
-  if __my_shell_has ccze; then
-    command tail "$@" | command cut -b "1-$x" | command ccze -A
-  elif __my_shell_has grc; then
-    grc command tail "$@" | command cut -b "1-$x"
-  else
-    command tail "$@" | command cut -b "1-$x"
-  fi
-}
+if __my_shell_has ccze; then
+  # head wrapper with optional colorizers
+  head() {
+    local x
+    x="$(tput cols 2>/dev/null || echo 80)"
+    x=$((x - 1))
+    local cmd="command head \"\$@\" | command cut -b \"1-$x\""
+    cmd="$cmd | command ccze -A"
+    eval "$cmd"
+  }
+  # tail wrapper with optional colorizers
+  tail() {
+    local x
+    x="$(tput cols 2>/dev/null || echo 80)"
+    x=$((x - 1))
+    local cmd="command tail \"\$@\" | command cut -b \"1-$x\""
+    cmd="$cmd | command ccze -A"
+    eval "$cmd"
+  }
+elif __my_shell_has grc; then
+  # head wrapper with optional colorizers
+  head() {
+    local x
+    x="$(tput cols 2>/dev/null || echo 80)"
+    x=$((x - 1))
+    local cmd="command head \"\$@\" | command cut -b \"1-$x\""
+    cmd="grc $cmd"
+    eval "$cmd"
+  }
+  # tail wrapper with optional colorizers
+  tail() {
+    local x
+    x="$(tput cols 2>/dev/null || echo 80)"
+    x=$((x - 1))
+    local cmd="command tail \"\$@\" | command cut -b \"1-$x\""
+    cmd="grc $cmd"
+    eval "$cmd"
+  }
+fi
 
 # ============================================================================
 # History

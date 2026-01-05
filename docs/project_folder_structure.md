@@ -17,8 +17,8 @@
 │   │   ├── ll-chatgpt
 │   │   └── ll2
 │   └── dev
-│       ├── ll-perf
-│       └── test-ll-compare.sh
+│       ├── ll-compare
+│       └── ll-perf
 ├── shell
 │   ├── bash
 │   │   ├── aliases.bash
