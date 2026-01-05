@@ -59,7 +59,7 @@ repos:
     hooks:
       - id: check-aliases-sync
         name: Check aliases synchronization
-        entry: bash scripts/dev/check-aliases.sh
+        entry: bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/alias-sync.bats; else echo "bats not found, skipping alias sync check"; exit 0; fi'
         language: system
         pass_filenames: false
         always_run: true

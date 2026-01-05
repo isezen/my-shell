@@ -1,7 +1,7 @@
 # Makefile for my-shell project
 # Provides convenient commands for linting, formatting, and testing
 
-.PHONY: help lint lint-bash lint-fish format format-fish check check-aliases install-hooks test test-bats test-act clean
+.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-act clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -62,15 +62,15 @@ format-fish: ## Format fish scripts with fish_indent
 		exit 1; \
 	fi
 
-check: lint check-aliases ## Run all checks (linting and alias synchronization)
+check: lint alias-sync ## Run all checks (linting and alias synchronization)
 
-check-aliases: ## Check alias synchronization across all shells
+alias-sync: ## Check alias synchronization across all shells using BATS
 	@echo "$(COLOR_GREEN)Checking alias synchronization...$(COLOR_RESET)"
-	@if [ -f scripts/dev/check-aliases.sh ]; then \
-		bash scripts/dev/check-aliases.sh || exit 1; \
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/alias-sync.bats || exit 1; \
 		echo "$(COLOR_GREEN)✓ All aliases are synchronized$(COLOR_RESET)"; \
 	else \
-		echo "$(COLOR_RED)✗ scripts/dev/check-aliases.sh not found$(COLOR_RESET)"; \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
 		exit 1; \
 	fi
 

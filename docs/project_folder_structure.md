@@ -15,7 +15,6 @@
 │   │   ├── dusf.
 │   │   └── ll
 │   └── dev
-│       ├── check-aliases.sh
 │       └── ll-performance.sh
 ├── shell
 │   ├── bash
@@ -40,6 +39,7 @@
 │   │   │   └── load.bash
 │   │   └── bats-support
 │   │       └── load.bash
+│   ├── alias-sync.bats
 │   ├── alias.bats
 │   ├── bash.bats
 │   ├── install.bats
