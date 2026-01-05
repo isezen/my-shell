@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Pre-commit hook script to check that all aliases in shell/aliases.yml
 # are present in all shell-specific aliases.* files
 # Uses file parsing instead of environment validation
@@ -139,17 +139,25 @@ should_check_alias() {
 }
 
 # Extract all aliases from both sections
-declare -A alias_info  # key: alias_name, value: "shell"
+# Use parallel arrays instead of associative array for bash 3.2 compatibility
+alias_names=()
+alias_shells=()
 
 while IFS='|' read -r name shell; do
-    [[ -n "$name" ]] && alias_info["$name"]="$shell"
+    if [[ -n "$name" ]]; then
+        alias_names+=("$name")
+        alias_shells+=("$shell")
+    fi
 done < <(extract_aliases_from_yaml "aliases")
 
 while IFS='|' read -r name shell; do
-    [[ -n "$name" ]] && alias_info["$name"]="$shell"
+    if [[ -n "$name" ]]; then
+        alias_names+=("$name")
+        alias_shells+=("$shell")
+    fi
 done < <(extract_aliases_from_yaml "dynamic_aliases")
 
-if [[ ${#alias_info[@]} -eq 0 ]]; then
+if [[ ${#alias_names[@]} -eq 0 ]]; then
     echo -e "${YELLOW}Warning: No aliases found in ${ALIASES_YML}${NC}" >&2
     exit 0
 fi
@@ -169,8 +177,9 @@ if [[ ! -f "$bash_file" ]]; then
 fi
 
 echo "Checking aliases in bash..." >&2
-for alias_name in "${!alias_info[@]}"; do
-    alias_shell="${alias_info[$alias_name]}"
+for i in $(seq 0 $((${#alias_names[@]} - 1))); do
+    alias_name="${alias_names[$i]}"
+    alias_shell="${alias_shells[$i]}"
     
     # Check if this alias should be checked for bash
     if ! should_check_alias "$alias_shell" "bash"; then
@@ -180,7 +189,7 @@ for alias_name in "${!alias_info[@]}"; do
     # Check if alias exists in file
     if ! check_alias_in_file "$bash_file" "$alias_name" "bash"; then
         missing_aliases+=("bash:${alias_name}")
-        ((errors++)) || true
+        errors=$((errors + 1))
     fi
 done
 
@@ -191,8 +200,9 @@ if [[ ! -f "$zsh_file" ]]; then
 fi
 
 echo "Checking aliases in zsh..." >&2
-for alias_name in "${!alias_info[@]}"; do
-    alias_shell="${alias_info[$alias_name]}"
+for i in $(seq 0 $((${#alias_names[@]} - 1))); do
+    alias_name="${alias_names[$i]}"
+    alias_shell="${alias_shells[$i]}"
     
     # Check if this alias should be checked for zsh
     if ! should_check_alias "$alias_shell" "zsh"; then
@@ -202,7 +212,7 @@ for alias_name in "${!alias_info[@]}"; do
     # Check if alias exists in file
     if ! check_alias_in_file "$zsh_file" "$alias_name" "zsh"; then
         missing_aliases+=("zsh:${alias_name}")
-        ((errors++)) || true
+        errors=$((errors + 1))
     fi
 done
 
@@ -213,8 +223,9 @@ if [[ ! -f "$fish_file" ]]; then
 fi
 
 echo "Checking aliases in fish..." >&2
-for alias_name in "${!alias_info[@]}"; do
-    alias_shell="${alias_info[$alias_name]}"
+for i in $(seq 0 $((${#alias_names[@]} - 1))); do
+    alias_name="${alias_names[$i]}"
+    alias_shell="${alias_shells[$i]}"
     
     # Check if this alias should be checked for fish
     if ! should_check_alias "$alias_shell" "fish"; then
@@ -224,7 +235,7 @@ for alias_name in "${!alias_info[@]}"; do
     # Check if alias exists in file
     if ! check_alias_in_file "$fish_file" "$alias_name" "fish"; then
         missing_aliases+=("fish:${alias_name}")
-        ((errors++)) || true
+        errors=$((errors + 1))
     fi
 done
 
