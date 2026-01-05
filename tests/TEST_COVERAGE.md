@@ -12,16 +12,16 @@ Bu proje BATS (Bash Automated Testing System) kullanarak shell script'lerini tes
 
 ---
 
-## 1. alias.bats - alias.sh Testleri
+## 1. alias.bats - shell/bash/aliases.bash Testleri
 
 **Test Dosyası:** `tests/alias.bats`  
-**Kaynak Dosya:** `alias.sh`  
+**Kaynak Dosya:** `shell/bash/aliases.bash`  
 **Test Sayısı:** 26 test
 
 ### Test Edilen Özellikler
 
 #### 1.1 Dosya Yüklenebilirliği
-- ✅ `alias.sh` dosyasının hatasız yüklenebilmesi
+- ✅ `shell/bash/aliases.bash` dosyasının hatasız yüklenebilmesi
 
 #### 1.2 Fonksiyon Tanımları
 Aşağıdaki fonksiyonların tanımlı olduğu test edilir:
@@ -73,16 +73,16 @@ Aşağıdaki alias'ların tanımlı olduğu test edilir:
 
 ---
 
-## 2. bash.bats - bash.sh Testleri
+## 2. bash.bats - shell/bash/prompt.bash and shell/bash/env.bash Testleri
 
 **Test Dosyası:** `tests/bash.bats`  
-**Kaynak Dosya:** `bash.sh`  
+**Kaynak Dosya:** `shell/bash/prompt.bash` ve `shell/bash/env.bash`  
 **Test Sayısı:** 10 test
 
 ### Test Edilen Özellikler
 
 #### 2.1 Dosya Yüklenebilirliği
-- ✅ `bash.sh` dosyasının hatasız yüklenebilmesi
+- ✅ `shell/bash/env.bash` ve `shell/bash/prompt.bash` dosyalarının hatasız yüklenebilmesi
 
 #### 2.2 Prompt Ayarları
 - ✅ `PS1` değişkeninin ayarlanması
@@ -180,8 +180,8 @@ Aşağıdaki alias'ların tanımlı olduğu test edilir:
 
 | Dosya | Test Sayısı | Kapsam |
 |-------|------------|--------|
-| `alias.sh` | 26 | Fonksiyonlar, alias'lar, dinamik alias oluşturma |
-| `bash.sh` | 10 | Prompt ayarları, history ayarları, prompt komutları |
+| `shell/bash/aliases.bash` | 26 | Fonksiyonlar, alias'lar, dinamik alias oluşturma |
+| `shell/bash/prompt.bash` ve `shell/bash/env.bash` | 10 | Prompt ayarları, history ayarları, prompt komutları |
 | `scripts/ll` | 11 | Dosya varlığı, temel işlevsellik, komut satırı seçenekleri |
 | `scripts/dus` | 8 | Dosya varlığı, temel işlevsellik, komut satırı seçenekleri |
 | **TOPLAM** | **55** | |
@@ -190,7 +190,7 @@ Aşağıdaki alias'ların tanımlı olduğu test edilir:
 
 | Test Türü | Açıklama | Örnek |
 |-----------|----------|-------|
-| **Yüklenebilirlik** | Dosyanın hatasız yüklenebilmesi | `alias.sh can be sourced without errors` |
+| **Yüklenebilirlik** | Dosyanın hatasız yüklenebilmesi | `shell/bash/aliases.bash can be sourced without errors` |
 | **Tanım Testleri** | Fonksiyon/alias'ların tanımlı olması | `mem function is defined` |
 | **Değişken Testleri** | Değişkenlerin doğru değerlere sahip olması | `PS1 is set` |
 | **İşlevsellik Testleri** | Fonksiyonların beklenen şekilde çalışması | `mcd function creates directory` |
@@ -203,7 +203,7 @@ Aşağıdaki alias'ların tanımlı olduğu test edilir:
 
 ### Henüz Test Edilmeyen Özellikler
 
-#### alias.sh
+#### shell/bash/aliases.bash
 - [ ] `mem` fonksiyonunun gerçek çıktısı (macOS'a özgü)
 - `FindFiles` fonksiyonunun gerçek arama işlevi
 - `dushf`, `dufiles`, `dusd` fonksiyonlarının gerçek disk kullanımı hesaplaması
@@ -212,7 +212,7 @@ Aşağıdaki alias'ların tanımlı olduğu test edilir:
 - Koşullu alias'lar (ör. `grep`, `fgrep`, `egrep` - sadece komut varsa)
 - Platform-spesifik alias'lar (ör. Ubuntu için `sagi`, `update`)
 
-#### bash.sh
+#### shell/bash/prompt.bash ve shell/bash/env.bash
 - [ ] `bash_prompt` fonksiyonunun renklendirme işlevi
 - `dircolors` yapılandırması
 - Terminal renk desteği kontrolü

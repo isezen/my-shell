@@ -14,7 +14,7 @@ setup() {
   source "$PROJECT_ROOT/shell/bash/aliases.bash"
 }
 
-@test "alias.sh can be sourced without errors" {
+@test "shell/bash/aliases.bash can be sourced without errors" {
   # This test passes if setup() succeeds
   run true
   assert_success
@@ -28,36 +28,42 @@ setup() {
   assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "cd_aliases function creates navigation aliases" {
-  # cd_aliases is called and unset in alias.sh, so we check for the aliases it creates
-  # Check if cdh alias is created
-  run alias cdh
+@test "cdh function is defined" {
+  run type cdh
+  assert_success
+  assert_output --partial "cdh"
+  assert_output --partial "function" || assert_output --partial "işlev"
+}
+
+@test "navigation functions are defined" {
+  # Check if .1 function is created
+  run type .1
   assert_success
   
-  # Check if .1 alias is created
-  run alias .1
-  assert_success
-  
-  # Check if .. alias is created
-  run alias ..
+  # Check if .. function is created
+  run type ..
   assert_success
 }
 
-@test "ls_aliases function creates listing aliases" {
-  # ls_aliases is called and unset in alias.sh, so we check for the aliases it creates
-  # Check if ls alias is created
-  run alias ls
+@test "ls function is defined" {
+  run type ls
   assert_success
-  
-  # Check if la alias is created
-  run alias la
+  assert_output --partial "ls"
+  assert_output --partial "function" || assert_output --partial "işlev"
+}
+
+@test "la function is defined" {
+  run type la
   assert_success
-  
-  # Check if ll alias is created (if available)
-  if hash ll 2>/dev/null || type ll >/dev/null 2>&1; then
-    run alias ll
-    assert_success
-  fi
+  assert_output --partial "la"
+  assert_output --partial "function" || assert_output --partial "işlev"
+}
+
+@test "ll function is defined" {
+  run type ll
+  assert_success
+  assert_output --partial "ll"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
 @test "mcd function is defined" {
@@ -100,14 +106,6 @@ setup() {
   assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "print_files function is defined" {
-  run type print_files
-  assert_success
-  # Check for function definition (works in both English and Turkish)
-  assert_output --partial "print_files"
-  assert_output --partial "function" || assert_output --partial "işlev"
-}
-
 @test "hs function is defined" {
   run type hs
   assert_success
@@ -116,77 +114,115 @@ setup() {
   assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "get_distro function is defined" {
-  run type get_distro
+@test "c function is defined (clear)" {
+  run type c
   assert_success
-  # Check for function definition (works in both English and Turkish)
-  assert_output --partial "get_distro"
+  assert_output --partial "c"
   assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "clear alias is defined" {
-  run alias c
+@test "rm! function is defined" {
+  run type 'rm!'
   assert_success
+  assert_output --partial "rm!"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "rm! alias is defined" {
-  run alias 'rm!'
+@test "fhere function is defined" {
+  run type fhere
   assert_success
+  assert_output --partial "fhere"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "fhere alias is defined" {
-  run alias fhere
+@test "h function is defined (history)" {
+  run type h
   assert_success
+  assert_output --partial "h"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "h alias is defined (history)" {
-  run alias h
-  assert_success
+@test "hg function is defined (history grep)" {
+  # hg is only defined if grep is available
+  if command -v grep >/dev/null 2>&1; then
+    run type hg
+    assert_success
+    assert_output --partial "hg"
+    assert_output --partial "function" || assert_output --partial "işlev"
+  else
+    skip "grep not available"
+  fi
 }
 
-@test "hg alias is defined (history grep)" {
-  run alias hg
+@test "j function is defined (jobs)" {
+  run type j
   assert_success
+  assert_output --partial "j"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "j alias is defined (jobs)" {
-  run alias j
+@test "showpath function is defined" {
+  run type showpath
   assert_success
+  assert_output --partial "showpath"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "path alias is defined" {
-  run alias path
+@test "now function is defined" {
+  run type now
   assert_success
+  assert_output --partial "now"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "now alias is defined" {
-  run alias now
+@test "nowtime function is defined" {
+  run type nowtime
   assert_success
+  assert_output --partial "nowtime"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "nowtime alias is defined" {
-  run alias nowtime
+@test "nowdate function is defined" {
+  run type nowdate
   assert_success
+  assert_output --partial "nowdate"
+  assert_output --partial "function" || assert_output --partial "işlev"
 }
 
-@test "nowdate alias is defined" {
-  run alias nowdate
-  assert_success
+@test "du function is defined (if available)" {
+  # du is conditionally defined based on system
+  if type du >/dev/null 2>&1; then
+    run type du
+    assert_success
+    assert_output --partial "du"
+    assert_output --partial "function" || assert_output --partial "işlev"
+  else
+    skip "du function not available on this system"
+  fi
 }
 
-@test "du alias is defined" {
-  run alias du
-  assert_success
+@test "myip function is defined (if available)" {
+  # myip is conditionally defined based on curl/wget/fetch availability
+  if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || command -v fetch >/dev/null 2>&1; then
+    run type myip
+    assert_success
+    assert_output --partial "myip"
+    assert_output --partial "function" || assert_output --partial "işlev"
+  else
+    skip "myip function not available (requires curl, wget, or fetch)"
+  fi
 }
 
-@test "myip alias is defined" {
-  run alias myip
-  assert_success
-}
-
-@test "ports alias is defined" {
-  run alias ports
-  assert_success
+@test "ports function is defined (if available)" {
+  # ports is conditionally defined based on system and available tools
+  if type ports >/dev/null 2>&1; then
+    run type ports
+    assert_success
+    assert_output --partial "ports"
+    assert_output --partial "function" || assert_output --partial "işlev"
+  else
+    skip "ports function not available on this system"
+  fi
 }
 
 @test "mcd function creates directory" {

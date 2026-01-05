@@ -8,7 +8,6 @@
 │   ├── activate.bash
 │   ├── activate.fish
 │   └── activate.zsh
-├── lib
 ├── scripts
 │   ├── bin
 │   │   ├── dus
@@ -61,5 +60,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-15 directories, 45 files
+14 directories, 45 files
 ```

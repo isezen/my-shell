@@ -4,8 +4,8 @@ This directory contains BATS (Bash Automated Testing System) tests for the my-sh
 
 ## Test Files
 
-- `alias.bats` - Tests for `alias.sh` (aliases and functions)
-- `bash.bats` - Tests for `bash.sh` (bash prompt settings)
+- `alias.bats` - Tests for `shell/bash/aliases.bash` (aliases and functions)
+- `bash.bats` - Tests for `shell/bash/prompt.bash` and `shell/bash/env.bash` (bash prompt and environment settings)
 - `scripts_ll.bats` - Tests for `scripts/ll` (colorful long listing)
 - `scripts_dus.bats` - Tests for `scripts/dus` (disk usage script)
 

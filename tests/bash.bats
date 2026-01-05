@@ -17,7 +17,7 @@ setup() {
   source "$PROJECT_ROOT/shell/bash/prompt.bash"
 }
 
-@test "bash.sh can be sourced without errors" {
+@test "shell/bash/env.bash and shell/bash/prompt.bash can be sourced without errors" {
   # This test passes if setup() succeeds
   run true
   assert_success
