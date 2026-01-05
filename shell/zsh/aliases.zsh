@@ -388,27 +388,27 @@ hs() {
 # ============================================================================
 
 # macOS memory helper (vm_stat/system_profiler)
-mem() {
-  __my_shell_has vm_stat || { echo "mem: vm_stat not found" >&2; return 127; }
-  __my_shell_has system_profiler || { echo "mem: system_profiler not found" >&2; return 127; }
+if __my_shell_has vm_stat && __my_shell_has system_profiler && __my_shell_has grep && \
+   __my_shell_has awk && __my_shell_has sed; then
+  mem() {
+    local FREE_BLOCKS INACTIVE_BLOCKS SPECULATIVE_BLOCKS TOTALRAM FREE INACTIVE TOTAL
+    FREE_BLOCKS="$(vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')"
+    INACTIVE_BLOCKS="$(vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')"
+    SPECULATIVE_BLOCKS="$(vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')"
+    TOTALRAM="$(system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')"
 
-  local FREE_BLOCKS INACTIVE_BLOCKS SPECULATIVE_BLOCKS TOTALRAM FREE INACTIVE TOTAL
-  FREE_BLOCKS="$(vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')"
-  INACTIVE_BLOCKS="$(vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')"
-  SPECULATIVE_BLOCKS="$(vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')"
-  TOTALRAM="$(system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')"
+    FREE=$(( (FREE_BLOCKS + SPECULATIVE_BLOCKS) * 4096 / (1024*1024) ))
+    INACTIVE=$(( INACTIVE_BLOCKS * 4096 / (1024*1024) ))
 
-  FREE=$(( (FREE_BLOCKS + SPECULATIVE_BLOCKS) * 4096 / (1024*1024) ))
-  INACTIVE=$(( INACTIVE_BLOCKS * 4096 / (1024*1024) ))
+    if command -v bc >/dev/null 2>&1; then
+      TOTAL="$(echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)"
+    else
+      TOTAL="$(( (FREE + INACTIVE) / 1024 ))"
+    fi
 
-  if __my_shell_has bc; then
-    TOTAL="$(echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)"
-  else
-    TOTAL="$(( (FREE + INACTIVE) / 1024 ))"
-  fi
-
-  echo "Free Memory: ${TOTAL}GB of ${TOTALRAM}"
-}
+    echo "Free Memory: ${TOTAL}GB of ${TOTALRAM}"
+  }
+fi
 
 # Define free only if dependencies exist (per your preference)
 if __my_shell_has free; then

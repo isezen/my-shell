@@ -74,7 +74,7 @@ if __my_shell_has ls; and __my_shell_has getopt
 
     set -l args (getopt -s sh l $argv 2>/dev/null)
     if test "$args" = ' -l --'
-      if __my_shell_has ll
+      if command -v ll >/dev/null 2>&1
         command ll -hGg $param $argv
       else
         command ls $param $argv
@@ -395,27 +395,27 @@ end
 # ============================================================================
 
 # macOS memory helper (vm_stat/system_profiler)
-function mem
-  if not __my_shell_has vm_stat
-    echo "mem: vm_stat not found" >&2
-    return 127
+if __my_shell_has vm_stat; and __my_shell_has system_profiler; and __my_shell_has grep; and \
+   __my_shell_has awk; and __my_shell_has sed
+  function mem
+    set -l FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
+    set -l INACTIVE_BLOCKS (vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')
+    set -l SPECULATIVE_BLOCKS (vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
+    set -l TOTALRAM (system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')
+
+    set -l FREE (math "($FREE_BLOCKS+$SPECULATIVE_BLOCKS)*4096/(1024*1024)")
+    set -l INACTIVE (math "$INACTIVE_BLOCKS*4096/(1024*1024)")
+
+    set -l TOTAL
+    if type -q bc
+      set TOTAL (echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)
+    else
+      set TOTAL (math "($FREE+$INACTIVE)/1024")
+    end
+
+    echo -n -s 'Free Memory: ' (set_color purple) $TOTAL 'GB' (set_color normal) ' of ' \
+      (set_color yellow) "$TOTALRAM" (set_color normal)
   end
-  if not __my_shell_has system_profiler
-    echo "mem: system_profiler not found" >&2
-    return 127
-  end
-
-  set -l FREE_BLOCKS (vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')
-  set -l INACTIVE_BLOCKS (vm_stat | grep inactive | awk '{ print $3 }' | sed 's/\.//')
-  set -l SPECULATIVE_BLOCKS (vm_stat | grep speculative | awk '{ print $3 }' | sed 's/\.//')
-  set -l TOTALRAM (system_profiler SPHardwareDataType | grep Memory | awk '{ print $2 $3}')
-
-  set -l FREE (math "($FREE_BLOCKS+$SPECULATIVE_BLOCKS)*4096/(1024*1024)")
-  set -l INACTIVE (math "$INACTIVE_BLOCKS*4096/(1024*1024)")
-  set -l TOTAL (echo "scale=2; ($FREE+$INACTIVE)/1024" | bc)
-
-  echo -n -s 'Free Memory: ' (set_color purple) $TOTAL 'GB' (set_color normal) ' of ' \
-    (set_color yellow) "$TOTALRAM" (set_color normal)
 end
 
 if __my_shell_has free
