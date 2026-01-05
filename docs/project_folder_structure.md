@@ -13,9 +13,12 @@
 │   │   ├── dus
 │   │   ├── dusf
 │   │   ├── dusf.
-│   │   └── ll
+│   │   ├── ll
+│   │   ├── ll-chatgpt
+│   │   └── ll2
 │   └── dev
-│       └── ll-perf
+│       ├── ll-perf
+│       └── test-ll-compare.sh
 ├── shell
 │   ├── bash
 │   │   ├── aliases.bash
@@ -60,5 +63,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 45 files
+14 directories, 48 files
 ```
