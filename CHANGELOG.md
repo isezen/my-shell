@@ -69,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated Makefile `check-aliases` target to reference `scripts/dev/check-aliases.sh`
   - Updated `.pre-commit-config.yaml` to reference `scripts/dev/check-aliases.sh` for alias synchronization check
   - Made `check-aliases.sh` compatible with bash 3.2.57+ by replacing associative arrays with parallel arrays for better macOS compatibility
+  - Added verbose mode (`-v`/`--verbose`) to `check-aliases.sh` for detailed debugging output
+  - Improved `check-aliases.sh` output: normal mode shows only success/error messages, verbose mode shows all matched lines and progress messages
 - Enhanced environment activation:
   - Added `scripts/dev/` directory to PATH when environment is activated (all shells: bash, zsh, fish)
   - Development scripts in `scripts/dev/` are now directly accessible after activation

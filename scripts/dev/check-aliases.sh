@@ -2,8 +2,31 @@
 # Pre-commit hook script to check that all aliases in shell/aliases.yml
 # are present in all shell-specific aliases.* files
 # Uses file parsing instead of environment validation
+#
+# Usage: check-aliases.sh [-v|--verbose]
+#   -v, --verbose  Show detailed output including matched lines
 
 set -euo pipefail
+
+# Parse command line arguments
+VERBOSE=false
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        -v|--verbose)
+            VERBOSE=true
+            ;;
+        -h|--help)
+            echo "Usage: $0 [-v|--verbose]"
+            echo "  -v, --verbose  Show detailed output including matched lines"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Use -h or --help for usage information" >&2
+            exit 1
+            ;;
+    esac
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -101,20 +124,30 @@ check_alias_in_file() {
         bash|zsh)
             # Check for: alias name= or name() or function name() or function name {
             # Use -F for literal string matching to avoid regex escaping issues
-            if grep -F "alias ${alias_name}=" "$file" 2>/dev/null || \
-               grep -F "alias \"${alias_name}\"=" "$file" 2>/dev/null || \
-               grep -F "alias '${alias_name}'=" "$file" 2>/dev/null || \
-               grep -F "${alias_name}()" "$file" 2>/dev/null || \
-               grep -F "${alias_name} (" "$file" 2>/dev/null || \
-               grep -F "function ${alias_name}()" "$file" 2>/dev/null || \
-               grep -F "function ${alias_name} {" "$file" 2>/dev/null; then
+            # Use -q for quiet mode unless verbose is enabled
+            local grep_flags="-F"
+            if [[ "$VERBOSE" != "true" ]]; then
+                grep_flags="-qF"
+            fi
+            
+            if grep $grep_flags "alias ${alias_name}=" "$file" 2>/dev/null || \
+               grep $grep_flags "alias \"${alias_name}\"=" "$file" 2>/dev/null || \
+               grep $grep_flags "alias '${alias_name}'=" "$file" 2>/dev/null || \
+               grep $grep_flags "${alias_name}()" "$file" 2>/dev/null || \
+               grep $grep_flags "${alias_name} (" "$file" 2>/dev/null || \
+               grep $grep_flags "function ${alias_name}()" "$file" 2>/dev/null || \
+               grep $grep_flags "function ${alias_name} {" "$file" 2>/dev/null; then
                 return 0
             fi
             return 1
             ;;
         fish)
             # Check for: function name
-            if grep -F "function ${alias_name}" "$file" 2>/dev/null; then
+            local grep_flags="-F"
+            if [[ "$VERBOSE" != "true" ]]; then
+                grep_flags="-qF"
+            fi
+            if grep $grep_flags "function ${alias_name}" "$file" 2>/dev/null; then
                 return 0
             fi
             return 1
@@ -176,7 +209,9 @@ if [[ ! -f "$bash_file" ]]; then
     exit 1
 fi
 
-echo "Checking aliases in bash..." >&2
+if [[ "$VERBOSE" == "true" ]]; then
+    echo "Checking aliases in bash..." >&2
+fi
 for i in $(seq 0 $((${#alias_names[@]} - 1))); do
     alias_name="${alias_names[$i]}"
     alias_shell="${alias_shells[$i]}"
@@ -199,7 +234,9 @@ if [[ ! -f "$zsh_file" ]]; then
     exit 1
 fi
 
-echo "Checking aliases in zsh..." >&2
+if [[ "$VERBOSE" == "true" ]]; then
+    echo "Checking aliases in zsh..." >&2
+fi
 for i in $(seq 0 $((${#alias_names[@]} - 1))); do
     alias_name="${alias_names[$i]}"
     alias_shell="${alias_shells[$i]}"
@@ -222,7 +259,9 @@ if [[ ! -f "$fish_file" ]]; then
     exit 1
 fi
 
-echo "Checking aliases in fish..." >&2
+if [[ "$VERBOSE" == "true" ]]; then
+    echo "Checking aliases in fish..." >&2
+fi
 for i in $(seq 0 $((${#alias_names[@]} - 1))); do
     alias_name="${alias_names[$i]}"
     alias_shell="${alias_shells[$i]}"
