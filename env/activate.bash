@@ -21,8 +21,8 @@ fi
 # Save PATH snapshot for exact restoration
 export MY_SHELL_OLD_PATH="$PATH"
 
-# Prepend scripts/bin/ to PATH
-export PATH="$MY_SHELL_ROOT/scripts/bin:$PATH"
+# Prepend scripts/bin/ and scripts/dev/ to PATH
+export PATH="$MY_SHELL_ROOT/scripts/bin:$MY_SHELL_ROOT/scripts/dev:$PATH"
 
 # Save PS1 before sourcing init
 export MY_SHELL_OLD_PS1="$PS1"

@@ -21,8 +21,8 @@ end
 # Save PATH snapshot for exact restoration
 set -gx MY_SHELL_OLD_PATH $PATH
 
-# Prepend scripts/bin/ to PATH
-set -gx PATH "$MY_SHELL_ROOT/scripts/bin" $PATH
+# Prepend scripts/bin/ and scripts/dev/ to PATH
+set -gx PATH "$MY_SHELL_ROOT/scripts/bin" "$MY_SHELL_ROOT/scripts/dev" $PATH
 
 # Source shell/fish/init.fish (single entrypoint)
 if test -f "$MY_SHELL_ROOT/shell/fish/init.fish"
