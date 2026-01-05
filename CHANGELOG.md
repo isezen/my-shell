@@ -65,12 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Reorganized development scripts:
   - Moved `check-aliases.sh` and `ll-performance.sh` from project root to `scripts/dev/` directory
-  - Updated `check-aliases.sh` to use `PROJECT_ROOT` variable for proper path resolution from new location
-  - Updated Makefile `check-aliases` target to reference `scripts/dev/check-aliases.sh`
-  - Updated `.pre-commit-config.yaml` to reference `scripts/dev/check-aliases.sh` for alias synchronization check
-  - Made `check-aliases.sh` compatible with bash 3.2.57+ by replacing associative arrays with parallel arrays for better macOS compatibility
-  - Added verbose mode (`-v`/`--verbose`) to `check-aliases.sh` for detailed debugging output
-  - Improved `check-aliases.sh` output: normal mode shows only success/error messages, verbose mode shows all matched lines and progress messages
+  - Renamed `ll-performance.sh` to `ll-perf` for shorter name
+  - Migrated alias synchronization logic from `check-aliases.sh` to BATS test `tests/alias-sync.bats`
+  - Removed `check-aliases.sh` script (functionality now in `alias-sync.bats`)
+  - Removed `check-aliases` Makefile target (replaced with `alias-sync`)
+  - Updated `.pre-commit-config.yaml` to use `alias-sync.bats` instead of `check-aliases.sh`
+  - Added `alias-sync` Makefile target to run alias synchronization BATS tests
+- Fixed environment activation:
+  - Fixed `reactivate` function in all shells (bash, zsh, fish) to preserve `(my-shell)` prefix after reloading environment files
+  - Prefix is now properly restored after re-sourcing init files that may reset PS1/prompt
 - Enhanced environment activation:
   - Added `scripts/dev/` directory to PATH when environment is activated (all shells: bash, zsh, fish)
   - Development scripts in `scripts/dev/` are now directly accessible after activation

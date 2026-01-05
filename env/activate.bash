@@ -50,15 +50,19 @@ reactivate() {
 
     echo "Reloading my-shell environment files..."
 
+    # Remove existing prefix if present (to avoid duplication)
+    if [[ "$PS1" == *"(my-shell)"* ]]; then
+        # Remove the prefix pattern: \[\e[0;35m\](my-shell)\[\e[0m\] 
+        PS1="${PS1//\[\e[0;35m\](my-shell)\[\e[0m\] /}"
+    fi
+
     # Re-source shell/bash/init.bash
     if [ -f "$MY_SHELL_ROOT/shell/bash/init.bash" ]; then
         source "$MY_SHELL_ROOT/shell/bash/init.bash"
     fi
 
-    # Ensure prefix exists (magenta)
-    if [[ "$PS1" != *"(my-shell)"* ]]; then
-        PS1="\[\e[0;35m\](my-shell)\[\e[0m\] $PS1"
-    fi
+    # Always add prefix after re-sourcing (prompt.bash may have reset PS1)
+    PS1="\[\e[0;35m\](my-shell)\[\e[0m\] $PS1"
 
     # Redefine colortable alias
     alias colortable="$MY_SHELL_ROOT/colortable.sh"

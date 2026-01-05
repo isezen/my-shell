@@ -66,6 +66,28 @@ function reactivate -d "Reload my-shell environment files"
         source "$MY_SHELL_ROOT/shell/fish/init.fish"
     end
 
+    # Ensure prompt prefix function exists and is used
+    # Re-create the prompt prefix function if it doesn't exist
+    if not functions -q __my_shell_prompt_prefix
+        function __my_shell_prompt_prefix
+            set_color magenta
+            echo -n "(my-shell) "
+            set_color normal
+        end
+    end
+
+    # Re-setup fish_prompt to include prefix
+    # Backup current fish_prompt if not already backed up
+    if not functions -q __my_shell_old_fish_prompt
+        functions -c fish_prompt __my_shell_old_fish_prompt
+    end
+    
+    # Replace fish_prompt to include prefix
+    function fish_prompt
+        __my_shell_prompt_prefix
+        __my_shell_old_fish_prompt
+    end
+
     # Redefine colortable function
     function colortable
         bash "$MY_SHELL_ROOT/colortable.sh" $argv

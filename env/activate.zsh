@@ -50,15 +50,19 @@ reactivate() {
 
     echo "Reloading my-shell environment files..."
 
+    # Remove existing prefix if present (to avoid duplication)
+    if [[ "$PS1" == *"(my-shell)"* ]]; then
+        # Remove the prefix pattern: %F{magenta}(my-shell)%f 
+        PS1="${PS1//%F{magenta}(my-shell)%f /}"
+    fi
+
     # Re-source shell/zsh/init.zsh
     if [ -f "$MY_SHELL_ROOT/shell/zsh/init.zsh" ]; then
         source "$MY_SHELL_ROOT/shell/zsh/init.zsh"
     fi
 
-    # Ensure prefix exists (magenta)
-    if [[ "$PS1" != *"(my-shell)"* ]]; then
-        PS1="%F{magenta}(my-shell)%f $PS1"
-    fi
+    # Always add prefix after re-sourcing (prompt.zsh may have reset PS1)
+    PS1="%F{magenta}(my-shell)%f $PS1"
 
     # Redefine colortable alias
     alias colortable="$MY_SHELL_ROOT/colortable.sh"
