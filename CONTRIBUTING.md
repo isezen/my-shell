@@ -90,14 +90,16 @@ Before you begin, ensure you have the following installed:
    source env/activate.zsh   # For zsh
    source env/activate.fish  # For fish
    
-   # After making changes to alias.sh, bash.sh, or my_settings.fish:
-   reactivate  # Reload files without deactivating
+   # After making changes to shell configuration files:
+   reactivate  # Reload files without deactivating (preserves (my-shell) prefix)
    ```
 
 6. **Verify your setup**:
    ```bash
-   make lint      # Check code quality
-   make test-bats # Run tests
+   make lint       # Check code quality
+   make alias-sync # Check alias synchronization
+   make test-bats  # Run tests
+   make check      # Run all checks (lint + alias-sync)
    ```
 
 ## Development Workflow
@@ -143,13 +145,15 @@ We use **feature branches** for all changes:
    - Follow the [coding standards](#coding-standards)
    - Write tests for new features
    - Keep commits focused and logical
-   - Run `make lint` and `make test-bats` frequently
+   - Run `make lint`, `make alias-sync`, and `make test-bats` frequently
 
 3. **Before committing**:
    ```bash
-   make lint      # Check code quality
-   make test-bats # Run all tests
-   make test      # Run tests + linting
+   make lint       # Check code quality
+   make alias-sync # Check alias synchronization
+   make test-bats  # Run all tests
+   make test       # Run tests + linting
+   make check      # Run all checks (lint + alias-sync)
    ```
 
 ## Coding Standards
@@ -174,11 +178,17 @@ We use **feature branches** for all changes:
 
 ### File Organization
 
-- Shell scripts (`.sh`) in the root directory
-- Fish scripts (`.fish`) in the root directory
+- Shell-specific configurations in `shell/{bash,zsh,fish}/` directories:
+  - `init.*` - Entrypoint files that source all components
+  - `aliases.*` - Alias and function definitions
+  - `prompt.*` - Prompt configuration
+  - `env.*` - Environment variable settings
+- Executable scripts in `scripts/bin/` directory
+- Development scripts in `scripts/dev/` directory (added to PATH when activated)
 - Environment activation scripts in `env/` directory
 - Test files in `tests/` directory
 - Documentation in `docs/` directory
+- Alias definitions source: `shell/aliases.yml` (YAML format)
 
 ### Development Environment
 
@@ -196,9 +206,9 @@ source env/activate.bash  # For bash
 source env/activate.zsh   # For zsh
 source env/activate.fish  # For fish
 
-# Make changes to alias.sh, bash.sh, or my_settings.fish
+# Make changes to shell configuration files (e.g., shell/bash/aliases.bash)
 # Then reload without deactivating:
-reactivate
+reactivate  # Prefix (my-shell) is preserved after reload
 
 # When done, deactivate
 deactivate
@@ -215,8 +225,10 @@ Pre-commit hooks automatically check your code before each commit:
 
 - ShellCheck for bash/sh scripts
 - Fish syntax check for fish scripts
+- Alias synchronization check (via `alias-sync.bats`)
 - Trailing whitespace removal
 - End of file fixes
+- YAML file validation
 
 To bypass hooks (not recommended):
 ```bash
@@ -243,6 +255,7 @@ make test
 
 # Run a specific test file
 bats tests/alias.bats
+bats tests/alias-sync.bats  # Alias synchronization tests
 
 # Run with verbose output
 bats -v tests/alias.bats
@@ -279,8 +292,14 @@ bats -v tests/alias.bats
    - **Functionality**: Functions work as expected
    - **Edge cases**: Handle errors and edge cases
    - **Options**: Command-line options work correctly
+   - **Synchronization**: Alias definitions are synchronized across all shells (see `alias-sync.bats`)
 
 4. **See `tests/README.md`** for detailed testing guidelines
+
+5. **Alias synchronization testing**:
+   - The `alias-sync.bats` test ensures all aliases defined in `shell/aliases.yml` are present in all shell-specific alias files
+   - Run with: `make alias-sync` or `bats tests/alias-sync.bats`
+   - This test is automatically run by pre-commit hooks
 
 ### Test Coverage
 
@@ -300,7 +319,9 @@ bats -v tests/alias.bats
 
 2. **Ensure code quality checks pass**:
    ```bash
-   make lint
+   make lint        # Lint all scripts
+   make alias-sync  # Check alias synchronization
+   make check       # Run all checks (lint + alias-sync)
    ```
 
 3. **Update documentation** if needed:
@@ -378,7 +399,7 @@ We use **simple, descriptive commit messages**. Keep them clear and concise.
 
 ```
 Add fish syntax check to pre-commit hooks
-Fix ShellCheck warning in alias.sh line 50
+Fix ShellCheck warning in shell/bash/aliases.bash line 50
 Update README with installation instructions
 Refactor dusd function for better error handling
 ```
