@@ -233,7 +233,7 @@ Aşağıdaki alias'ların tanımlı olduğu test edilir:
 #### Diğer Scriptler
 - [ ] `scripts/dusf` - Dosya bazlı disk kullanımı script'i
 - [ ] `colortable.sh` - Renk tablosu script'i
-- [ ] `ll-performance.sh` - Performans test script'i
+- [ ] `ll-perf` - Performans test script'i
 - [ ] `install_shell_settings.sh` - Kurulum script'i
 - [ ] `install_shell_scripts.sh` - Script kurulum script'i
 
