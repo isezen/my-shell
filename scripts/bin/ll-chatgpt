@@ -100,38 +100,103 @@ if [ -z "$ll_res" ]; then
       _prefix="in"
       _abs=$((-_dt))
     fi
-    _prefix_sep=""
-    if [ -n "$_prefix" ]; then
-      _prefix_sep="$_prefix "
-    fi
+    _prefix_sep="$_prefix"
+    _num_w=2
+    _unit_w=3
     _formatted=""
     if [ "$_abs" -lt 120 ]; then
-      printf -v _formatted '%s%d %s' "$_prefix_sep" "$_abs" "sec"
+      printf -v _num '%*d' "$_num_w" "$_abs"
+      printf -v _unit '%-*s' "$_unit_w" "sec"
+      if [ -n "$_prefix" ]; then
+        if [ "${_num:0:1}" != " " ]; then
+          _num=" $_num"
+        else
+          while [ "${_num:0:2}" = "  " ]; do
+            _num="${_num:1}"
+          done
+        fi
+      fi
+      _formatted="${_prefix_sep}${_num} ${_unit}"
       _csec=$'\x1b[38;5;124m'
       _creset=$'\x1b[0m'
       _formatted="$_csec$_formatted$_creset"
     elif [ "$_abs" -lt 3600 ]; then
-      printf -v _formatted '%s%d %s' "$_prefix_sep" $((_abs / 60)) "min"
+      printf -v _num '%*d' "$_num_w" $((_abs / 60))
+      printf -v _unit '%-*s' "$_unit_w" "min"
+      if [ -n "$_prefix" ]; then
+        if [ "${_num:0:1}" != " " ]; then
+          _num=" $_num"
+        else
+          while [ "${_num:0:2}" = "  " ]; do
+            _num="${_num:1}"
+          done
+        fi
+      fi
+      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cmin=$'\x1b[38;5;215m'
       _creset=$'\x1b[0m'
       _formatted="$_cmin$_formatted$_creset"
     elif [ "$_abs" -lt 172800 ]; then
-      printf -v _formatted '%s%d %s' "$_prefix_sep" $((_abs / 3600)) "hrs"
+      printf -v _num '%*d' "$_num_w" $((_abs / 3600))
+      printf -v _unit '%-*s' "$_unit_w" "hrs"
+      if [ -n "$_prefix" ]; then
+        if [ "${_num:0:1}" != " " ]; then
+          _num=" $_num"
+        else
+          while [ "${_num:0:2}" = "  " ]; do
+            _num="${_num:1}"
+          done
+        fi
+      fi
+      _formatted="${_prefix_sep}${_num} ${_unit}"
       _chrs=$'\x1b[38;5;196m'
       _creset=$'\x1b[0m'
       _formatted="$_chrs$_formatted$_creset"
     elif [ "$_abs" -lt 3888000 ]; then
-      printf -v _formatted '%s%d %s' "$_prefix_sep" $((_abs / 86400)) "day"
+      printf -v _num '%*d' "$_num_w" $((_abs / 86400))
+      printf -v _unit '%-*s' "$_unit_w" "day"
+      if [ -n "$_prefix" ]; then
+        if [ "${_num:0:1}" != " " ]; then
+          _num=" $_num"
+        else
+          while [ "${_num:0:2}" = "  " ]; do
+            _num="${_num:1}"
+          done
+        fi
+      fi
+      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cday=$'\x1b[38;5;230m'
       _creset=$'\x1b[0m'
       _formatted="$_cday$_formatted$_creset"
     elif [ "$_abs" -lt 31536000 ]; then
-      printf -v _formatted '%s%d %s' "$_prefix_sep" $((_abs / 2592000)) "mon"
+      printf -v _num '%*d' "$_num_w" $((_abs / 2592000))
+      printf -v _unit '%-*s' "$_unit_w" "mon"
+      if [ -n "$_prefix" ]; then
+        if [ "${_num:0:1}" != " " ]; then
+          _num=" $_num"
+        else
+          while [ "${_num:0:2}" = "  " ]; do
+            _num="${_num:1}"
+          done
+        fi
+      fi
+      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cmon=$'\x1b[38;5;151m'
       _creset=$'\x1b[0m'
       _formatted="$_cmon$_formatted$_creset"
     else
-      printf -v _formatted '%s%d %s' "$_prefix_sep" $((_abs / 31536000)) "yr"
+      printf -v _num '%*d' "$_num_w" $((_abs / 31536000))
+      printf -v _unit '%-*s' "$_unit_w" "yr"
+      if [ -n "$_prefix" ]; then
+        if [ "${_num:0:1}" != " " ]; then
+          _num=" $_num"
+        else
+          while [ "${_num:0:2}" = "  " ]; do
+            _num="${_num:1}"
+          done
+        fi
+      fi
+      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cyr=$'\x1b[38;5;241m'
       _creset=$'\x1b[0m'
       _formatted="$_cyr$_formatted$_creset"
@@ -217,6 +282,7 @@ BEGIN {
   TIME_YEAR  = 31536000
 
   lsec="sec"; lmin="min"; lhrs="hrs"; lday="day"; lmon="mon"; lyr="yr"
+  time_unit_w = 3
 }
 
 # Remove ANSI color codes for length calculation
@@ -287,7 +353,7 @@ function color_size_human(s,   num, suf, out, prgx) {
   return out
 }
 
-function reltime(epoch,   dt, v, lbl, now, prefix) {
+function time_calc(epoch,   dt, v, lbl, now, prefix) {
   now = systime()
   if (NOW_EPOCH ~ /^[0-9]+$/) now = NOW_EPOCH
   dt = now - epoch
@@ -298,12 +364,11 @@ function reltime(epoch,   dt, v, lbl, now, prefix) {
   else if (dt < TIME_45DAYS) { v=int(dt/TIME_DAY);   lbl=lday }
   else if (dt < TIME_YEAR)   { v=int(dt/TIME_30DAYS);lbl=lmon }
   else                       { v=int(dt/TIME_YEAR);  lbl=lyr  }
-  if (prefix != "") return prefix " " v " " lbl
-  return v " " lbl
+  time_prefix = prefix
+  time_num = v
+  time_unit = lbl
 }
-function color_reltime(s,   parts, n, lbl, out, v) {
-  n = split(s, parts, /[[:space:]]+/)
-  lbl = parts[n]
+function color_reltime_by_lbl(s, lbl,   out) {
   if      (lbl==lsec) out = csec s creset
   else if (lbl==lmin) out = cmin s creset
   else if (lbl==lhrs) out = chrs s creset
@@ -470,7 +535,10 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   a_size[n]   = size
   a_epoch[n]  = epoch
   a_name[n]   = name
-  a_time_raw[n] = reltime(epoch + 0)
+  time_calc(epoch + 0)
+  a_tprefix[n] = time_prefix
+  a_tnum[n] = time_num
+  a_tunit[n] = time_unit
 
   # widths (raw, without color) - use strip_colors for accurate width calculation
   if (ASIZE) {
@@ -492,10 +560,12 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   size_raw = strip_colors(size)
   if (HUMANREADABLE && size_raw ~ /^[0-9]+$/) size_raw = size_raw "B"
   if (length(size_raw) > w_size) w_size = length(size_raw)
-  if (length(a_time_raw[n]) > w_reltime) w_reltime = length(a_time_raw[n])
+  tnum_s = sprintf("%d", time_num)
+  if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
 }
 
 END {
+  if (w_tnum < 2) w_tnum = 2
   for (i=1; i<=n; i++) {
     out = ""
 
@@ -540,8 +610,21 @@ END {
       out = out lpad(s_colored, w_size) " "
     }
 
-    t_colored = color_reltime(a_time_raw[i])
-    out = out lpad(t_colored, w_reltime) " "
+    num_s = sprintf("%d", a_tnum[i])
+    num_s = lpad(num_s, w_tnum)
+    unit_s = rpad(a_tunit[i], time_unit_w)
+    if (a_tprefix[i] != "") {
+      if (substr(num_s, 1, 1) != " ") {
+        num_s = " " num_s
+      } else {
+        while (substr(num_s, 1, 2) == "  ") num_s = substr(num_s, 2)
+      }
+      t_raw = a_tprefix[i] num_s " " unit_s
+    } else {
+      t_raw = num_s " " unit_s
+    }
+    t_colored = color_reltime_by_lbl(t_raw, a_tunit[i])
+    out = out t_colored " "
 
     out = out a_name[i]
 

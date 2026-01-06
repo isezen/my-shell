@@ -63,6 +63,9 @@ while (my $line = <STDIN>) {
     my $tail = substr($work, $c->{e});
     $prefix =~ s/^[ \t]+//;
     $prefix =~ s/[ \t]+$//;
+    if (length($c->{unit}) < 3 && $tail =~ /^  /) {
+      $tail =~ s/^ //;
+    }
 
     my @toks = length($prefix) ? split(/\s+/, $prefix) : ();
     next if @toks < 3;
