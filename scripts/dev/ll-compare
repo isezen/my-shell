@@ -106,18 +106,46 @@ TEST_DIR="/tmp/ll-test-$$"
 mkdir -p "$TEST_DIR"
 cd "$TEST_DIR" || exit 1
 
-# Create test files
+# Create test files (baseline)
 touch file1.txt file2.txt
 mkdir dir1 dir2
 echo "test" > file3.txt
 chmod 755 file1.txt
 chmod 644 file2.txt
 
-# Make mtimes deterministic so relative-time output doesn't differ by 1-2 seconds
-# between sequential script runs.
-# Use a fixed point in time (Jan 1, 2020 00:00:00 local time).
+# Additional filename fixtures
+# NOTE: These are intentionally tricky for whitespace-based parsers.
+# We disable normalization for tests that use these.
+touch "a b.txt"
+touch " file-leading-space.txt"
+# Tab in filename
+printf '' > $'a\tb.txt'
+# Unicode filename
+printf '' > $'İçerik-ğüşöç.txt'
 
-touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2
+# Symlink fixtures
+ln -s file1.txt symlink-to-file1
+ln -s does-not-exist broken-symlink
+
+# FIFO fixture (may fail on some restricted FS; ignore errors)
+mkfifo fifo1 2>/dev/null || true
+
+# Permission edge cases
+printf '' > setuid-file
+chmod 755 setuid-file
+chmod u+s setuid-file 2>/dev/null || true
+
+mkdir -p setgid-dir sticky-dir
+chmod 2755 setgid-dir 2>/dev/null || true
+chmod 1777 sticky-dir 2>/dev/null || true
+
+# Timestamp fixtures: deterministic + boundary coverage
+# We freeze "now" via LL_NOW_EPOCH below, then set file mtimes relative to it.
+
+# Make baseline mtimes deterministic (Jan 1, 2020 00:00:00 local time).
+touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2 \
+  "a b.txt" " file-leading-space.txt" $'a\tb.txt' $'İçerik-ğüşöç.txt' \
+  symlink-to-file1 broken-symlink setuid-file setgid-dir sticky-dir || true
 
 # Make relative-time computations deterministic between scripts by freezing “now”.
 # If the caller already set LL_NOW_EPOCH, respect it.
@@ -131,47 +159,124 @@ else
   LL_NOW_EPOCH=$(date +%s)
 fi
 
+# Helper: convert an epoch (seconds) into a touch -t timestamp (local time).
+# macOS: date -r <epoch>
+# GNU:   date -d @<epoch>
+epoch_to_touch_ts() {
+  local epoch="${1:?epoch required}"
+  if date -r "$epoch" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -r "$epoch" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  if date -d "@${epoch}" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -d "@${epoch}" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  return 1
+}
+
+# Create timestamp boundary fixtures relative to LL_NOW_EPOCH.
+# These are used to validate bucket transitions (sec/min/hour/day) deterministically.
+create_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((LL_NOW_EPOCH - delta))
+  local ts
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
+}
+
+create_mtime_fixture "mtime-now-1s" 1
+create_mtime_fixture "mtime-now-119s" 119
+create_mtime_fixture "mtime-now-120s" 120
+create_mtime_fixture "mtime-now-3599s" 3599
+create_mtime_fixture "mtime-now-3600s" 3600
+create_mtime_fixture "mtime-now-2days" 172800
+
+# Future mtime fixture (negative delta behavior). Use a fixed far-future date.
+printf '' > future-mtime
+# Jan 1, 2030 00:00:00
+ touch -t 203001010000.00 future-mtime 2>/dev/null || true
+
 # ============================================================================
 # TEST CASES
 # ============================================================================
+# Format: NAME|||ARGV|||NO_NORMALIZE
+# - NAME: label shown in output.
+# - ARGV: a shell-quoted argv string. It is expanded with: eval "tc_argv=(...)".
+# - NO_NORMALIZE: "1" to disable normalization for this test (useful for filenames with
+#   spaces/tabs where whitespace squeezing would be destructive).
+
 test_cases=(
-  ""                      # Default (no options)
+  "default||| |||0"
 
   # Directory listing behavior
-  "-d"                    # LISTDIRECTORY (short)
-  "--directory"           # LISTDIRECTORY (long)
-  "-d ."                  # LISTDIRECTORY with directory
+  "-d||| -d |||0"
+  "--directory||| --directory |||0"
+  "-d .||| -d . |||0"
 
   # Owner/group toggles
-  "-g"                    # OWNER=0
-  "-G"                    # GROUPNAME=0
-  "-o"                    # GROUPNAME=0 (alternative)
-  "--no-group"            # GROUPNAME=0 (long)
-  "-g -G"                 # OWNER=0 + GROUPNAME=0
+  "-g||| -g |||0"
+  "-G||| -G |||0"
+  "-o||| -o |||0"
+  "--no-group||| --no-group |||0"
+  "-g -G||| -g -G |||0"
 
   # Size column (allocated blocks)
-  "-s"                    # ASIZE=1 (short)
-  "--size"                # ASIZE=1 (long)
+  "-s||| -s |||0"
+  "--size||| --size |||0"
 
   # Human readable size variants
-  "-h"                    # HUMANREADABLE=1 (powers of 1024)
-  "--human-readable"      # HUMANREADABLE=1 (long)
-  "--si"                  # HUMANREADABLE=1 (powers of 1000)
+  "-h||| -h |||0"
+  "--human-readable||| --human-readable |||0"
+  "--si||| --si |||0"
 
   # Numeric uid/gid
-  "-n"                    # NUMERICUIDGID=1 (short)
-  "--numeric-uid-gid"     # NUMERICUIDGID=1 (long)
+  "-n||| -n |||0"
+  "--numeric-uid-gid||| --numeric-uid-gid |||0"
 
   # Cross-combinations (core)
-  "-s -h"                 # ASIZE + HUMANREADABLE
-  "-s --si"               # ASIZE + SI human readable
-  "-n -h"                 # NUMERICUIDGID + HUMANREADABLE
-  "-n --si"               # NUMERICUIDGID + SI human readable
-  "-s -g"                 # ASIZE + OWNER=0
-  "-s -h -g -G"           # Multiple options
+  "-s -h||| -s -h |||0"
+  "-s --si||| -s --si |||0"
+  "-n -h||| -n -h |||0"
+  "-n --si||| -n --si |||0"
+  "-s -g||| -s -g |||0"
+  "-s -h -g -G||| -s -h -g -G |||0"
+
+  # Option ordering: flags after operands (your ll-chatgpt scanner is supposed to support this)
+  "file then --no-group||| file1.txt --no-group |||0"
+  "file then -G||| file1.txt -G |||0"
+  "--no-group then file||| --no-group file1.txt |||0"
 
   # Targeted path arguments
-  "-h file1.txt"          # HUMANREADABLE with file
+  "-h file1.txt||| -h file1.txt |||0"
+  "--no-group file2.txt||| --no-group file2.txt |||0"
+
+  # Filenames with spaces/tabs/unicode (normalization disabled)
+  "space filename||| $'a b.txt' |||1"
+  "leading-space filename||| $' file-leading-space.txt' |||1"
+  "tab filename||| $'a\tb.txt' |||1"
+  "unicode filename||| $'İçerik-ğüşöç.txt' |||1"
+
+  # Symlinks / FIFOs
+  "symlink||| symlink-to-file1 |||0"
+  "broken symlink||| broken-symlink |||0"
+  "fifo||| fifo1 |||0"
+
+  # Permission edge cases
+  "setuid file||| setuid-file |||0"
+  "setgid dir||| setgid-dir |||0"
+  "sticky dir||| sticky-dir |||0"
+
+  # Timestamp boundary fixtures (relative-time bucket boundaries)
+  "mtime now-1s||| mtime-now-1s |||0"
+  "mtime now-119s||| mtime-now-119s |||0"
+  "mtime now-120s||| mtime-now-120s |||0"
+  "mtime now-3599s||| mtime-now-3599s |||0"
+  "mtime now-3600s||| mtime-now-3600s |||0"
+  "mtime now-2days||| mtime-now-2days |||0"
+  "future mtime||| future-mtime |||0"
 )
 
 # ============================================================================
@@ -188,11 +293,16 @@ if [ "$FAIL_ONLY" -eq 0 ]; then
 fi
 
 for test_case in "${test_cases[@]}"; do
-  test_name="${test_case:-default}"
+  # Parse structured test case: NAME|||ARGV|||NO_NORMALIZE
+  IFS='|||' read -r test_name test_argv_str test_no_normalize <<< "$test_case"
+  test_name="${test_name:-default}"
+  test_argv_str="${test_argv_str:-}"
+  test_no_normalize="${test_no_normalize:-0}"
+
   if [ "$ONLY_MODE" -eq 1 ]; then
     matched=0
     for only in "${ONLY_TESTS[@]}"; do
-      if [ "$only" = "$test_case" ] || [ "$only" = "$test_name" ]; then
+      if [ "$only" = "$test_name" ]; then
         matched=1
         break
       fi
@@ -208,10 +318,14 @@ for test_case in "${test_cases[@]}"; do
   fi
   
   # Run all scripts and capture outputs
-  # IMPORTANT: test_case is a string like "-s -h". We must split it into argv tokens.
-  # Empty test_case should result in no additional argv.
-  if [ -n "$test_case" ]; then
-    IFS=' ' read -r -a tc_argv <<< "$test_case"
+  # IMPORTANT: ARGV is a shell-quoted argv string; expand it safely into an array.
+  # Examples:
+  #   "-s -h"
+  #   "$'a b.txt'"
+  #   "file1.txt --no-group" (flags after operands)
+  if [ -n "$test_argv_str" ]; then
+    # shellcheck disable=SC2086
+    eval "tc_argv=($test_argv_str)"
   else
     tc_argv=()
   fi
@@ -224,8 +338,8 @@ for test_case in "${test_cases[@]}"; do
     # - Always strip ANSI before normalization (comparison is about content, not colors).
     # - Squeeze repeated whitespace to a single space.
     # - Trim leading/trailing whitespace.
-    # NOTE: This intentionally treats multiple spaces as equivalent. If you later add fixtures
-    # with filenames containing multiple consecutive spaces, revisit this normalization.
+    # IMPORTANT: This MUST NOT be used for tests where filenames contain spaces/tabs,
+    # because it would destroy semantic content.
     local text="$1"
 
     # Strip ANSI escape sequences.
@@ -244,7 +358,11 @@ for test_case in "${test_cases[@]}"; do
   for script_path in "${script_paths[@]}"; do
     output=$(cd "$TEST_DIR" && "$script_path" "${tc_argv[@]}" 2>&1)
     outputs+=("$output")
-    normalized_outputs+=("$(normalize_output "$output")")
+    if [ "$test_no_normalize" -eq 1 ]; then
+      normalized_outputs+=("__NO_NORMALIZE__")
+    else
+      normalized_outputs+=("$(normalize_output "$output")")
+    fi
   done
 
   # Check if all outputs are identical (raw)
@@ -257,15 +375,18 @@ for test_case in "${test_cases[@]}"; do
     fi
   done
 
-  # Check if all outputs are identical after normalization
-  all_match_normalized=true
-  first_norm="${normalized_outputs[0]}"
-  for i in $(seq 1 $((${#normalized_outputs[@]} - 1))); do
-    if [ "${normalized_outputs[$i]}" != "$first_norm" ]; then
-      all_match_normalized=false
-      break
-    fi
-  done
+  # Check if all outputs are identical after normalization (when enabled)
+  all_match_normalized=false
+  if [ "$test_no_normalize" -eq 0 ]; then
+    all_match_normalized=true
+    first_norm="${normalized_outputs[0]}"
+    for i in $(seq 1 $((${#normalized_outputs[@]} - 1))); do
+      if [ "${normalized_outputs[$i]}" != "$first_norm" ]; then
+        all_match_normalized=false
+        break
+      fi
+    done
+  fi
   
   if [ "$all_match" = true ]; then
     if [ "$FAIL_ONLY" -eq 0 ]; then
