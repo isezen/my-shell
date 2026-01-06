@@ -17,7 +17,8 @@
 │   │   └── ll-chatgpt
 │   └── dev
 │       ├── ll-compare
-│       └── ll-perf
+│       ├── ll-perf
+│       └── ls-compare
 ├── shell
 │   ├── bash
 │   │   ├── aliases.bash
@@ -62,5 +63,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 47 files
+14 directories, 48 files
 ```

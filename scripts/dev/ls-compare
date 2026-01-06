@@ -1,8 +1,8 @@
 #!/bin/bash
-# scripts/dev/ll-compare
-# Test script to compare ll script outputs
+# scripts/dev/ls-compare
+# Test script to compare ls -l --color --time-style=+"%s" output with ll script outputs
 # Tests various parameter combinations
-# Usage: test-ll-compare.sh <script1> <script2> [script3 ...]
+# Usage: ls-compare.sh [options] <script1> [script2 ...]
 
 # ============================================================================
 # NOTE: Additional content/fixture tests to add later (not implemented here)
@@ -77,12 +77,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ $# -lt 2 ]; then
-  echo "Usage: $0 [--show-ansi] [--fail-only] [--only <TEST>] [--only=<TEST>] <script1> <script2> [script3 ...]" >&2
-  echo "Example: $0 ll ll-chatgpt" >&2
-  echo "Example: $0 --fail-only ll ll-chatgpt" >&2
-  echo "Example: $0 --show-ansi --fail-only ll ll-chatgpt ll2" >&2
-  echo "Example: $0 --fail-only --only \"-s -h\" ll ll-chatgpt" >&2
+if [ $# -lt 1 ]; then
+  echo "Usage: $0 [--show-ansi] [--fail-only] [--only <TEST>] [--only=<TEST>] <script1> [script2 ...]" >&2
+  echo "Example: $0 ll-chatgpt" >&2
+  echo "Example: $0 --fail-only ll-chatgpt" >&2
+  echo "Example: $0 --show-ansi --fail-only ll ll-chatgpt" >&2
+  echo "Example: $0 --fail-only --only \"-s -h\" ll-chatgpt" >&2
   exit 1
 fi
 
@@ -102,7 +102,7 @@ done
 # ============================================================================
 # SETUP TEST ENVIRONMENT
 # ============================================================================
-TEST_DIR="/tmp/ll-test-$$"
+TEST_DIR="/tmp/ls-compare-test-$$"
 mkdir -p "$TEST_DIR"
 cd "$TEST_DIR" || exit 1
 
@@ -119,7 +119,7 @@ chmod 644 file2.txt
 
 touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2
 
-# Make relative-time computations deterministic between scripts by freezing “now”.
+# Make relative-time computations deterministic between scripts by freezing "now".
 # If the caller already set LL_NOW_EPOCH, respect it.
 _ORIG_LL_NOW_EPOCH_SET=0
 _ORIG_LL_NOW_EPOCH_VALUE=""
@@ -182,10 +182,32 @@ passed=0
 test_num=0
 
 if [ "$FAIL_ONLY" -eq 0 ]; then
-  echo "Testing comparison: ${script_names[*]}"
+  echo "Testing comparison: ls -l --color --time-style=+\"%s\" vs ${script_names[*]}"
   echo "=================================="
   echo ""
 fi
+
+normalize_output() {
+  # Normalization goal: ignore cosmetic spacing differences while preserving semantic differences.
+  # - Always strip ANSI before normalization (comparison is about content, not colors).
+  # - Squeeze repeated whitespace to a single space.
+  # - Trim leading/trailing whitespace.
+  # NOTE: This intentionally treats multiple spaces as equivalent. If you later add fixtures
+  # with filenames containing multiple consecutive spaces, revisit this normalization.
+  local text="$1"
+
+  # Strip ANSI escape sequences.
+  while [[ "$text" =~ $'\x1b'\[ ]]; do
+    local before="${text%%$'\x1b'\[*}"
+    local after="${text#*$'\x1b'\[}"
+    after="${after#*m}"
+    text="${before}${after}"
+  done
+
+  # Normalize whitespace line-by-line.
+  printf '%s\n' "$text" \
+    | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
 
 for test_case in "${test_cases[@]}"; do
   test_name="${test_case:-default}"
@@ -207,7 +229,7 @@ for test_case in "${test_cases[@]}"; do
     echo "----------------------------------"
   fi
   
-  # Run all scripts and capture outputs
+  # Run ls -l and script, capture outputs
   # IMPORTANT: test_case is a string like "-s -h". We must split it into argv tokens.
   # Empty test_case should result in no additional argv.
   if [ -n "$test_case" ]; then
@@ -216,48 +238,31 @@ for test_case in "${test_cases[@]}"; do
     tc_argv=()
   fi
 
+  # Run ls -l with same arguments (matching ll-chatgpt's default ls parameters)
+  ls_output=$(cd "$TEST_DIR" && \ls --color "${tc_argv[@]}" -l --time-style=+"%s" 2>&1 | tr -s ' ')
+  
+  # Run all scripts and capture outputs
   outputs=()
   normalized_outputs=()
-
-  normalize_output() {
-    # Normalization goal: ignore cosmetic spacing differences while preserving semantic differences.
-    # - Always strip ANSI before normalization (comparison is about content, not colors).
-    # - Squeeze repeated whitespace to a single space.
-    # - Trim leading/trailing whitespace.
-    # NOTE: This intentionally treats multiple spaces as equivalent. If you later add fixtures
-    # with filenames containing multiple consecutive spaces, revisit this normalization.
-    local text="$1"
-
-    # Strip ANSI escape sequences.
-    while [[ "$text" =~ $'\x1b'\[ ]]; do
-      local before="${text%%$'\x1b'\[*}"
-      local after="${text#*$'\x1b'\[}"
-      after="${after#*m}"
-      text="${before}${after}"
-    done
-
-    # Normalize whitespace line-by-line.
-    printf '%s\n' "$text" \
-      | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
-  }
-
+  outputs+=("$ls_output")
+  normalized_outputs+=("$(normalize_output "$ls_output")")
+  
   for script_path in "${script_paths[@]}"; do
     output=$(cd "$TEST_DIR" && "$script_path" "${tc_argv[@]}" 2>&1)
     outputs+=("$output")
     normalized_outputs+=("$(normalize_output "$output")")
   done
 
-  # Check if all outputs are identical (raw)
+  # Check if all outputs match ls_output (raw)
   all_match=true
-  first_output="${outputs[0]}"
   for i in $(seq 1 $((${#outputs[@]} - 1))); do
-    if [ "${outputs[$i]}" != "$first_output" ]; then
+    if [ "${outputs[$i]}" != "${outputs[0]}" ]; then
       all_match=false
       break
     fi
   done
 
-  # Check if all outputs are identical after normalization
+  # Check if all outputs match after normalization
   all_match_normalized=true
   first_norm="${normalized_outputs[0]}"
   for i in $(seq 1 $((${#normalized_outputs[@]} - 1))); do
@@ -269,7 +274,7 @@ for test_case in "${test_cases[@]}"; do
   
   if [ "$all_match" = true ]; then
     if [ "$FAIL_ONLY" -eq 0 ]; then
-      echo "PASS - All outputs match"
+      echo "PASS - All outputs match exactly"
     fi
     ((passed++))
   elif [ "$all_match_normalized" = true ]; then
@@ -317,19 +322,19 @@ for test_case in "${test_cases[@]}"; do
       perl -pe 's/\e/\\033/g; s/\t/\\t/g; s/\r/\\r/g; s/\f/\\f/g; s/\v/\\v/g' <<<"$1"
     }
     
-    # Convert each output to array of lines
-    declare -a output_lines
-    for i in $(seq 0 $((${#outputs[@]} - 1))); do
-      # Split output into lines
-      temp_file=$(mktemp)
-      echo "${outputs[$i]}" > "$temp_file"
-      output_lines[i]="$temp_file"
+    # Convert each output to temp file for line-by-line processing
+    declare -a output_files
+    output_files[0]=$(mktemp)
+    echo "${outputs[0]}" > "${output_files[0]}"
+    for i in $(seq 1 $((${#outputs[@]} - 1))); do
+      output_files[$i]=$(mktemp)
+      echo "${outputs[$i]}" > "${output_files[$i]}"
     done
     
     # Find maximum number of lines
     max_lines=0
     for i in $(seq 0 $((${#outputs[@]} - 1))); do
-      line_count=$(wc -l < "${output_lines[$i]}")
+      line_count=$(wc -l < "${output_files[$i]}")
       if [ "$line_count" -gt "$max_lines" ]; then
         max_lines=$line_count
       fi
@@ -349,7 +354,7 @@ for test_case in "${test_cases[@]}"; do
         if [ "$line_len" -gt "${max_lens[$i]}" ]; then
           max_lens[$i]=$line_len
         fi
-      done < "${output_lines[$i]}"
+      done < "${output_files[$i]}"
     done
     
     # Print side-by-side with proper padding
@@ -358,7 +363,7 @@ for test_case in "${test_cases[@]}"; do
       
       # Process each output column
       for i in $(seq 0 $((${#outputs[@]} - 1))); do
-        line=$(sed -n "${line_num}p" "${output_lines[$i]}")
+        line=$(sed -n "${line_num}p" "${output_files[$i]}")
         if [ "${SHOW_ANSI}" -eq 1 ] && [ -n "$line" ]; then
           line=$(make_ansi_visible "$line")
         fi
@@ -386,7 +391,7 @@ for test_case in "${test_cases[@]}"; do
     done
     
     # Cleanup temp files
-    for temp_file in "${output_lines[@]}"; do
+    for temp_file in "${output_files[@]}"; do
       rm -f "$temp_file"
     done
   fi
@@ -417,3 +422,4 @@ else
 fi
 
 exit $errors
+
