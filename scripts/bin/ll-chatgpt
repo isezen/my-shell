@@ -100,106 +100,57 @@ if [ -z "$ll_res" ]; then
       _prefix="in"
       _abs=$((-_dt))
     fi
-    _prefix_sep="$_prefix"
+    _formatted=""
+    _creset=$'\x1b[0m'
     _num_w=2
     _unit_w=3
-    _formatted=""
+    _format_time() {
+      local _val="$1"
+      local _unit="$2"
+      local _color="$3"
+      local _num_s _unit_s _num_w_local _unit_w_local _raw _raw_past _raw_future _time_w _padded
+      _num_w_local="$_num_w"
+      if [ "${#_val}" -gt "$_num_w_local" ]; then
+        _num_w_local="${#_val}"
+      fi
+      _unit_w_local="$_unit_w"
+      if [ "${#_unit}" -gt "$_unit_w_local" ]; then
+        _unit_w_local="${#_unit}"
+      fi
+      printf -v _num_s '%*d' "$_num_w_local" "$_val"
+      printf -v _unit_s '%-*s' "$_unit_w_local" "$_unit"
+      _raw_past="${_num_s} ${_unit_s}"
+      _raw_future="in ${_val} ${_unit_s}"
+      _time_w="${#_raw_past}"
+      if [ "${#_raw_future}" -gt "$_time_w" ]; then
+        _time_w="${#_raw_future}"
+      fi
+      if [ -n "$_prefix" ]; then
+        _raw="$_raw_future"
+      else
+        _raw="$_raw_past"
+      fi
+      printf -v _padded '%*s' "$_time_w" "$_raw"
+      _formatted="${_color}${_padded}${_creset}"
+    }
     if [ "$_abs" -lt 120 ]; then
-      printf -v _num '%*d' "$_num_w" "$_abs"
-      printf -v _unit '%-*s' "$_unit_w" "sec"
-      if [ -n "$_prefix" ]; then
-        if [ "${_num:0:1}" != " " ]; then
-          _num=" $_num"
-        else
-          while [ "${_num:0:2}" = "  " ]; do
-            _num="${_num:1}"
-          done
-        fi
-      fi
-      _formatted="${_prefix_sep}${_num} ${_unit}"
       _csec=$'\x1b[38;5;124m'
-      _creset=$'\x1b[0m'
-      _formatted="$_csec$_formatted$_creset"
+      _format_time "$_abs" "sec" "$_csec"
     elif [ "$_abs" -lt 3600 ]; then
-      printf -v _num '%*d' "$_num_w" $((_abs / 60))
-      printf -v _unit '%-*s' "$_unit_w" "min"
-      if [ -n "$_prefix" ]; then
-        if [ "${_num:0:1}" != " " ]; then
-          _num=" $_num"
-        else
-          while [ "${_num:0:2}" = "  " ]; do
-            _num="${_num:1}"
-          done
-        fi
-      fi
-      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cmin=$'\x1b[38;5;215m'
-      _creset=$'\x1b[0m'
-      _formatted="$_cmin$_formatted$_creset"
+      _format_time "$((_abs / 60))" "min" "$_cmin"
     elif [ "$_abs" -lt 172800 ]; then
-      printf -v _num '%*d' "$_num_w" $((_abs / 3600))
-      printf -v _unit '%-*s' "$_unit_w" "hrs"
-      if [ -n "$_prefix" ]; then
-        if [ "${_num:0:1}" != " " ]; then
-          _num=" $_num"
-        else
-          while [ "${_num:0:2}" = "  " ]; do
-            _num="${_num:1}"
-          done
-        fi
-      fi
-      _formatted="${_prefix_sep}${_num} ${_unit}"
       _chrs=$'\x1b[38;5;196m'
-      _creset=$'\x1b[0m'
-      _formatted="$_chrs$_formatted$_creset"
+      _format_time "$((_abs / 3600))" "hrs" "$_chrs"
     elif [ "$_abs" -lt 3888000 ]; then
-      printf -v _num '%*d' "$_num_w" $((_abs / 86400))
-      printf -v _unit '%-*s' "$_unit_w" "day"
-      if [ -n "$_prefix" ]; then
-        if [ "${_num:0:1}" != " " ]; then
-          _num=" $_num"
-        else
-          while [ "${_num:0:2}" = "  " ]; do
-            _num="${_num:1}"
-          done
-        fi
-      fi
-      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cday=$'\x1b[38;5;230m'
-      _creset=$'\x1b[0m'
-      _formatted="$_cday$_formatted$_creset"
+      _format_time "$((_abs / 86400))" "day" "$_cday"
     elif [ "$_abs" -lt 31536000 ]; then
-      printf -v _num '%*d' "$_num_w" $((_abs / 2592000))
-      printf -v _unit '%-*s' "$_unit_w" "mon"
-      if [ -n "$_prefix" ]; then
-        if [ "${_num:0:1}" != " " ]; then
-          _num=" $_num"
-        else
-          while [ "${_num:0:2}" = "  " ]; do
-            _num="${_num:1}"
-          done
-        fi
-      fi
-      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cmon=$'\x1b[38;5;151m'
-      _creset=$'\x1b[0m'
-      _formatted="$_cmon$_formatted$_creset"
+      _format_time "$((_abs / 2592000))" "mon" "$_cmon"
     else
-      printf -v _num '%*d' "$_num_w" $((_abs / 31536000))
-      printf -v _unit '%-*s' "$_unit_w" "yr"
-      if [ -n "$_prefix" ]; then
-        if [ "${_num:0:1}" != " " ]; then
-          _num=" $_num"
-        else
-          while [ "${_num:0:2}" = "  " ]; do
-            _num="${_num:1}"
-          done
-        fi
-      fi
-      _formatted="${_prefix_sep}${_num} ${_unit}"
       _cyr=$'\x1b[38;5;241m'
-      _creset=$'\x1b[0m'
-      _formatted="$_cyr$_formatted$_creset"
+      _format_time "$((_abs / 31536000))" "yr" "$_cyr"
     fi
     if [ "$ASIZE" -eq 1 ]; then
       # With -s, ll prints a leading blocks column (use 0 for single-file fast path)
@@ -282,7 +233,6 @@ BEGIN {
   TIME_YEAR  = 31536000
 
   lsec="sec"; lmin="min"; lhrs="hrs"; lday="day"; lmon="mon"; lyr="yr"
-  time_unit_w = 3
 }
 
 # Remove ANSI color codes for length calculation
@@ -562,10 +512,24 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   if (length(size_raw) > w_size) w_size = length(size_raw)
   tnum_s = sprintf("%d", time_num)
   if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
+  if (length(time_unit) > w_tunit) w_tunit = length(time_unit)
 }
 
 END {
   if (w_tnum < 2) w_tnum = 2
+  if (w_tunit < 3) w_tunit = 3
+  for (i=1; i<=n; i++) {
+    num_s = sprintf("%d", a_tnum[i])
+    if (a_tprefix[i] != "") {
+      unit_s = rpad(a_tunit[i], w_tunit)
+      t_raw = a_tprefix[i] " " num_s " " unit_s
+    } else {
+      num_s = lpad(num_s, w_tnum)
+      unit_s = rpad(a_tunit[i], w_tunit)
+      t_raw = num_s " " unit_s
+    }
+    if (length(t_raw) > w_time) w_time = length(t_raw)
+  }
   for (i=1; i<=n; i++) {
     out = ""
 
@@ -611,18 +575,15 @@ END {
     }
 
     num_s = sprintf("%d", a_tnum[i])
-    num_s = lpad(num_s, w_tnum)
-    unit_s = rpad(a_tunit[i], time_unit_w)
     if (a_tprefix[i] != "") {
-      if (substr(num_s, 1, 1) != " ") {
-        num_s = " " num_s
-      } else {
-        while (substr(num_s, 1, 2) == "  ") num_s = substr(num_s, 2)
-      }
-      t_raw = a_tprefix[i] num_s " " unit_s
+      unit_s = rpad(a_tunit[i], w_tunit)
+      t_raw = a_tprefix[i] " " num_s " " unit_s
     } else {
+      num_s = lpad(num_s, w_tnum)
+      unit_s = rpad(a_tunit[i], w_tunit)
       t_raw = num_s " " unit_s
     }
+    t_raw = lpad(t_raw, w_time)
     t_colored = color_reltime_by_lbl(t_raw, a_tunit[i])
     out = out t_colored " "
 
