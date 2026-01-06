@@ -18,7 +18,9 @@
 │   └── dev
 │       ├── ll-compare
 │       ├── ll-perf
-│       └── ls-compare
+│       ├── ls-compare
+│       ├── ls-compare-canon-ls.pl
+│       └── ls-compare-canon-script.pl
 ├── shell
 │   ├── bash
 │   │   ├── aliases.bash
@@ -52,6 +54,9 @@
 │   └── TEST_COVERAGE.md
 ├── wip
 │   ├── IMPROVEMENTS.md
+│   ├── ll-chatgpt.md
+│   ├── ls-compare.md
+│   ├── patch.diff
 │   ├── plan.md
 │   └── SHELLCHECK_AND_PRE_COMMIT_EXPLANATION.md
 ├── CHANGELOG.md
@@ -63,5 +68,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 48 files
+14 directories, 53 files
 ```

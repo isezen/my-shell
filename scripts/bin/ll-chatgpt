@@ -60,25 +60,26 @@ for arg in "$@"; do
   esac
 done
 
-# FAST mode fallback for edge cases where exact ll-compatibility is currently brittle.
-# The legacy `ll` implementation has some macOS/GNU ls output quirks (spacing/ANSI/field slicing)
-# that are difficult to reproduce 1:1 in a single-pass awk while keeping performance.
-# For these option combinations, delegate to ll to guarantee byte-for-byte identical output.
-if [ "$GROUPNAME" -eq 0 ] || { [ "$ASIZE" -eq 1 ] && [ "$HUMANREADABLE" -eq 1 ]; } || { [ "$ASIZE" -eq 1 ] && [ "$OWNER" -eq 0 ] && [ "$GROUPNAME" -eq 0 ]; }; then
-  _self_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-  exec "${_self_dir}/ll" "$@"
-fi
 
 # Always force --time-style=+%s for fast relative time formatting in awk.
 # Keep user's args intact; we only read flags above and still pass "$@" through.
 # Match ll behavior: use --color (auto), so piping/ll-compare doesn't force ANSI.
-ll_res=$(\ls --color "$@" -l --time-style=+"%s" | tr -s ' ')
+ll_res=$(\ls --color "$@" -l --time-style=+"%s")
 
 # Extract total line if present (same as ll script)
 ll_total=""
 if [ "$LISTDIRECTORY" -eq 0 ]; then
-  ll_total=$(echo "$ll_res" | head -n 1)
-  ll_res=$(echo "$ll_res" | tail -n +2)
+  _first_line="$(printf '%s\n' "$ll_res" | head -n 1)"
+  if printf '%s\n' "$_first_line" | grep -Eq '^(total|toplam)[[:space:]]+'; then
+    ll_total="$_first_line"
+    ll_res="$(printf '%s\n' "$ll_res" | tail -n +2)"
+  fi
+fi
+
+# If ll_res is empty, only print a total line if present.
+if [ -z "$ll_res" ] && [ -n "$ll_total" ]; then
+  printf '%s\n' "$ll_total"
+  exit 0
 fi
 
 # If ll_res is empty (single file case), simulate what ll script does:
@@ -91,7 +92,6 @@ if [ -z "$ll_res" ]; then
       now = systime()
       if (now_epoch ~ /^[0-9]+$/) now = now_epoch
       dt = now - epoch
-      if (dt < 0) dt = 0
       print dt
     }')
     _formatted=""
@@ -141,6 +141,9 @@ if [ -z "$ll_res" ]; then
   exit 0
 fi
 
+# Resolve user name for "you" substitution in awk.
+USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+
 # Print using a single awk program (stores lines once; computes widths; prints).
 awk -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
@@ -149,7 +152,7 @@ awk -v ASIZE="$ASIZE" \
     -v OWNER="$OWNER" \
     -v GROUPNAME="$GROUPNAME" \
     -v LISTDIRECTORY="$LISTDIRECTORY" \
-    -v USERNAME="${USER:-}" '
+    -v USERNAME="$USERNAME" '
 BEGIN {
   # ANSI reset
   creset = sprintf("%c[0m", 27)
@@ -278,8 +281,6 @@ function reltime(epoch,   dt, v, lbl, now) {
   now = systime()
   if (NOW_EPOCH ~ /^[0-9]+$/) now = NOW_EPOCH
   dt = now - epoch
-  if (dt < 0) dt = 0
-
   if      (dt < TIME_2MIN)   { v=dt;                 lbl=lsec }
   else if (dt < TIME_HOUR)   { v=int(dt/TIME_MIN);   lbl=lmin }
   else if (dt < TIME_2DAYS)  { v=int(dt/TIME_HOUR);  lbl=lhrs }
@@ -301,73 +302,148 @@ function color_reltime(s,   lbl, out, v) {
   return out
 }
 
-# Parse ls -l line robustly.
-# With -s, ls prepends blocks, so we support both:
-#   blocks perms links owner group size epoch name...
-#   perms  links owner group size epoch name...
-function parse_line(line,   m) {
+# New parse_line(): non-regex, position-based parser using epoch position
+function _is_epoch(tok) {
+  # We force --time-style=+%s, so epoch is a 9+ digit integer.
+  return (tok ~ /^[0-9]{9,}$/)
+}
+
+# Find the last occurrence of: <space><9+digits><space>
+# Returns 1 on success and sets globals: epoch, epoch_start, epoch_end (inclusive)
+function _find_epoch_span(line,   tmp, off, best_s, best_e, s, e, digits) {
+  tmp = line
+  off = 0
+  best_s = 0
+  best_e = 0
+
+  while (match(tmp, /[[:space:]][0-9]{9,}[[:space:]]/)) {
+    s = off + RSTART
+    e = off + RSTART + RLENGTH - 1
+    best_s = s
+    best_e = e
+
+    off = off + RSTART + RLENGTH - 1
+    tmp = substr(line, off + 1)
+  }
+
+  if (best_s == 0) return 0
+
+  # Extract digits inside the matched span
+  digits = substr(line, best_s, best_e - best_s + 1)
+  gsub(/^[[:space:]]+/, "", digits)
+  gsub(/[[:space:]]+$/, "", digits)
+
+  if (!_is_epoch(digits)) return 0
+
+  epoch = digits
+  epoch_start = best_s
+  epoch_end = best_e
+  return 1
+}
+
+# Parse ls -l line in a way that is robust to spaces in filenames and leading spaces.
+# Works across OWNER/GROUPNAME/ASIZE combinations because size+epoch are always adjacent
+# when using --time-style=+%s.
+function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   # Skip total/toplam lines
   if (line ~ /^(total|toplam)[[:space:]]+/) return 0
 
-  sub(/^[[:space:]]+/, "", line)
+  if (!_find_epoch_span(line)) return 0
 
-  # ASIZE variants (blocks present)
+  # Extract tail (filename + symlink target if any) safely:
+  # CRITICAL: Use "tail" approach - never tokenize the filename part.
+  # 
+  # Pattern: ^(PREFIX)(EPOCH)(TAIL)$
+  # where TAIL = everything after epoch (including any leading whitespace, tabs, unicode, symlink arrows)
+  #
+  # IMPORTANT: We preserve:
+  # - Leading spaces in filenames (e.g., " file-leading-space.txt")
+  # - Tabs in filenames (e.g., "a\tb.txt")  
+  # - Spaces in filenames (e.g., "a b.txt")
+  # - Unicode characters (e.g., "İçerik-ğüşöç.txt")
+  # - Symlink arrows (" -> target")
+  #
+  # Strategy: epoch_end points to the last character of the epoch.
+  # Everything from (epoch_end + 1) onwards is the tail, which we preserve RAW.
+  # We do NOT skip any whitespace - the first character after epoch might be:
+  # - A separator space (normal case)
+  # - Part of the filename (if filename starts with space)
+  # Both cases are handled correctly by taking everything as-is.
+  
+  # Extract tail: everything after epoch_end (inclusive of epoch_end+1)
+  # This preserves ALL whitespace, tabs, and content exactly as-is
+  name = substr(line, epoch_end + 1)
+
+  # left part: everything before the epoch span
+  left = substr(line, 1, epoch_start - 1)
+  gsub(/^[[:space:]]+/, "", left)
+
+  # Tokenize left by whitespace; this is safe because we only need fixed fields
+  # that do not contain spaces.
+  nlt = split(left, toks, /[[:space:]]+/)
+  if (nlt < 3) return 0
+
+  # If ASIZE, first token is blocks
   if (ASIZE) {
-    # blocks perms links owner group size epoch name
-    if (OWNER && GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=m[1]; perms=m[2]; links=m[3]; owner=m[4]; group=m[5]; size=m[6]; epoch=m[7]; name=m[8]
-      return 1
+    blocks = toks[1]
+    perms  = toks[2]
+    links  = toks[3]
+
+    # Remaining tokens after perms+links depend on OWNER/GROUPNAME.
+    if (OWNER && GROUPNAME) {
+      if (nlt < 6) return 0
+      owner = toks[4]
+      group = toks[5]
+      size  = toks[nlt]
+    } else if (!OWNER && GROUPNAME) {
+      if (nlt < 5) return 0
+      owner = ""
+      group = toks[4]
+      size  = toks[nlt]
+    } else if (OWNER && !GROUPNAME) {
+      if (nlt < 5) return 0
+      owner = toks[4]
+      group = ""
+      size  = toks[nlt]
+    } else {
+      # !OWNER && !GROUPNAME
+      if (nlt < 3) return 0
+      owner = ""
+      group = ""
+      size  = toks[nlt]
     }
-    # blocks perms links group size epoch name  (-g)
-    if (!OWNER && GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=m[1]; perms=m[2]; links=m[3]; owner=""; group=m[4]; size=m[5]; epoch=m[6]; name=m[7]
-      return 1
-    }
-    # blocks perms links owner size epoch name  (-o / --no-group)
-    if (OWNER && !GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=m[1]; perms=m[2]; links=m[3]; owner=m[4]; group=""; size=m[5]; epoch=m[6]; name=m[7]
-      return 1
-    }
-    # blocks perms links size epoch name  (-g -G)
-    if (!OWNER && !GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=m[1]; perms=m[2]; links=m[3]; owner=""; group=""; size=m[4]; epoch=m[5]; name=m[6]
-      return 1
+  } else {
+    blocks = ""
+    perms  = toks[1]
+    links  = toks[2]
+
+    if (OWNER && GROUPNAME) {
+      # Format: perms links owner group size
+      # So we need at least 5 tokens: toks[1]=perms, toks[2]=links, toks[3]=owner, toks[4]=group, toks[5]=size
+      if (nlt < 5) return 0
+      owner = toks[3]
+      group = toks[4]
+      size  = toks[nlt]
+    } else if (!OWNER && GROUPNAME) {
+      if (nlt < 4) return 0
+      owner = ""
+      group = toks[3]
+      size  = toks[nlt]
+    } else if (OWNER && !GROUPNAME) {
+      if (nlt < 4) return 0
+      owner = toks[3]
+      group = ""
+      size  = toks[nlt]
+    } else {
+      # !OWNER && !GROUPNAME
+      if (nlt < 2) return 0
+      owner = ""
+      group = ""
+      size  = toks[nlt]
     }
   }
 
-  # Non-ASIZE variants
-  else {
-    # perms links owner group size epoch name
-    if (OWNER && GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=""; perms=m[1]; links=m[2]; owner=m[3]; group=m[4]; size=m[5]; epoch=m[6]; name=m[7]
-      return 1
-    }
-    # perms links group size epoch name  (-g)
-    if (!OWNER && GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=""; perms=m[1]; links=m[2]; owner=""; group=m[3]; size=m[4]; epoch=m[5]; name=m[6]
-      return 1
-    }
-    # perms links owner size epoch name  (-o / --no-group)
-    if (OWNER && !GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=""; perms=m[1]; links=m[2]; owner=m[3]; group=""; size=m[4]; epoch=m[5]; name=m[6]
-      return 1
-    }
-    # perms links size epoch name  (-g -G)
-    if (!OWNER && !GROUPNAME &&
-        match(line, /^([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$/, m)) {
-      blocks=""; perms=m[1]; links=m[2]; owner=""; group=""; size=m[3]; epoch=m[4]; name=m[5]
-      return 1
-    }
-  }
-
-  return 0
+  return 1
 }
 
 {
