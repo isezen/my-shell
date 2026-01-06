@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/alias.bats
 # Test suite for shell/bash/aliases.bash
 
 load 'test_helper/bats-support/load'

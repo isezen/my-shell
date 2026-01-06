@@ -1,3 +1,4 @@
+# tests/test_helper/bats-support/load.bash
 # bats-support is a helper library providing common testing functions for bats
 # This is a minimal implementation for basic functionality
 

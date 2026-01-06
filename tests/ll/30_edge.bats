@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/ll/30_edge.bats
 # Edge-case comparisons for scripts/bin/ll
 
 load '../test_helper/bats-support/load'
@@ -31,11 +32,13 @@ load './00_harness.bash'
 }
 
 @test "ll edge: mixed time widths" {
+  ll_require_gnu_touch
+
   ll_mk_testdir
   printf "" > old.txt
   printf "" > new.txt
-  touch -d '120 days ago' old.txt
-  touch -d '2 days ago' new.txt
+  "${LL_GNU_TOUCH}" -d '120 days ago' old.txt
+  "${LL_GNU_TOUCH}" -d '2 days ago' new.txt
   ll_assert_canon_equal
   ll_rm_testdir
 }
@@ -44,13 +47,16 @@ load './00_harness.bash'
   local f1_str
   local f2_str
 
+  ll_require_gnu_date
+  ll_require_gnu_touch
+
   ll_mk_testdir
   printf "" > f1.txt
   printf "" > f2.txt
-  f1_str="$(date -d '2 days' '+%Y-%m-%d %H:%M:%S')"
-  f2_str="$(date -d '12 days' '+%Y-%m-%d %H:%M:%S')"
-  touch -d "${f1_str}" f1.txt
-  touch -d "${f2_str}" f2.txt
+  f1_str="$("${LL_GNU_DATE}" -d '2 days' '+%Y-%m-%d %H:%M:%S')"
+  f2_str="$("${LL_GNU_DATE}" -d '12 days' '+%Y-%m-%d %H:%M:%S')"
+  "${LL_GNU_TOUCH}" -d "${f1_str}" f1.txt
+  "${LL_GNU_TOUCH}" -d "${f2_str}" f2.txt
   ll_assert_canon_equal
   ll_rm_testdir
 }

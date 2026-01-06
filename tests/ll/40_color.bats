@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/ll/40_color.bats
 # Color output checks for scripts/bin/ll
 
 load '../test_helper/bats-support/load'
@@ -9,13 +10,16 @@ load './00_harness.bash'
   local f1_str
   local f2_str
 
+  ll_require_gnu_date
+  ll_require_gnu_touch
+
   ll_mk_testdir
   printf "" > f1.txt
   printf "" > f2.txt
-  f1_str="$(date -d '2 days' '+%Y-%m-%d %H:%M:%S')"
-  f2_str="$(date -d '12 days' '+%Y-%m-%d %H:%M:%S')"
-  touch -d "${f1_str}" f1.txt
-  touch -d "${f2_str}" f2.txt
+  f1_str="$("${LL_GNU_DATE}" -d '2 days' '+%Y-%m-%d %H:%M:%S')"
+  f2_str="$("${LL_GNU_DATE}" -d '12 days' '+%Y-%m-%d %H:%M:%S')"
+  "${LL_GNU_TOUCH}" -d "${f1_str}" f1.txt
+  "${LL_GNU_TOUCH}" -d "${f2_str}" f2.txt
 
   run "${LL_SCRIPT}" .
   assert_success
@@ -30,16 +34,18 @@ load './00_harness.bash'
   local now
   local esc
 
+  ll_require_gnu_touch
+
   ll_mk_testdir
   now="${LL_NOW_EPOCH}"
 
-  touch -d "@${now}" base.txt
-  touch -d "@$((now - 30))" sec.txt
-  touch -d "@$((now - 600))" min.txt
-  touch -d "@$((now - 3 * 3600))" hrs.txt
-  touch -d "@$((now - 5 * 86400))" day.txt
-  touch -d "@$((now - 120 * 86400))" mon.txt
-  touch -d "@$((now - 400 * 86400))" yr.txt
+  "${LL_GNU_TOUCH}" -d "@${now}" base.txt
+  "${LL_GNU_TOUCH}" -d "@$((now - 30))" sec.txt
+  "${LL_GNU_TOUCH}" -d "@$((now - 600))" min.txt
+  "${LL_GNU_TOUCH}" -d "@$((now - 3 * 3600))" hrs.txt
+  "${LL_GNU_TOUCH}" -d "@$((now - 5 * 86400))" day.txt
+  "${LL_GNU_TOUCH}" -d "@$((now - 120 * 86400))" mon.txt
+  "${LL_GNU_TOUCH}" -d "@$((now - 400 * 86400))" yr.txt
 
   run "${LL_SCRIPT}" .
   assert_success
@@ -146,7 +152,6 @@ load './00_harness.bash'
 
 @test "ll colors: size tiers (numeric)" {
   local esc
-  local -a expected
 
   if ! command -v truncate >/dev/null 2>&1; then
     skip "truncate not available"
@@ -154,32 +159,36 @@ load './00_harness.bash'
 
   ll_mk_testdir
   esc=$'\033'
-  expected=()
 
-  if truncate -s 2K kfile; then
-    expected+=("${esc}[38;5;250m")
-  fi
-  if truncate -s 2M mfile; then
-    expected+=("${esc}[38;5;117m")
-  fi
-  if truncate -s 2G gfile; then
-    expected+=("${esc}[38;5;208m")
-  fi
-  if truncate -s 2T tfile; then
-    expected+=("${esc}[38;5;160m")
-  fi
-
-  if [ "${#expected[@]}" -eq 0 ]; then
+  if ! truncate -s 512 bfile; then
     ll_rm_testdir
-    skip "truncate failed to create size files"
+    skip "truncate failed for bfile"
+  fi
+  if ! truncate -s 2048 kfile; then
+    ll_rm_testdir
+    skip "truncate failed for kfile"
+  fi
+  if ! truncate -s 2097152 mfile; then
+    ll_rm_testdir
+    skip "truncate failed for mfile"
+  fi
+  if ! truncate -s 1073741824 gfile; then
+    ll_rm_testdir
+    skip "truncate failed for gfile"
+  fi
+  if ! truncate -s 1099511627776 tfile; then
+    ll_rm_testdir
+    skip "truncate failed for tfile"
   fi
 
-  run "${LL_SCRIPT}" .
+  run "${LL_SCRIPT}" -- bfile kfile mfile gfile tfile
   assert_success
 
-  for code in "${expected[@]}"; do
-    assert_output --partial "$code"
-  done
+  assert_output --regexp "${esc}\\[38;5;240m[[:space:]]*512${esc}\\[0m.*bfile"
+  assert_output --regexp "${esc}\\[38;5;250m[[:space:]]*2048${esc}\\[0m.*kfile"
+  assert_output --regexp "${esc}\\[38;5;117m[[:space:]]*2097152${esc}\\[0m.*mfile"
+  assert_output --regexp "${esc}\\[38;5;208m[[:space:]]*1073741824${esc}\\[0m.*gfile"
+  assert_output --regexp "${esc}\\[38;5;160m[[:space:]]*1099511627776${esc}\\[0m.*tfile"
 
   ll_rm_testdir
 }

@@ -66,34 +66,47 @@ for arg in "$@"; do
 done
 
 
-# If GNU ls features are unavailable (e.g., BSD ls), fall back to plain ls
-# with minimal flag translation so tests still pass.
-if \ls --color -l --time-style=+"%s" . >/dev/null 2>&1; then
-  HAS_GNU_LS=1
+# Resolve a GNU ls implementation (required for --time-style=+%s).
+# Allow override via LL_CHATGPT_LS for tests.
+LS_BIN="${LL_CHATGPT_LS:-}"
+if [ -n "$LS_BIN" ]; then
+  if ! "$LS_BIN" --color -l --time-style=+"%s" . >/dev/null 2>&1; then
+    echo "LL_CHATGPT_LS must support --time-style=+%s" >&2
+    exit 1
+  fi
 else
-  HAS_GNU_LS=0
-fi
-
-if [ "$HAS_GNU_LS" -ne 1 ]; then
-  _args=()
-  for arg in "$@"; do
-    case "$arg" in
-      --directory) _args+=("-d") ;;
-      --human-readable|--si) _args+=("-h") ;;
-      --numeric-uid-gid) _args+=("-n") ;;
-      --no-group) _args+=("-o") ;;
-      --size) _args+=("-s") ;;
-      --) _args+=("--") ;;
-      *) _args+=("$arg") ;;
-    esac
-  done
-  exec \ls -l "${_args[@]}"
+  LS_BIN="ls"
+  if ls --color -l --time-style=+"%s" . >/dev/null 2>&1; then
+    :
+  elif command -v gls >/dev/null 2>&1; then
+    LS_BIN="$(command -v gls)"
+  elif [ -x /opt/local/libexec/gnubin/ls ]; then
+    LS_BIN="/opt/local/libexec/gnubin/ls"
+  else
+    if [ "${LL_CHATGPT_FAST:-0}" = "1" ]; then
+      echo "GNU ls is required for LL_CHATGPT_FAST=1" >&2
+      exit 1
+    fi
+    _args=()
+    for arg in "$@"; do
+      case "$arg" in
+        --directory) _args+=("-d") ;;
+        --human-readable|--si) _args+=("-h") ;;
+        --numeric-uid-gid) _args+=("-n") ;;
+        --no-group) _args+=("-o") ;;
+        --size) _args+=("-s") ;;
+        --) _args+=("--") ;;
+        *) _args+=("$arg") ;;
+      esac
+    done
+    exec ls -l "${_args[@]}"
+  fi
 fi
 
 # Always force --time-style=+%s for fast relative time formatting in awk.
 # Keep user's args intact; we only read flags above and still pass "$@" through.
 # Match ll behavior: use --color (auto), so piping/ll-compare doesn't force ANSI.
-ll_res=$(\ls --color "$@" -l --time-style=+"%s")
+ll_res=$("$LS_BIN" --color -l --time-style=+"%s" "$@")
 
 # Extract total line if present (same as ll script)
 ll_total=""
@@ -192,8 +205,24 @@ fi
 # Resolve user name for "you" substitution in awk.
 USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
 
+# Resolve awk implementation (needs match(..., ..., array) support).
+AWK_BIN="${LL_CHATGPT_AWK:-}"
+if [ -z "$AWK_BIN" ]; then
+  if command -v gawk >/dev/null 2>&1; then
+    AWK_BIN="$(command -v gawk)"
+  else
+    AWK_BIN="awk"
+  fi
+fi
+if ! "$AWK_BIN" 'BEGIN{ if (match("1", /[0-9]+/, a)) exit 0; exit 1 }' </dev/null >/dev/null 2>&1; then
+  if [ "${LL_CHATGPT_FAST:-0}" = "1" ]; then
+    echo "GNU awk (gawk) is required for LL_CHATGPT_FAST=1" >&2
+    exit 1
+  fi
+fi
+
 # Print using a single awk program (stores lines once; computes widths; prints).
-awk -v ASIZE="$ASIZE" \
+"$AWK_BIN" -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
     -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
     -v NUMERICUIDGID="$NUMERICUIDGID" \
@@ -387,7 +416,8 @@ function _find_epoch_span(line,   tmp, off, best_s, best_e, s, e, digits) {
     best_s = s
     best_e = e
 
-    off = off + RSTART + RLENGTH - 1
+    # Keep the trailing space so the next match can see the following digits.
+    off = off + RSTART + RLENGTH - 2
     tmp = substr(line, off + 1)
   }
 

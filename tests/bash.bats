@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/bash.bats
 # Test suite for shell/bash/prompt.bash and shell/bash/env.bash
 
 load 'test_helper/bats-support/load'

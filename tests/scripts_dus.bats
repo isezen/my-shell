@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/scripts_dus.bats
 # Test suite for scripts/bin/dus
 
 load 'test_helper/bats-support/load'

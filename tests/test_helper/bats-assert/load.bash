@@ -1,3 +1,4 @@
+# tests/test_helper/bats-assert/load.bash
 # bats-assert - Common assertions for Bats
 # This is a minimal implementation for basic assertions
 

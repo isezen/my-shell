@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/alias-sync.bats
 # Test suite for alias synchronization across all shell files
 # Verifies that all aliases in shell/aliases.yml are present in all shell-specific aliases.* files
 # Uses file parsing instead of environment validation

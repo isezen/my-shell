@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/ll/10_core.bats
 # Core option comparisons for scripts/bin/ll
 
 load '../test_helper/bats-support/load'
