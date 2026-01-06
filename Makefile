@@ -89,7 +89,7 @@ test: test-bats lint ## Run all tests (BATS tests and linting)
 test-bats: ## Run BATS tests
 	@echo "$(COLOR_GREEN)Running BATS tests...$(COLOR_RESET)"
 	@if command -v bats >/dev/null 2>&1; then \
-		bats tests/*.bats || exit 1; \
+		bats tests/*.bats tests/ll/*.bats || exit 1; \
 		echo "$(COLOR_GREEN)✓ All BATS tests passed$(COLOR_RESET)"; \
 	else \
 		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
@@ -121,4 +121,3 @@ clean: ## Clean temporary files
 	@find . -type f -name "*~" -delete
 	@find . -type f -name "*.bak" -delete
 	@echo "$(COLOR_GREEN)✓ Cleaned$(COLOR_RESET)"
-

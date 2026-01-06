@@ -38,6 +38,12 @@
 │   │   └── prompt.zsh
 │   └── aliases.yml
 ├── tests
+│   ├── ll
+│   │   ├── 00_harness.bash
+│   │   ├── 10_core.bats
+│   │   ├── 20_paths.bats
+│   │   ├── 30_edge.bats
+│   │   └── 40_color.bats
 │   ├── test_helper
 │   │   ├── bats-assert
 │   │   │   └── load.bash
@@ -67,5 +73,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 52 files
+15 directories, 57 files
 ```
