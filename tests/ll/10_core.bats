@@ -27,45 +27,29 @@ load './00_harness.bash'
   local verbose
   verbose="${LL_MATRIX_VERBOSE:-${LL_MATRIX_VERBOSE:-0}}"
 
-  declare -a dir_var0=()
-  declare -a dir_var1=(-d)
-  declare -a dir_var2=(-d .)
-  dir_variants=(dir_var0 dir_var1 dir_var2)
-
-  declare -a block_var0=()
-  declare -a block_var1=(-s)
-  block_variants=(block_var0 block_var1)
-
-  declare -a human_var0=()
-  declare -a human_var1=(-h)
-  declare -a human_var2=(--si)
-  human_variants=(human_var0 human_var1 human_var2)
-
-  declare -a numeric_var0=()
-  declare -a numeric_var1=(-n)
-  numeric_variants=(numeric_var0 numeric_var1)
-
-  declare -a owner_var0=()
-  declare -a owner_var1=(-g)
-  declare -a owner_var2=(-G)
-  declare -a owner_var3=(-g -G)
-  owner_variants=(owner_var0 owner_var1 owner_var2 owner_var3)
+  dir_variants=("" "-d" "-d .")
+  block_variants=("" "-s")
+  human_variants=("" "-h" "--si")
+  numeric_variants=("" "-n")
+  owner_variants=("" "-g" "-G" "-g -G")
 
   ll_mk_testdir
   ll_seed_fixtures_common
 
   count=0
   for dir_ref in "${dir_variants[@]}"; do
-    eval "dir_tokens=(\"\${${dir_ref}[@]}\")"
     for block_ref in "${block_variants[@]}"; do
-      eval "block_tokens=(\"\${${block_ref}[@]}\")"
       for human_ref in "${human_variants[@]}"; do
-        eval "human_tokens=(\"\${${human_ref}[@]}\")"
         for numeric_ref in "${numeric_variants[@]}"; do
-          eval "numeric_tokens=(\"\${${numeric_ref}[@]}\")"
           for owner_ref in "${owner_variants[@]}"; do
-            eval "owner_tokens=(\"\${${owner_ref}[@]}\")"
             args=()
+
+            [ -n "$dir_ref" ]     && read -r -a dir_tokens     <<<"$dir_ref"     || dir_tokens=()
+            [ -n "$block_ref" ]   && read -r -a block_tokens   <<<"$block_ref"   || block_tokens=()
+            [ -n "$human_ref" ]   && read -r -a human_tokens   <<<"$human_ref"   || human_tokens=()
+            [ -n "$numeric_ref" ] && read -r -a numeric_tokens <<<"$numeric_ref" || numeric_tokens=()
+            [ -n "$owner_ref" ]   && read -r -a owner_tokens   <<<"$owner_ref"   || owner_tokens=()
+
             args+=("${dir_tokens[@]}")
             args+=("${block_tokens[@]}")
             args+=("${human_tokens[@]}")
