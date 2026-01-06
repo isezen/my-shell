@@ -1,4 +1,5 @@
 #!/bin/bash
+# scripts/bin/ll
 # sezenismail@gmail.com
 # 2014-11-24
 # Colorfull Long Listing
@@ -384,7 +385,7 @@ res=$(paste -d" " <(echo "$res") <(echo "$_sizes")) ###### PERF:~25ms
 # DATES
 #                   # cut time column  # subtract from current date
 _dates2=$(
-  echo "$ll_res" | cut -d" " -f $_CURCOL | awk '{print strftime("%s") - $1}' | while IFS= read -r x; do ###### PERF:~80ms
+  echo "$ll_res" | cut -d" " -f $_CURCOL | awk '{ now=ENVIRON["LL_NOW_EPOCH"]; if (now=="" || now !~ /^[0-9]+$/) now=strftime("%s"); print now - $1 }' | while IFS= read -r x; do ###### PERF:~80ms
     _formatted=""
     if [[ $x -lt $_TIME_2MIN ]]; then printf -v _formatted '%2d %3s' "$x" "$_lsec"; printf '%s\n' "$_formatted"; continue; fi
     if [[ $x -lt $_TIME_HOUR ]]; then printf -v _formatted '%2d %3s' $((x / _TIME_MIN)) "$_lmin"; printf '%s\n' "$_formatted"; continue; fi

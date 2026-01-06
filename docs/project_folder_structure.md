@@ -14,8 +14,7 @@
 │   │   ├── dusf
 │   │   ├── dusf.
 │   │   ├── ll
-│   │   ├── ll-chatgpt
-│   │   └── ll2
+│   │   └── ll-chatgpt
 │   └── dev
 │       ├── ll-compare
 │       └── ll-perf
@@ -63,5 +62,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-14 directories, 48 files
+14 directories, 47 files
 ```

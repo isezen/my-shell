@@ -1,0 +1,416 @@
+#!/bin/bash
+# scripts/dev/ll-compare
+# Test script to compare ll script outputs
+# Tests various parameter combinations
+# Usage: test-ll-compare.sh <script1> <script2> [script3 ...]
+
+# ============================================================================
+# NOTE: Additional content/fixture tests to add later (not implemented here)
+# ============================================================================
+# - Filenames:
+#   - Spaces: "a b.txt"
+#   - Leading space: " file"
+#   - Tab: $'a\tb'
+#   - Unicode: "İçerik-ğüşöç.txt"
+#   - Very long name (200+ chars)
+#   - Newline in name (will break line-based parsing): $'a\nb'
+# - File types:
+#   - Symlink and broken symlink ("name -> target")
+#   - FIFO, socket, block/char device (permission type chars p,s,b,c)
+# - Permissions:
+#   - setuid/setgid/sticky (s,S,t,T)
+#   - ACL indicator '+' in perms
+# - Timestamps:
+#   - Very recent (sec/min), hours, days, months, years
+#   - Future mtime (negative relative delta)
+# - Scale/perf:
+#   - Large dir (10k+ entries)
+#   - Slow FS (NFS/SMB)
+# - Environment:
+#   - TTY vs pipe, different TERM/LANG
+#   - GNU ls vs BSD ls compatibility checks
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN_DIR="$PROJECT_ROOT/scripts/bin"
+
+# ============================================================================
+# PARSE COMMAND LINE ARGUMENTS
+# ============================================================================
+
+# Optional flags:
+#   --show-ansi : make ANSI/control chars visible in side-by-side diff output.
+#   --fail-only : only print failing tests (still prints final summary).
+# Flags can be provided in any order, and can be combined.
+ONLY_TESTS=()
+ONLY_MODE=0
+SHOW_ANSI=0
+FAIL_ONLY=0
+while [ $# -gt 0 ]; do
+  case "${1:-}" in
+    --show-ansi)
+      SHOW_ANSI=1
+      shift
+      ;;
+    --fail-only)
+      FAIL_ONLY=1
+      shift
+      ;;
+    --only)
+      # Filter to only run specific test cases. Value must match the test_case string.
+      if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+        echo "Error: --only requires a value" >&2
+        exit 2
+      fi
+      ONLY_MODE=1
+      ONLY_TESTS+=("$2")
+      shift 2
+      ;;
+    --only=*)
+      # Support --only="-s -h" style.
+      ONLY_MODE=1
+      ONLY_TESTS+=("${1#--only=}")
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [ $# -lt 2 ]; then
+  echo "Usage: $0 [--show-ansi] [--fail-only] [--only <TEST>] [--only=<TEST>] <script1> <script2> [script3 ...]" >&2
+  echo "Example: $0 ll ll-chatgpt" >&2
+  echo "Example: $0 --fail-only ll ll-chatgpt" >&2
+  echo "Example: $0 --show-ansi --fail-only ll ll-chatgpt ll2" >&2
+  echo "Example: $0 --fail-only --only \"-s -h\" ll ll-chatgpt" >&2
+  exit 1
+fi
+
+# Store script names and validate they exist
+script_names=()
+script_paths=()
+for script_name in "$@"; do
+  script_path="$BIN_DIR/$script_name"
+  if [ ! -f "$script_path" ] || [ ! -x "$script_path" ]; then
+    echo "Error: Script '$script_name' not found or not executable in $BIN_DIR" >&2
+    exit 1
+  fi
+  script_names+=("$script_name")
+  script_paths+=("$script_path")
+done
+
+# ============================================================================
+# SETUP TEST ENVIRONMENT
+# ============================================================================
+TEST_DIR="/tmp/ll-test-$$"
+mkdir -p "$TEST_DIR"
+cd "$TEST_DIR" || exit 1
+
+# Create test files
+touch file1.txt file2.txt
+mkdir dir1 dir2
+echo "test" > file3.txt
+chmod 755 file1.txt
+chmod 644 file2.txt
+
+# Make mtimes deterministic so relative-time output doesn't differ by 1-2 seconds
+# between sequential script runs.
+# Use a fixed point in time (Jan 1, 2020 00:00:00 local time).
+
+touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2
+
+# Make relative-time computations deterministic between scripts by freezing “now”.
+# If the caller already set LL_NOW_EPOCH, respect it.
+_ORIG_LL_NOW_EPOCH_SET=0
+_ORIG_LL_NOW_EPOCH_VALUE=""
+if [ "${LL_NOW_EPOCH+x}" = "x" ]; then
+  _ORIG_LL_NOW_EPOCH_SET=1
+  _ORIG_LL_NOW_EPOCH_VALUE="$LL_NOW_EPOCH"
+else
+  export LL_NOW_EPOCH
+  LL_NOW_EPOCH=$(date +%s)
+fi
+
+# ============================================================================
+# TEST CASES
+# ============================================================================
+test_cases=(
+  ""                      # Default (no options)
+
+  # Directory listing behavior
+  "-d"                    # LISTDIRECTORY (short)
+  "--directory"           # LISTDIRECTORY (long)
+  "-d ."                  # LISTDIRECTORY with directory
+
+  # Owner/group toggles
+  "-g"                    # OWNER=0
+  "-G"                    # GROUPNAME=0
+  "-o"                    # GROUPNAME=0 (alternative)
+  "--no-group"            # GROUPNAME=0 (long)
+  "-g -G"                 # OWNER=0 + GROUPNAME=0
+
+  # Size column (allocated blocks)
+  "-s"                    # ASIZE=1 (short)
+  "--size"                # ASIZE=1 (long)
+
+  # Human readable size variants
+  "-h"                    # HUMANREADABLE=1 (powers of 1024)
+  "--human-readable"      # HUMANREADABLE=1 (long)
+  "--si"                  # HUMANREADABLE=1 (powers of 1000)
+
+  # Numeric uid/gid
+  "-n"                    # NUMERICUIDGID=1 (short)
+  "--numeric-uid-gid"     # NUMERICUIDGID=1 (long)
+
+  # Cross-combinations (core)
+  "-s -h"                 # ASIZE + HUMANREADABLE
+  "-s --si"               # ASIZE + SI human readable
+  "-n -h"                 # NUMERICUIDGID + HUMANREADABLE
+  "-n --si"               # NUMERICUIDGID + SI human readable
+  "-s -g"                 # ASIZE + OWNER=0
+  "-s -h -g -G"           # Multiple options
+
+  # Targeted path arguments
+  "-h file1.txt"          # HUMANREADABLE with file
+)
+
+# ============================================================================
+# RUN TESTS
+# ============================================================================
+errors=0
+passed=0
+
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo "Testing comparison: ${script_names[*]}"
+  echo "=================================="
+  echo ""
+fi
+
+for test_case in "${test_cases[@]}"; do
+  test_name="${test_case:-default}"
+  if [ "$ONLY_MODE" -eq 1 ]; then
+    matched=0
+    for only in "${ONLY_TESTS[@]}"; do
+      if [ "$only" = "$test_case" ] || [ "$only" = "$test_name" ]; then
+        matched=1
+        break
+      fi
+    done
+    if [ "$matched" -eq 0 ]; then
+      continue
+    fi
+  fi
+  if [ "$FAIL_ONLY" -eq 0 ]; then
+    echo "Testing: $test_name"
+    echo "----------------------------------"
+  fi
+  
+  # Run all scripts and capture outputs
+  # IMPORTANT: test_case is a string like "-s -h". We must split it into argv tokens.
+  # Empty test_case should result in no additional argv.
+  if [ -n "$test_case" ]; then
+    IFS=' ' read -r -a tc_argv <<< "$test_case"
+  else
+    tc_argv=()
+  fi
+
+  outputs=()
+  normalized_outputs=()
+
+  normalize_output() {
+    # Normalization goal: ignore cosmetic spacing differences while preserving semantic differences.
+    # - Always strip ANSI before normalization (comparison is about content, not colors).
+    # - Squeeze repeated whitespace to a single space.
+    # - Trim leading/trailing whitespace.
+    # NOTE: This intentionally treats multiple spaces as equivalent. If you later add fixtures
+    # with filenames containing multiple consecutive spaces, revisit this normalization.
+    local text="$1"
+
+    # Strip ANSI escape sequences.
+    while [[ "$text" =~ $'\x1b'\[ ]]; do
+      local before="${text%%$'\x1b'\[*}"
+      local after="${text#*$'\x1b'\[}"
+      after="${after#*m}"
+      text="${before}${after}"
+    done
+
+    # Normalize whitespace line-by-line.
+    printf '%s\n' "$text" \
+      | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+  }
+
+  for script_path in "${script_paths[@]}"; do
+    output=$(cd "$TEST_DIR" && "$script_path" "${tc_argv[@]}" 2>&1)
+    outputs+=("$output")
+    normalized_outputs+=("$(normalize_output "$output")")
+  done
+
+  # Check if all outputs are identical (raw)
+  all_match=true
+  first_output="${outputs[0]}"
+  for i in $(seq 1 $((${#outputs[@]} - 1))); do
+    if [ "${outputs[$i]}" != "$first_output" ]; then
+      all_match=false
+      break
+    fi
+  done
+
+  # Check if all outputs are identical after normalization
+  all_match_normalized=true
+  first_norm="${normalized_outputs[0]}"
+  for i in $(seq 1 $((${#normalized_outputs[@]} - 1))); do
+    if [ "${normalized_outputs[$i]}" != "$first_norm" ]; then
+      all_match_normalized=false
+      break
+    fi
+  done
+  
+  if [ "$all_match" = true ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      echo "PASS - All outputs match"
+    fi
+    ((passed++))
+  elif [ "$all_match_normalized" = true ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+    fi
+    ((passed++))
+  else
+    echo "Testing: $test_name"
+    echo "----------------------------------"
+    echo "FAIL - Outputs differ"
+    ((errors++))
+    
+    # Display side-by-side comparison with proper padding
+    echo "  Side-by-side comparison:"
+    
+    # Function to strip ANSI color codes for length calculation
+    strip_colors() {
+      local text="$1"
+
+      # If we are showing ANSI visibly, do not strip anything.
+      if [ "${SHOW_ANSI}" -eq 1 ]; then
+        echo "$text"
+        return 0
+      fi
+
+      # Remove ANSI escape sequences.
+      while [[ "$text" =~ $'\x1b'\[ ]]; do
+        local before="${text%%$'\x1b'\[*}"
+        local after="${text#*$'\x1b'\[}"
+        after="${after#*m}"
+        text="${before}${after}"
+      done
+      echo "$text"
+    }
+    
+    make_ansi_visible() {
+      # Render control chars (including ESC) as visible escape sequences, without line-wrapping.
+      # This avoids `sed -n 'l'` behavior that inserts backslash-newline continuations and trailing `$`.
+      # NOTE: Input is a single line (caller reads line-by-line).
+      perl -pe 's/\e/\\033/g; s/\t/\\t/g; s/\r/\\r/g; s/\f/\\f/g; s/\v/\\v/g' <<<"$1"
+    }
+    
+    # Convert each output to array of lines
+    declare -a output_lines
+    for i in $(seq 0 $((${#outputs[@]} - 1))); do
+      # Split output into lines
+      temp_file=$(mktemp)
+      echo "${outputs[$i]}" > "$temp_file"
+      output_lines[i]="$temp_file"
+    done
+    
+    # Find maximum number of lines
+    max_lines=0
+    for i in $(seq 0 $((${#outputs[@]} - 1))); do
+      line_count=$(wc -l < "${output_lines[$i]}")
+      if [ "$line_count" -gt "$max_lines" ]; then
+        max_lines=$line_count
+      fi
+    done
+    
+    # Find maximum line length for first script (left side) - strip colors for calculation
+    first_max_len=0
+    while IFS= read -r line; do
+      if [ "${SHOW_ANSI}" -eq 1 ]; then
+        line_for_len=$(make_ansi_visible "$line")
+      else
+        line_for_len=$(strip_colors "$line")
+      fi
+      line_len=${#line_for_len}
+      if [ "$line_len" -gt "$first_max_len" ]; then
+        first_max_len=$line_len
+      fi
+    done < "${output_lines[0]}"
+    
+    # Print side-by-side with proper padding
+    for line_num in $(seq 1 "$max_lines"); do
+      # Get first script's line (left side)
+      first_line=$(sed -n "${line_num}p" "${output_lines[0]}")
+      if [ "${SHOW_ANSI}" -eq 1 ] && [ -n "$first_line" ]; then
+        first_line=$(make_ansi_visible "$first_line")
+      fi
+      if [ -z "$first_line" ]; then
+        first_line=""
+      fi
+      
+      # Calculate padding needed for first line (based on length without colors)
+      first_line_for_len=$(strip_colors "$first_line")
+      first_line_len=${#first_line_for_len}
+      padding_len=$((first_max_len - first_line_len))
+      if [ "$padding_len" -gt 0 ]; then
+        padding=$(printf "%*s" "$padding_len" "")
+        first_line="${first_line}${padding}"
+      fi
+      
+      # Build result line: first script + | + other scripts
+      result_line="$first_line |"
+      
+      # Add other scripts' lines
+      for i in $(seq 1 $((${#outputs[@]} - 1))); do
+        line=$(sed -n "${line_num}p" "${output_lines[$i]}")
+        if [ "${SHOW_ANSI}" -eq 1 ] && [ -n "$line" ]; then
+          line=$(make_ansi_visible "$line")
+        fi
+        if [ -z "$line" ]; then
+          line=""
+        fi
+        if [ "$i" -gt 1 ]; then
+          result_line="${result_line} |"
+        fi
+        result_line="${result_line} ${line}"
+      done
+      
+      echo "  $result_line"
+    done
+    
+    # Cleanup temp files
+    for temp_file in "${output_lines[@]}"; do
+      rm -f "$temp_file"
+    done
+    echo ""
+  fi
+done
+
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo ""
+  echo "=================================="
+fi
+echo "Results: $passed passed, $errors failed"
+
+# ============================================================================
+# CLEANUP
+# ============================================================================
+
+cd /tmp || exit 1
+rm -rf "$TEST_DIR"
+
+# Restore LL_NOW_EPOCH to avoid leaking state to parent shells when sourced.
+if [ "${_ORIG_LL_NOW_EPOCH_SET:-0}" -eq 1 ]; then
+  export LL_NOW_EPOCH
+  LL_NOW_EPOCH="$_ORIG_LL_NOW_EPOCH_VALUE"
+else
+  unset LL_NOW_EPOCH 2>/dev/null || true
+fi
+
+exit $errors

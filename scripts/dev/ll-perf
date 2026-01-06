@@ -1,46 +1,122 @@
 #!/bin/bash
+# scripts/dev/ll-perf
 # sezenismail@gmail.com
-# 2014-11-27
-# Compares performance of ll and native ls -l commands
+# 2014-11-27 (updated 2026-01-05)
+# Compares performance of ll variants and native ls -l commands
 
-_n=50 # number of runs
-_path="/usr/bin" # path to run
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+_n=50                    # Number of test runs
+_path="/usr/bin"         # Directory path to test
 
+# Color codes for output
+_color_reset=$'\x1b[0m'
+_color_script=$'\x1b[38;5;226m'    # Yellow for script names
+_color_time=$'\x1b[38;5;117m'      # Light blue for run time
+_color_perf=$'\x1b[38;5;208m'      # Orange for performance
+_color_comparison=$'\x1b[38;5;124m' # Red for comparison
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BIN_DIR="$PROJECT_ROOT/scripts/bin"
+
+# ============================================================================
+# DISCOVER LL* SCRIPTS
+# ============================================================================
+ll_scripts=()
+for script in "$BIN_DIR"/ll*; do
+  if [ -x "$script" ] && [ -f "$script" ]; then
+    ll_scripts+=("$script")
+  fi
+done
+
+if [ ${#ll_scripts[@]} -eq 0 ]; then
+  echo "Error: No ll* executables found in $BIN_DIR" >&2
+  exit 1
+fi
+
+# ============================================================================
+# TIMING SETUP
+# ============================================================================
 _ts_total_run_time=$(( $(date +%s%N)/1000000 ))
 
-# Native ls performance
+# ============================================================================
+# NATIVE LS PERFORMANCE TEST
+# ============================================================================
 _total=0
 _numoffiles=$(find "$_path" -mindepth 1 -maxdepth 1 | wc -l)
-for _ in $(seq 1 $_n);do
+
+for _ in $(seq 1 $_n); do
   _tsmp=$(( $(date +%s%N)/1000000 ))
   ls -l "$_path" > /dev/null
-  # ls -l "$_path"
   _val=$(( $(date +%s%N)/1000000 - _tsmp ))
   _total=$(( _total + _val ))
 done
+
 _lsruntime=$(bc <<< "scale = 3; ($_total/$_n)")
 _ls_perf_per_file=$(bc <<< "scale = 3; ($_lsruntime/$_numoffiles)")
 
-# ll performance
-_total=0
-for _ in $(seq 1 $_n);do
-  _tsmp=$(( $(date +%s%N)/1000000 ))
-  ll -h "$_path" > /dev/null
-  # ll "$_path"
-  _val=$(( $(date +%s%N)/1000000 - _tsmp ))
-  _total=$(( _total + _val ))
+# ============================================================================
+# LL SCRIPTS PERFORMANCE TEST
+# ============================================================================
+# Using parallel arrays for bash 3.2 compatibility
+ll_script_names=()
+ll_runtimes=()
+ll_perf_per_file=()
+ll_comparisons=()
+
+for ll_script in "${ll_scripts[@]}"; do
+  _script_name=$(basename "$ll_script")
+  _total=0
+  
+  # Run performance test
+  for _ in $(seq 1 $_n); do
+    _tsmp=$(( $(date +%s%N)/1000000 ))
+    "$ll_script" -h "$_path" > /dev/null 2>&1
+    _val=$(( $(date +%s%N)/1000000 - _tsmp ))
+    _total=$(( _total + _val ))
+  done
+  
+  # Calculate statistics
+  _llruntime=$(bc <<< "scale = 3; ($_total/$_n)")
+  _ll_perf_per_file=$(bc <<< "scale = 3; ($_llruntime/$_numoffiles)")
+  _comp_ll_ls=$(bc <<< "scale = 3; ($_llruntime/$_lsruntime)")
+  
+  # Store results
+  ll_script_names+=("$_script_name")
+  ll_runtimes+=("$_llruntime")
+  ll_perf_per_file+=("$_ll_perf_per_file")
+  ll_comparisons+=("$_comp_ll_ls")
 done
-_llruntime=$(bc <<< "scale = 3; ($_total/$_n)")
-_ll_perf_per_file=$(bc <<< "scale = 3; ($_llruntime/$_numoffiles)")
 
-# How much faster or slower?
-_comp_ll_ls=$(bc <<< "scale = 3; ($_llruntime/$_lsruntime)")
-_ts_total_run_time=$(( $(date +%s%N)/1000000 - _ts_total_run_time ))
+# ============================================================================
+# FINAL TIMING
+# ============================================================================
+_ts_total_run_time_ms=$(( $(date +%s%N)/1000000 - _ts_total_run_time ))
+_ts_total_run_time_sec=$(bc <<< "scale = 3; ($_ts_total_run_time_ms/1000)")
 
-
+# ============================================================================
+# OUTPUT RESULTS
+# ============================================================================
 date
-echo "Total Run Time: $_ts_total_run_time ms."
+echo "Total Run Time: ${_color_time}${_ts_total_run_time_sec} s${_color_reset}"
 echo "Number of files: $_numoffiles"
-echo "Pure ls run time: $_lsruntime ms. Perf: $_ls_perf_per_file"
-echo "ll run time: $_llruntime ms. Perf: $_ll_perf_per_file"
-echo "ll $_comp_ll_ls times slower than ls"
+echo ""
+echo "Pure ${_color_script}ls -l${_color_reset} run time: ${_color_time}${_lsruntime} ms${_color_reset}. Perf: ${_color_perf}${_ls_perf_per_file} ms/file${_color_reset}"
+echo ""
+
+# Print results for each ll script
+for i in $(seq 0 $((${#ll_script_names[@]} - 1))); do
+  _script_name="${ll_script_names[$i]}"
+  _llruntime="${ll_runtimes[$i]}"
+  _ll_perf_per_file="${ll_perf_per_file[$i]}"
+  _comp_ll_ls="${ll_comparisons[$i]}"
+  
+  echo "${_color_script}${_script_name}${_color_reset} run time: ${_color_time}${_llruntime} ms${_color_reset}. Perf: ${_color_perf}${_ll_perf_per_file} ms/file${_color_reset}"
+  echo "${_color_script}${_script_name}${_color_reset} ${_color_comparison}${_comp_ll_ls} times${_color_reset} slower than ls"
+  echo ""
+done
