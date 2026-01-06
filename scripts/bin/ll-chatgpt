@@ -94,34 +94,40 @@ if [ -z "$ll_res" ]; then
       dt = now - epoch
       print dt
     }')
+    _prefix=""
+    _abs="$_dt"
+    if [ "$_dt" -lt 0 ]; then
+      _prefix="in"
+      _abs=$((-_dt))
+    fi
     _formatted=""
-    if [ "$_dt" -lt 120 ]; then
-      printf -v _formatted '%2d %3s' "$_dt" "sec"
+    if [ "$_abs" -lt 120 ]; then
+      printf -v _formatted '%-*s %*d %s' 2 "$_prefix" 2 "$_abs" "sec"
       _csec=$'\x1b[38;5;124m'
       _creset=$'\x1b[0m'
       _formatted="$_csec$_formatted$_creset"
-    elif [ "$_dt" -lt 3600 ]; then
-      printf -v _formatted '%2d %3s' $((_dt / 60)) "min"
+    elif [ "$_abs" -lt 3600 ]; then
+      printf -v _formatted '%-*s %*d %s' 2 "$_prefix" 2 $((_abs / 60)) "min"
       _cmin=$'\x1b[38;5;215m'
       _creset=$'\x1b[0m'
       _formatted="$_cmin$_formatted$_creset"
-    elif [ "$_dt" -lt 172800 ]; then
-      printf -v _formatted '%2d %3s' $((_dt / 3600)) "hrs"
+    elif [ "$_abs" -lt 172800 ]; then
+      printf -v _formatted '%-*s %*d %s' 2 "$_prefix" 2 $((_abs / 3600)) "hrs"
       _chrs=$'\x1b[38;5;196m'
       _creset=$'\x1b[0m'
       _formatted="$_chrs$_formatted$_creset"
-    elif [ "$_dt" -lt 3888000 ]; then
-      printf -v _formatted '%2d %3s' $((_dt / 86400)) "day"
+    elif [ "$_abs" -lt 3888000 ]; then
+      printf -v _formatted '%-*s %*d %s' 2 "$_prefix" 2 $((_abs / 86400)) "day"
       _cday=$'\x1b[38;5;230m'
       _creset=$'\x1b[0m'
       _formatted="$_cday$_formatted$_creset"
-    elif [ "$_dt" -lt 31536000 ]; then
-      printf -v _formatted '%2d %3s' $((_dt / 2592000)) "mon"
+    elif [ "$_abs" -lt 31536000 ]; then
+      printf -v _formatted '%-*s %*d %s' 2 "$_prefix" 2 $((_abs / 2592000)) "mon"
       _cmon=$'\x1b[38;5;151m'
       _creset=$'\x1b[0m'
       _formatted="$_cmon$_formatted$_creset"
     else
-      printf -v _formatted '%2d %3s' $((_dt / 31536000)) "yr"
+      printf -v _formatted '%-*s %*d %s' 2 "$_prefix" 2 $((_abs / 31536000)) "yr"
       _cyr=$'\x1b[38;5;241m'
       _creset=$'\x1b[0m'
       _formatted="$_cyr$_formatted$_creset"
@@ -207,6 +213,8 @@ BEGIN {
   TIME_YEAR  = 31536000
 
   lsec="sec"; lmin="min"; lhrs="hrs"; lday="day"; lmon="mon"; lyr="yr"
+  rel_prefix_w = 2
+  rel_num_w = 2
 }
 
 # Remove ANSI color codes for length calculation
@@ -277,21 +285,22 @@ function color_size_human(s,   num, suf, out, prgx) {
   return out
 }
 
-function reltime(epoch,   dt, v, lbl, now) {
+function reltime(epoch,   dt, v, lbl, now, prefix) {
   now = systime()
   if (NOW_EPOCH ~ /^[0-9]+$/) now = NOW_EPOCH
   dt = now - epoch
+  if (dt < 0) { prefix = "in"; dt = -dt } else { prefix = "" }
   if      (dt < TIME_2MIN)   { v=dt;                 lbl=lsec }
   else if (dt < TIME_HOUR)   { v=int(dt/TIME_MIN);   lbl=lmin }
   else if (dt < TIME_2DAYS)  { v=int(dt/TIME_HOUR);  lbl=lhrs }
   else if (dt < TIME_45DAYS) { v=int(dt/TIME_DAY);   lbl=lday }
   else if (dt < TIME_YEAR)   { v=int(dt/TIME_30DAYS);lbl=lmon }
   else                       { v=int(dt/TIME_YEAR);  lbl=lyr  }
-  # fixed width like "%2d %3s"
-  return sprintf("%2d %3s", v, lbl)
+  return sprintf("%-*s %*d %s", rel_prefix_w, prefix, rel_num_w, v, lbl)
 }
-function color_reltime(s,   lbl, out, v) {
-  lbl = substr(s, length(s)-2, 3)
+function color_reltime(s,   parts, n, lbl, out, v) {
+  n = split(s, parts, /[[:space:]]+/)
+  lbl = parts[n]
   if      (lbl==lsec) out = csec s creset
   else if (lbl==lmin) out = cmin s creset
   else if (lbl==lhrs) out = chrs s creset
