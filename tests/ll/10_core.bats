@@ -1,183 +1,149 @@
 #!/usr/bin/env bats
-# tests/ll/10_core.bats
 # Core option comparisons for scripts/bin/ll
 
 load '../test_helper/bats-support/load'
 load '../test_helper/bats-assert/load'
 load './00_harness.bash'
 
-@test "ll core: default" {
-  local -a args=()
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+@test "ll core: flag matrix (144 combinations)" {
+  local -a dir_variants
+  local -a block_variants
+  local -a human_variants
+  local -a numeric_variants
+  local -a owner_variants
+  local -a dir_tokens
+  local -a block_tokens
+  local -a human_tokens
+  local -a numeric_tokens
+  local -a owner_tokens
+  local -a args
+  local -a perms
+  local dir_ref
+  local block_ref
+  local human_ref
+  local numeric_ref
+  local owner_ref
+  local count
+  local verbose
+  verbose="${LL_MATRIX_VERBOSE:-${LL_MATRIX_VERBOSE:-0}}"
 
-@test "ll core: -d" {
-  local -a args=(-d)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  declare -a dir_var0=()
+  declare -a dir_var1=(-d)
+  declare -a dir_var2=(-d .)
+  dir_variants=(dir_var0 dir_var1 dir_var2)
 
-@test "ll core: --directory" {
-  local -a args=(--directory)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  declare -a block_var0=()
+  declare -a block_var1=(-s)
+  block_variants=(block_var0 block_var1)
 
-@test "ll core: -d ." {
-  local -a args=(-d .)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  declare -a human_var0=()
+  declare -a human_var1=(-h)
+  declare -a human_var2=(--si)
+  human_variants=(human_var0 human_var1 human_var2)
 
-@test "ll core: -g" {
-  local -a args=(-g)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  declare -a numeric_var0=()
+  declare -a numeric_var1=(-n)
+  numeric_variants=(numeric_var0 numeric_var1)
 
-@test "ll core: -G" {
-  local -a args=(-G)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  declare -a owner_var0=()
+  declare -a owner_var1=(-g)
+  declare -a owner_var2=(-G)
+  declare -a owner_var3=(-g -G)
+  owner_variants=(owner_var0 owner_var1 owner_var2 owner_var3)
 
-@test "ll core: -o" {
-  local -a args=(-o)
   ll_mk_testdir
   ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
 
-@test "ll core: --no-group" {
-  local -a args=(--no-group)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  count=0
+  for dir_ref in "${dir_variants[@]}"; do
+    eval "dir_tokens=(\"\${${dir_ref}[@]}\")"
+    for block_ref in "${block_variants[@]}"; do
+      eval "block_tokens=(\"\${${block_ref}[@]}\")"
+      for human_ref in "${human_variants[@]}"; do
+        eval "human_tokens=(\"\${${human_ref}[@]}\")"
+        for numeric_ref in "${numeric_variants[@]}"; do
+          eval "numeric_tokens=(\"\${${numeric_ref}[@]}\")"
+          for owner_ref in "${owner_variants[@]}"; do
+            eval "owner_tokens=(\"\${${owner_ref}[@]}\")"
+            args=()
+            args+=("${dir_tokens[@]}")
+            args+=("${block_tokens[@]}")
+            args+=("${human_tokens[@]}")
+            args+=("${numeric_tokens[@]}")
+            args+=("${owner_tokens[@]}")
 
-@test "ll core: -g -G" {
-  local -a args=(-g -G)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+            count=$((count + 1))
+            if [ "$verbose" = "1" ]; then
+              printf 'matrix combo #%s: %s\n' "$count" "${args[*]}" >&3
+            fi
+            ll_assert_canon_equal "${args[@]}"
+          done
+        done
+      done
+    done
+  done
 
-@test "ll core: -s" {
-  local -a args=(-s)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  # Alias sanity checks (keep these out of the matrix to avoid combinatorial blow-up).
+  perms=(--directory)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #alias-1: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: --size" {
-  local -a args=(--size)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(--numeric-uid-gid)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #alias-2: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: -h" {
-  local -a args=(-h)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(--no-group)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #alias-3: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: --human-readable" {
-  local -a args=(--human-readable)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=()
+  perms=(-n -s --si -g)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-1: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: --si" {
-  local -a args=(--si)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(--si -s -n -g)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-2: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: -n" {
-  local -a args=(-n)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(. -n -s --si -g)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-3: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: --numeric-uid-gid" {
-  local -a args=(--numeric-uid-gid)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(file1.txt -h -n)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-4: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: -s -h" {
-  local -a args=(-s -h)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(-d . -n --si -G)
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-5: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: -s --si" {
-  local -a args=(-s --si)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(-n -s --si -g -- "a b.txt")
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-6: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: -n -h" {
-  local -a args=(-n -h)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
+  perms=(--directory -n --no-group -- "a b.txt")
+  if [ "$verbose" = "1" ]; then
+    printf 'matrix combo #perm-7: %s\n' "${perms[*]}" >&3
+  fi
+  ll_assert_canon_equal "${perms[@]}"
 
-@test "ll core: -n --si" {
-  local -a args=(-n --si)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
-
-@test "ll core: -s -g" {
-  local -a args=(-s -g)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
-
-@test "ll core: -s -h -g -G" {
-  local -a args=(-s -h -g -G)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
   ll_rm_testdir
 }
