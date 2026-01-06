@@ -100,6 +100,24 @@ load './00_harness.bash'
     skip "setfacl failed"
   fi
 
+  if [ -z "${LL_GNU_LS:-}" ]; then
+    ll_rm_testdir
+    skip "GNU ls required"
+  fi
+
+  run ll_run_ls -- aclfile
+  if [ "$status" -ne 0 ]; then
+    ll_rm_testdir
+    skip "ls failed"
+  fi
+
+  local ls_clean
+  ls_clean="$(ll_strip_ansi_and_controls "$output")"
+  if ! [[ "$ls_clean" =~ ^[-bcdlps][rwxstST-]{9}\+ ]]; then
+    ll_rm_testdir
+    skip "ACL marker '+' not present"
+  fi
+
   run "${LL_SCRIPT}" .
   assert_success
 
@@ -126,6 +144,9 @@ load './00_harness.bash'
 
 @test "ll colors: owner root (optional)" {
   local esc
+  local os
+  local chown_ok
+  local wheel_ok
 
   if ! command -v sudo >/dev/null 2>&1; then
     skip "sudo not available"
@@ -136,9 +157,41 @@ load './00_harness.bash'
 
   ll_mk_testdir
   touch rootfile
-  if ! sudo chown root:root rootfile; then
+  os="$(uname -s 2>/dev/null || printf 'unknown')"
+  chown_ok=0
+  wheel_ok=1
+
+  if [ "$os" = "Darwin" ]; then
+    if command -v dscl >/dev/null 2>&1; then
+      if ! dscl . -read /Groups/wheel >/dev/null 2>&1; then
+        wheel_ok=0
+      fi
+    elif command -v dseditgroup >/dev/null 2>&1; then
+      if ! dseditgroup -o read wheel >/dev/null 2>&1; then
+        wheel_ok=0
+      fi
+    fi
+
+    if [ "$wheel_ok" -eq 1 ]; then
+      if sudo chown root:wheel rootfile >/dev/null 2>&1; then
+        chown_ok=1
+      fi
+    fi
+
+    if [ "$chown_ok" -ne 1 ]; then
+      if sudo chown root:0 rootfile >/dev/null 2>&1; then
+        chown_ok=1
+      fi
+    fi
+  else
+    if sudo chown root:root rootfile >/dev/null 2>&1; then
+      chown_ok=1
+    fi
+  fi
+
+  if [ "$chown_ok" -ne 1 ]; then
     ll_rm_testdir
-    skip "sudo chown failed"
+    skip "sudo chown not supported"
   fi
 
   run "${LL_SCRIPT}" .
