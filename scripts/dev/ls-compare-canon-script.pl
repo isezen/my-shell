@@ -6,8 +6,6 @@ my $unit_re = qr/(?:sec|min|hrs|hr|day|mon|mo|yr)/;
 my $perms_re = qr/^(?:[bcdlps-])[rwxstST-]{9}[+.@]?$/;
 my $blocks_re = qr/^[0-9]+(?:[.,][0-9]+)?[KMGTPBkmgptb]?$/;
 my $has_human  = $ENV{LS_COMPARE_HAS_HUMAN}  // 0;
-my $prefix_w = 2;
-my $num_w = 2;
 
 my $now = $ENV{LS_COMPARE_NOW_EPOCH};
 $now = time() if !defined($now) || $now !~ /^-?\d+$/;
@@ -30,7 +28,8 @@ sub fmt_rel {
   my ($prefix, $num, $unit) = @_;
   $unit = "hrs" if defined($unit) && $unit eq "hr";
   $unit = "mon" if defined($unit) && $unit eq "mo";
-  return sprintf("%-*s %*d %s", $prefix_w, $prefix, $num_w, $num, $unit);
+  return "in $num $unit" if defined($prefix) && $prefix eq "in";
+  return "$num $unit";
 }
 
 while (my $line = <STDIN>) {
@@ -63,9 +62,10 @@ while (my $line = <STDIN>) {
     my $tail = substr($work, $c->{e});
     $prefix =~ s/^[ \t]+//;
     $prefix =~ s/[ \t]+$//;
-    if (length($c->{unit}) < 3 && $tail =~ /^  /) {
-      $tail =~ s/^ //;
-    }
+    my $time_raw = substr($work, $c->{s}, $c->{e} - $c->{s});
+    $time_raw =~ s/^[ \t]//;
+    $time_raw =~ s/\bhr\b/hrs/;
+    $time_raw =~ s/\bmo\b/mon/;
 
     my @toks = length($prefix) ? split(/\s+/, $prefix) : ();
     next if @toks < 3;
@@ -85,14 +85,7 @@ while (my $line = <STDIN>) {
       pop @toks;
     }
 
-    my $tn = $c->{tn};
-    my $time_prefix = $c->{prefix} // "";
-    if (defined($tn) && $tn < 0) {
-      $tn = -$tn;
-      $time_prefix = "in";
-    }
-    my $rt = fmt_rel($time_prefix, $tn, $c->{unit});
-    my @out = (@toks, $rt);
+    my @out = (@toks, $time_raw);
     $_ = join(" ", @out) . $tail . "\n";
     $matched = 1;
     last;

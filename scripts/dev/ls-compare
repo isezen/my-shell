@@ -448,6 +448,18 @@ canonicalize_script_output() {
     | perl "$PROJECT_ROOT/scripts/dev/ls-compare-canon-script.pl"
 }
 
+validate_ll_chatgpt_output() {
+  local raw="$1"
+  local future_line=""
+
+  future_line="$(printf '%s\n' "$raw" | sed -n '/future\.txt/p' | head -n 1)"
+  if [ -z "$future_line" ]; then
+    return 0
+  fi
+
+  printf '%s' "$future_line" | perl -ne 'exit 0 if /\e\[38;5;39m/; exit 1;'
+}
+
 # ============================================================================
 # Side-by-side comparison function
 # ============================================================================
@@ -740,15 +752,25 @@ for idx in "${!test_case_names[@]}"; do
     # Run all scripts and capture outputs
     outputs=()
     outputs_raw=()
+    validation_failed=0
+    validation_msg=""
 
     # Column 0 is the ls baseline
     outputs_raw+=("$ls_output_raw")
     outputs+=("$(canonicalize_ls_output "$ls_output_raw")")
 
-    for script_path in "${script_paths[@]}"; do
+    for i in "${!script_paths[@]}"; do
+      script_path="${script_paths[$i]}"
+      script_name="${script_names[$i]}"
       output_raw=$(cd "$TEST_DIR" && "$script_path" "${tc_argv_clean[@]}" 2>&1)
       outputs_raw+=("$output_raw")
       outputs+=("$(canonicalize_script_output "$output_raw")")
+      if [ "$script_name" = "ll-chatgpt" ]; then
+        if ! validate_ll_chatgpt_output "$output_raw"; then
+          validation_failed=1
+          validation_msg="future time color missing"
+        fi
+      fi
     done
 
     # Check if all outputs match baseline exactly after canonicalization.
@@ -762,6 +784,10 @@ for idx in "${!test_case_names[@]}"; do
       fi
     done
     
+    if [ "$validation_failed" -eq 1 ]; then
+      all_match=false
+    fi
+
     if [ "$all_match" = true ]; then
       if [ "$FAIL_ONLY" -eq 0 ]; then
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
@@ -777,17 +803,30 @@ for idx in "${!test_case_names[@]}"; do
     else
       if [ "$FAIL_ONLY" -eq 0 ]; then
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          echo "FAIL - Outputs differ"
+          if [ "$validation_failed" -eq 1 ]; then
+            echo "FAIL - Formatting validation failed (${validation_msg})"
+          else
+            echo "FAIL - Outputs differ"
+          fi
           echo "  Side-by-side comparison:"
           print_side_by_side
         else
+          if [ "$validation_failed" -eq 1 ]; then
+            echo "FAIL - Formatting validation failed (${validation_msg})"
+          else
+            echo "FAIL - Outputs differ"
+          fi
           # Vertical format: show outputs directly
           print_vertical
         fi
       else
         echo "Test #$test_num: $test_name"
         echo "----------------------------------"
-        echo "FAIL - Outputs differ"
+        if [ "$validation_failed" -eq 1 ]; then
+          echo "FAIL - Formatting validation failed (${validation_msg})"
+        else
+          echo "FAIL - Outputs differ"
+        fi
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
           echo "  Side-by-side comparison:"
           print_side_by_side

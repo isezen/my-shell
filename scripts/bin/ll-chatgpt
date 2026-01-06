@@ -102,36 +102,19 @@ if [ -z "$ll_res" ]; then
     fi
     _formatted=""
     _creset=$'\x1b[0m'
-    _num_w=2
-    _unit_w=3
+    _cfut=$'\x1b[38;5;39m'
     _format_time() {
       local _val="$1"
       local _unit="$2"
       local _color="$3"
-      local _num_s _unit_s _num_w_local _unit_w_local _raw _raw_past _raw_future _time_w _padded
-      _num_w_local="$_num_w"
-      if [ "${#_val}" -gt "$_num_w_local" ]; then
-        _num_w_local="${#_val}"
-      fi
-      _unit_w_local="$_unit_w"
-      if [ "${#_unit}" -gt "$_unit_w_local" ]; then
-        _unit_w_local="${#_unit}"
-      fi
-      printf -v _num_s '%*d' "$_num_w_local" "$_val"
-      printf -v _unit_s '%-*s' "$_unit_w_local" "$_unit"
-      _raw_past="${_num_s} ${_unit_s}"
-      _raw_future="in ${_val} ${_unit_s}"
-      _time_w="${#_raw_past}"
-      if [ "${#_raw_future}" -gt "$_time_w" ]; then
-        _time_w="${#_raw_future}"
-      fi
+      local _raw
       if [ -n "$_prefix" ]; then
-        _raw="$_raw_future"
+        _raw="$_prefix ${_val} ${_unit}"
+        _color="$_cfut"
       else
-        _raw="$_raw_past"
+        _raw="${_val} ${_unit}"
       fi
-      printf -v _padded '%*s' "$_time_w" "$_raw"
-      _formatted="${_color}${_padded}${_creset}"
+      _formatted="${_color}${_raw}${_creset}"
     }
     if [ "$_abs" -lt 120 ]; then
       _csec=$'\x1b[38;5;124m'
@@ -216,6 +199,7 @@ BEGIN {
   cday = sprintf("%c[38;5;230m", 27)
   cmon = sprintf("%c[38;5;151m", 27)
   cyr  = sprintf("%c[38;5;241m", 27)
+  cfut = sprintf("%c[38;5;39m", 27)
 
   # Constants
   SIZE_KB = 1024
@@ -256,6 +240,19 @@ function rpad(s, w,   n, out, raw_len) {
   out = ""
   while (n--) out = out " "
   return s out
+}
+
+function quote_if_needed(s) {
+  return (index(s, " ") > 0) ? "\"" s "\"" : s
+}
+
+function format_name(raw, perms,   arrow_pos, name, target) {
+  if (perms ~ /^l/ && (arrow_pos = index(raw, " -> ")) > 0) {
+    name = substr(raw, 1, arrow_pos - 1)
+    target = substr(raw, arrow_pos + 4)
+    return quote_if_needed(name) " -> " quote_if_needed(target)
+  }
+  return quote_if_needed(raw)
 }
 
 function color_perm(p,   i,ch,out) {
@@ -317,9 +314,11 @@ function time_calc(epoch,   dt, v, lbl, now, prefix) {
   time_prefix = prefix
   time_num = v
   time_unit = lbl
+  time_future = (prefix != "")
 }
-function color_reltime_by_lbl(s, lbl,   out) {
-  if      (lbl==lsec) out = csec s creset
+function color_reltime_by_lbl(s, lbl, is_future,   out) {
+  if (is_future)      out = cfut s creset
+  else if (lbl==lsec) out = csec s creset
   else if (lbl==lmin) out = cmin s creset
   else if (lbl==lhrs) out = chrs s creset
   else if (lbl==lday) out = cday s creset
@@ -400,6 +399,7 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   # Extract tail: everything after epoch_end (inclusive of epoch_end+1)
   # This preserves ALL whitespace, tabs, and content exactly as-is
   name = substr(line, epoch_end + 1)
+  if (name ~ /^[[:space:]]/) name = substr(name, 2)
 
   # left part: everything before the epoch span
   left = substr(line, 1, epoch_start - 1)
@@ -489,6 +489,8 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   a_tprefix[n] = time_prefix
   a_tnum[n] = time_num
   a_tunit[n] = time_unit
+  a_tfuture[n] = time_future
+  if (time_future) any_future = 1
 
   # widths (raw, without color) - use strip_colors for accurate width calculation
   if (ASIZE) {
@@ -510,26 +512,9 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   size_raw = strip_colors(size)
   if (HUMANREADABLE && size_raw ~ /^[0-9]+$/) size_raw = size_raw "B"
   if (length(size_raw) > w_size) w_size = length(size_raw)
-  tnum_s = sprintf("%d", time_num)
-  if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
-  if (length(time_unit) > w_tunit) w_tunit = length(time_unit)
 }
 
 END {
-  if (w_tnum < 2) w_tnum = 2
-  if (w_tunit < 3) w_tunit = 3
-  for (i=1; i<=n; i++) {
-    num_s = sprintf("%d", a_tnum[i])
-    if (a_tprefix[i] != "") {
-      unit_s = rpad(a_tunit[i], w_tunit)
-      t_raw = a_tprefix[i] " " num_s " " unit_s
-    } else {
-      num_s = lpad(num_s, w_tnum)
-      unit_s = rpad(a_tunit[i], w_tunit)
-      t_raw = num_s " " unit_s
-    }
-    if (length(t_raw) > w_time) w_time = length(t_raw)
-  }
   for (i=1; i<=n; i++) {
     out = ""
 
@@ -575,19 +560,16 @@ END {
     }
 
     num_s = sprintf("%d", a_tnum[i])
-    if (a_tprefix[i] != "") {
-      unit_s = rpad(a_tunit[i], w_tunit)
-      t_raw = a_tprefix[i] " " num_s " " unit_s
+    if (a_tfuture[i]) {
+      t_raw = a_tprefix[i] " " num_s " " a_tunit[i]
     } else {
-      num_s = lpad(num_s, w_tnum)
-      unit_s = rpad(a_tunit[i], w_tunit)
-      t_raw = num_s " " unit_s
+      t_raw = num_s " " a_tunit[i]
+      if (any_future) t_raw = "   " t_raw
     }
-    t_raw = lpad(t_raw, w_time)
-    t_colored = color_reltime_by_lbl(t_raw, a_tunit[i])
+    t_colored = color_reltime_by_lbl(t_raw, a_tunit[i], a_tfuture[i])
     out = out t_colored " "
 
-    out = out a_name[i]
+    out = out format_name(a_name[i], a_perms[i])
 
     print out
   }
