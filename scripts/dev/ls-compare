@@ -247,6 +247,72 @@ else
   LL_NOW_EPOCH=$(date +%s)
 fi
 
+# Additional edge-case fixtures (keep default dir stable).
+GNU_DATE="date"
+GNU_TOUCH="touch"
+if [ -x /opt/local/libexec/gnubin/date ]; then
+  GNU_DATE="/opt/local/libexec/gnubin/date"
+fi
+if [ -x /opt/local/libexec/gnubin/touch ]; then
+  GNU_TOUCH="/opt/local/libexec/gnubin/touch"
+fi
+if ! "$GNU_DATE" -d "@0" "+%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+  echo "Error: GNU date with -d is required for edge-case fixtures." >&2
+  exit 1
+fi
+if ! "$GNU_TOUCH" -d "@0" "$TEST_DIR/.touch-test" >/dev/null 2>&1; then
+  echo "Error: GNU touch with -d is required for edge-case fixtures." >&2
+  exit 1
+fi
+rm -f "$TEST_DIR/.touch-test"
+
+# Symlink target with space.
+mkdir -p "case-symlink-target-space"
+printf "space" > "case-symlink-target-space/target file.txt"
+ln -s "target file.txt" "case-symlink-target-space/link name.txt" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-space/target file.txt"
+touch -h -t 202001010000.00 "case-symlink-target-space/link name.txt" 2>/dev/null || true
+
+# Symlink target with tab.
+mkdir -p "case-symlink-target-tab"
+_tab_target=$'t\ta'
+_tab_link=$'l\ti'
+printf "tab" > "case-symlink-target-tab/$_tab_target"
+ln -s "$_tab_target" "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-tab/$_tab_target"
+touch -h -t 202001010000.00 "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+
+# Future-only listing.
+mkdir -p "case-future-only"
+printf "" > "case-future-only/f1.txt"
+printf "" > "case-future-only/f2.txt"
+_now_epoch="${LL_NOW_EPOCH:-$(date +%s)}"
+_f1_epoch=$((_now_epoch + 2 * 24 * 3600))
+_f2_epoch=$((_now_epoch + 12 * 24 * 3600))
+_f1_str=$("$GNU_DATE" -d "@$_f1_epoch" '+%Y-%m-%d %H:%M:%S')
+_f2_str=$("$GNU_DATE" -d "@$_f2_epoch" '+%Y-%m-%d %H:%M:%S')
+"$GNU_TOUCH" -d "$_f1_str" "case-future-only/f1.txt"
+"$GNU_TOUCH" -d "$_f2_str" "case-future-only/f2.txt"
+
+# Mixed units and time widths.
+mkdir -p "case-mixed-time-width"
+printf "" > "case-mixed-time-width/sec.txt"
+printf "" > "case-mixed-time-width/hrs.txt"
+printf "" > "case-mixed-time-width/day.txt"
+printf "" > "case-mixed-time-width/mon.txt"
+_sec_epoch=$((_now_epoch - 5))
+_hrs_epoch=$((_now_epoch - 3 * 3600))
+_day_epoch=$((_now_epoch - 12 * 24 * 3600))
+_mon_epoch=$((_now_epoch - 120 * 24 * 3600))
+_sec_str=$("$GNU_DATE" -d "@$_sec_epoch" '+%Y-%m-%d %H:%M:%S')
+_hrs_str=$("$GNU_DATE" -d "@$_hrs_epoch" '+%Y-%m-%d %H:%M:%S')
+_day_str=$("$GNU_DATE" -d "@$_day_epoch" '+%Y-%m-%d %H:%M:%S')
+_mon_str=$("$GNU_DATE" -d "@$_mon_epoch" '+%Y-%m-%d %H:%M:%S')
+"$GNU_TOUCH" -d "$_sec_str" "case-mixed-time-width/sec.txt"
+"$GNU_TOUCH" -d "$_hrs_str" "case-mixed-time-width/hrs.txt"
+"$GNU_TOUCH" -d "$_day_str" "case-mixed-time-width/day.txt"
+"$GNU_TOUCH" -d "$_mon_str" "case-mixed-time-width/mon.txt"
+
 # ============================================================================
 # TEST CASES
 # ============================================================================
@@ -313,6 +379,12 @@ test_case_names=(
 
   # Timestamp edge case
   "-- future.txt"
+
+  # Additional edge-case directories
+  "symlink target space"
+  "symlink target tab"
+  "future-only"
+  "mixed time width"
 )
 
 test_case_argv=(
@@ -372,6 +444,12 @@ test_case_argv=(
 
   # Timestamp edge case
   "-- future.txt"
+
+  # Additional edge-case directories
+  "case-symlink-target-space"
+  "case-symlink-target-tab"
+  "case-future-only"
+  "case-mixed-time-width"
 )
 
 # Sanity check (developer error)
@@ -448,7 +526,7 @@ canonicalize_script_output() {
     | perl "$PROJECT_ROOT/scripts/dev/ls-compare-canon-script.pl"
 }
 
-validate_ll_chatgpt_output() {
+validate_ll_output() {
   local raw="$1"
   local future_line=""
 
@@ -765,8 +843,8 @@ for idx in "${!test_case_names[@]}"; do
       output_raw=$(cd "$TEST_DIR" && "$script_path" "${tc_argv_clean[@]}" 2>&1)
       outputs_raw+=("$output_raw")
       outputs+=("$(canonicalize_script_output "$output_raw")")
-      if [ "$script_name" = "ll-chatgpt" ]; then
-        if ! validate_ll_chatgpt_output "$output_raw"; then
+      if [ "$script_name" = "ll" ]; then
+        if ! validate_ll_output "$output_raw"; then
           validation_failed=1
           validation_msg="future time color missing"
         fi
