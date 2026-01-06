@@ -107,12 +107,22 @@ if [ -z "$ll_res" ]; then
       local _val="$1"
       local _unit="$2"
       local _color="$3"
-      local _raw
-      if [ -n "$_prefix" ]; then
-        _raw="$_prefix ${_val} ${_unit}"
-        _color="$_cfut"
+      local _num_s _unit_s _prefix_s _prefix_w _num_w _unit_w _raw
+
+      _prefix_w=${#_prefix}
+      _num_w=${#_val}
+      _unit_w=${#_unit}
+
+      printf -v _num_s '%*s' "$_num_w" "$_val"
+      printf -v _unit_s '%-*s' "$_unit_w" "$_unit"
+      if [ "$_prefix_w" -gt 0 ]; then
+        printf -v _prefix_s '%*s' "$_prefix_w" "$_prefix"
+        _raw="${_prefix_s} ${_num_s} ${_unit_s}"
       else
-        _raw="${_val} ${_unit}"
+        _raw="${_num_s} ${_unit_s}"
+      fi
+      if [ -n "$_prefix" ]; then
+        _color="$_cfut"
       fi
       _formatted="${_color}${_raw}${_creset}"
     }
@@ -243,7 +253,7 @@ function rpad(s, w,   n, out, raw_len) {
 }
 
 function quote_if_needed(s) {
-  return (index(s, " ") > 0) ? "\"" s "\"" : s
+  return (index(s, " ") > 0 || index(s, "\t") > 0) ? "\"" s "\"" : s
 }
 
 function format_name(raw, perms,   arrow_pos, name, target) {
@@ -491,6 +501,10 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   a_tunit[n] = time_unit
   a_tfuture[n] = time_future
   if (time_future) any_future = 1
+  if (length(time_prefix) > w_tprefix) w_tprefix = length(time_prefix)
+  tnum_s = sprintf("%d", time_num)
+  if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
+  if (length(time_unit) > w_tunit) w_tunit = length(time_unit)
 
   # widths (raw, without color) - use strip_colors for accurate width calculation
   if (ASIZE) {
@@ -559,12 +573,13 @@ END {
       out = out lpad(s_colored, w_size) " "
     }
 
-    num_s = sprintf("%d", a_tnum[i])
-    if (a_tfuture[i]) {
-      t_raw = a_tprefix[i] " " num_s " " a_tunit[i]
+    num_s = lpad(sprintf("%d", a_tnum[i]), w_tnum)
+    unit_s = rpad(a_tunit[i], w_tunit)
+    if (w_tprefix > 0) {
+      prefix_s = lpad(a_tprefix[i], w_tprefix)
+      t_raw = prefix_s " " num_s " " unit_s
     } else {
-      t_raw = num_s " " a_tunit[i]
-      if (any_future) t_raw = "   " t_raw
+      t_raw = num_s " " unit_s
     }
     t_colored = color_reltime_by_lbl(t_raw, a_tunit[i], a_tfuture[i])
     out = out t_colored " "

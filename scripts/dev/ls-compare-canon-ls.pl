@@ -25,7 +25,21 @@ sub rel_parts {
 sub quote_if_needed {
   my ($s) = @_;
   return $s if !defined($s);
-  return (index($s, " ") >= 0) ? "\"$s\"" : $s;
+  return (index($s, " ") >= 0 || index($s, "\t") >= 0) ? "\"$s\"" : $s;
+}
+
+sub lpad {
+  my ($s, $w) = @_;
+  my $len = length($s);
+  return $s if $len >= $w;
+  return (" " x ($w - $len)) . $s;
+}
+
+sub rpad {
+  my ($s, $w) = @_;
+  my $len = length($s);
+  return $s if $len >= $w;
+  return $s . (" " x ($w - $len));
 }
 
 sub format_tail {
@@ -60,6 +74,9 @@ while (my $line = <STDIN>) {
 
 my @rows;
 my $any_future = 0;
+my $w_tprefix = 0;
+my $w_tnum = 0;
+my $w_tunit = 0;
 for my $line (@lines) {
   my $work = $line;
   my @epoch_matches;
@@ -88,6 +105,9 @@ for my $line (@lines) {
 
   my ($tprefix, $tnum, $tunit) = rel_parts($m->{epoch});
   $any_future = 1 if $tprefix eq "in";
+  $w_tprefix = length($tprefix) if length($tprefix) > $w_tprefix;
+  $w_tnum = length("$tnum") if length("$tnum") > $w_tnum;
+  $w_tunit = length($tunit) if length($tunit) > $w_tunit;
 
   my $perm_idx = 0;
   if (@toks >= 2 && $toks[0] !~ $perms_re && $toks[0] =~ $blocks_re) {
@@ -113,12 +133,14 @@ for my $r (@rows) {
   }
 
   my @toks = @{$r->{toks}};
+  my $num_s = lpad("$r->{time_num}", $w_tnum);
+  my $unit_s = rpad($r->{time_unit}, $w_tunit);
   my $time;
-  if ($r->{time_prefix} eq "in") {
-    $time = "in $r->{time_num} $r->{time_unit}";
+  if ($w_tprefix > 0) {
+    my $prefix_s = lpad($r->{time_prefix}, $w_tprefix);
+    $time = "$prefix_s $num_s $unit_s";
   } else {
-    $time = "$r->{time_num} $r->{time_unit}";
-    $time = "   $time" if $any_future;
+    $time = "$num_s $unit_s";
   }
 
   my $tail_out = format_tail($r->{tail}, $r->{perms});
