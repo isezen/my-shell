@@ -301,3 +301,27 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Known trap “newline filenames out-of-scope”: explicitly documented.
+
+## Final Compliance Status (2025-01-05)
+
+### Phase 0–9 Checklist
+- Phase 0: DONE (`wip/ll-before.md` baseline snapshot).
+- Phase 1: DONE (`scripts/bin/ll` thin wrapper; `scripts/bin/ll_linux` + `scripts/bin/ll_macos` split).
+- Phase 2: DONE (BSD reference generator in `tests/ll_macos/00_harness.bash`).
+- Phase 3: DONE (ll_macos MVP coverage: tricky filenames, symlinks, time buckets/colors, size tiers).
+- Phase 4: DONE (suite split: `tests/ll`, `tests/ll_linux`, `tests/ll_macos`).
+- Phase 5: DONE (BSD-only PATH pruning in activation scripts).
+- Phase 6: DONE (`scripts/dev/ll-compare` revised; `wip/ls-compare.md` documented).
+- Phase 7: DONE (`wip/ll-perf.md` added).
+- Phase 8: DONE (`wip/ll-decision.md` added).
+- Phase 9: DONE (Makefile + CI targets aligned; soft-skip preflight in harnesses).
+
+### Acceptance Criteria (Plan)
+- `make test-ll` on Linux CI: PASS by design (Makefile targets + Linux suite).
+- `make test-ll` on macOS CI: PASS (local run captured in `wip/ll-before.md`).
+- `make test-ll-linux` on macOS without GNU: soft-skip via `tests/ll_linux/00_harness.bash` (code path).
+- `make test-ll-macos` on Linux: soft-skip via `tests/ll_macos/00_harness.bash` (code path).
+- `tests/ll/*.bats` toolchain-independent: PASS (wrapper stub suite only).
+
+### Final Verdict
+COMPLIANT

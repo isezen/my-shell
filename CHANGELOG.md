@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 19: Update plan-ll-control with final compliance status (areas: docs/control). No behavior change; docs only.
 - Commit 18: Document newline-in-filename out-of-scope for ll_macos records (areas: macos/tests). No behavior change; docs only.
 - Commit 17: Add Phase 0 baseline snapshot log for ll tests (areas: docs). No behavior change; docs only.
 - Commit 16: Add ll implementation decision record (areas: docs/decision). No behavior change; docs only.
