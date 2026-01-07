@@ -252,3 +252,15 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Phase 6 ll-compare revision: implemented via deterministic cross-impl compare tool.
+
+## Remediation Update #4
+
+### Changes Applied
+- `wip/ll-perf.md`: added performance measurements for ll_macos vs /bin/ls (1k and 10k entries).
+- `CHANGELOG.md`: added Commit 15 entry for perf report.
+
+### Tests Run
+- Performance commands in `wip/ll-perf.md` (captured results).
+
+### Status Impact
+- Phase 7 perf benchmark: initial report captured (macOS host).
