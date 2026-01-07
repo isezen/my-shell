@@ -55,11 +55,69 @@ ll_rm_testdir() {
   LL_TEST_DIR_TMP=""
 }
 
+ll_seed_fixtures_common() {
+  local long_name
+  local tab_name
+
+  touch file1.txt file2.txt
+  mkdir dir1 dir2
+  printf 'test' > file3.txt
+  chmod 755 file1.txt
+  chmod 644 file2.txt
+
+  printf 'space' > "a b.txt"
+  printf 'lead' > " file-leading-space.txt"
+  tab_name=$'a\tb.txt'
+  printf 'tab' > "${tab_name}"
+  printf 'utf' > "İçerik-ğüşöç.txt"
+  long_name="$(printf 'a%.0s' {1..210}).txt"
+  printf 'long' > "${long_name}"
+
+  ln -s "file1.txt" "link-to-file1" 2>/dev/null || true
+  ln -s "missing-target" "broken-link" 2>/dev/null || true
+  mkfifo "fifo1" 2>/dev/null || true
+
+  cp "file1.txt" "setuid-file" 2>/dev/null || true
+  chmod 4755 "setuid-file" 2>/dev/null || true
+  cp "file1.txt" "setgid-file" 2>/dev/null || true
+  chmod 2755 "setgid-file" 2>/dev/null || true
+  mkdir -p "sticky-dir" 2>/dev/null || true
+  chmod 1777 "sticky-dir" 2>/dev/null || true
+
+  printf 'future' > "future.txt"
+
+  /usr/bin/touch -t 202001010000.00 \
+    file1.txt file2.txt file3.txt dir1 dir2 \
+    "a b.txt" " file-leading-space.txt" "${tab_name}" "İçerik-ğüşöç.txt" \
+    "${long_name}" link-to-file1 broken-link fifo1 setuid-file setgid-file sticky-dir future.txt
+
+  /usr/bin/touch -t 203001010000.00 future.txt 2>/dev/null || true
+}
+
 ll_seed_basic_fixtures() {
-  printf 'alpha' > file1.txt
-  printf 'beta' > file2.txt
-  mkdir dir1
-  /usr/bin/touch -t 202001010000.00 file1.txt file2.txt dir1
+  ll_seed_fixtures_common
+}
+
+ll_epoch_to_touch_ts() {
+  local epoch="$1"
+  if /bin/date -r "$epoch" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    /bin/date -r "$epoch" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  if command -v gdate >/dev/null 2>&1; then
+    gdate -d "@${epoch}" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  return 1
+}
+
+ll_touch_epoch() {
+  local path="$1"
+  local epoch="$2"
+  local ts
+
+  ts="$(ll_epoch_to_touch_ts "$epoch")" || return 1
+  /usr/bin/touch -t "$ts" "$path"
 }
 
 ll_strip_ansi_and_controls() {
@@ -231,13 +289,14 @@ ll_macos_quote_if_needed() {
 ll_macos_ref_line() {
   local path="$1"
   local stat_path="$path"
-  local st b512 perms links su sg uid gid size epoch name
+  local st b512 perms links su sg uid gid size epoch name target
   local stat_fmt
 
   if [[ "$stat_path" == -* ]]; then
     stat_path="./$stat_path"
   fi
 
+  target=""
   stat_fmt="%b${LL_MACOS_DELIM}%Sp${LL_MACOS_DELIM}%l${LL_MACOS_DELIM}%Su${LL_MACOS_DELIM}%Sg${LL_MACOS_DELIM}%u${LL_MACOS_DELIM}%g${LL_MACOS_DELIM}%z${LL_MACOS_DELIM}%m${LL_MACOS_DELIM}%N"
   st="$(/usr/bin/stat -f "$stat_fmt" "$stat_path" 2>/dev/null || true)"
   if [ -z "$st" ]; then
@@ -248,6 +307,10 @@ ll_macos_ref_line() {
 
   if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
     name="${name%% -> *}"
+  fi
+
+  if [[ "$perms" == l* ]]; then
+    target="$(/usr/bin/readlink "$stat_path" 2>/dev/null || true)"
   fi
 
   local blocks1k owner group size_disp name_out
@@ -272,6 +335,9 @@ ll_macos_ref_line() {
 
   ll_macos_time_parts "$epoch"
   name_out="$(ll_macos_quote_if_needed "$name")"
+  if [ -n "$target" ]; then
+    name_out="${name_out} -> $(ll_macos_quote_if_needed "$target")"
+  fi
 
   local parts=()
   if [ "$LL_MACOS_ASIZE" -eq 1 ]; then

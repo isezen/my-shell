@@ -170,3 +170,58 @@ Overall Verdict: NON-COMPLIANT
 - **UNKNOWN:** Non-Darwin behavior of ll_macos suite soft-skip (requires Linux host).
 
 Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unverified cross-OS soft-skip behavior).
+
+## Audit Snapshot #1 (2025-01-05)
+
+### Checklist (Phase 0–9)
+- Phase 0 (baseline snapshot + determinism docs): NOT DONE. No “before” logs or determinism documentation found in repo (expected under `wip/` or docs).
+- Phase 1 (binary split + thin wrapper): DONE. `scripts/bin/ll`, `scripts/bin/ll_linux`, `scripts/bin/ll_macos` present; wrapper is thin and dispatch-only.
+- Phase 2 (BSD reference generator for macOS tests): DONE. `tests/ll_macos/00_harness.bash` includes BSD reference generator; parity test exists.
+- Phase 3 (ll_macos MVP feature parity): NOT DONE. Implementation exists in `scripts/bin/ll_macos`, but parity coverage is limited (no full MUST coverage for symlink/edge filenames/colors).
+- Phase 4 (suite split + soft-skip standard): DONE. `tests/ll/` wrapper-only, GNU tests in `tests/ll_linux/`, macOS tests in `tests/ll_macos/`.
+- Phase 5 (BSD-only PATH control in env/activate): NOT DONE. `env/activate` has no LL_BSD_USERLAND/LL_NO_GNUBIN path pruning.
+- Phase 6 (ls-compare revision): NOT DONE. `scripts/dev/ls-compare` remains GNU-only; no cross-impl diff wrapper.
+- Phase 7 (perf bench): NOT DONE. `wip/ll-perf.md` missing.
+- Phase 8 (unification decision): NOT DONE. `wip/ll-decision.md` missing.
+- Phase 9 (CI/Makefile stabilization): NOT DONE. CI and Makefile are mostly aligned, but Phase 9’s full stabilization (cross-OS soft-skip verification + docs) is incomplete.
+
+### Known Traps (must-fix)
+- CI report steps do not run bats globs: DONE. Reports read `.ci-test-ll.log` (see `.github/workflows/ci.yml`).
+- ll_macos internal delimiter not tab: DONE. `scripts/bin/ll_macos` uses US (0x1F) delimiter.
+- tests/ll common-only: DONE. `tests/ll/10_wrapper_stub.bats` only.
+- newline filename out-of-scope: NOT DONE. No explicit guard or documentation found.
+
+### Commands Run (this host)
+- `make test-ll-common` (exit 0)
+  - Output: 1..7, all ok (wrapper stub tests)
+- `make test-ll` (exit 0)
+  - Output: wrapper tests + macOS preflight + macOS parity (2 tests)
+- `make test-ll-all` (exit 0)
+  - Output: wrapper suite + ll_linux suite (25 tests, 2 optional skips) + ll_macos suite (2 tests)
+- `make test-ll-linux` (exit 0)
+  - Output: ll_linux suite (25 tests, 2 optional skips)
+- `make test-ll-macos` (exit 0)
+  - Output: ll_macos suite (2 tests)
+
+### Evidence Pointers (selected)
+- Wrapper contract: `scripts/bin/ll`
+- ll_linux harness + GNU baseline: `tests/ll_linux/00_harness.bash`
+- ll_macos BSD reference generator: `tests/ll_macos/00_harness.bash`
+- macOS parity test: `tests/ll_macos/10_core.bats`
+- Makefile targets: `Makefile`
+- CI log capture/report: `.github/workflows/ci.yml`
+- Missing deliverables: `wip/ll-perf.md`, `wip/ll-decision.md`
+
+## Remediation Update #1
+
+### Changes Applied
+- `tests/ll_macos/00_harness.bash`: added common fixture seeding, epoch-based touch helpers, and symlink target formatting in BSD reference generator.
+- `tests/ll_macos/10_core.bats`: expanded macOS suite with MVP parity cases, tricky filename checks, time bucket/color checks, perms/owner colors, and size tier colors.
+- `CHANGELOG.md`: added Commit 12 entry for macOS test coverage.
+
+### Tests Run
+- `make test-ll-macos` (exit 0)
+- `make test-ll` (exit 0)
+
+### Status Impact
+- Phase 3 MVP verification: improved coverage (parity + colors + tricky filenames); still pending full Phase 5–9 deliverables.
