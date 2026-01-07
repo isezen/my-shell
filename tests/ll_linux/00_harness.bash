@@ -75,19 +75,18 @@ ll_require_gnu_awk() {
 
 ll_require_gnu_date() {
   if [ -z "$LL_GNU_DATE" ]; then
-    skip "GNU date required"
+    ll_soft_skip "GNU date required"
   fi
 }
 
 ll_require_gnu_touch() {
   if [ -z "$LL_GNU_TOUCH" ]; then
-    skip "GNU touch required"
+    ll_soft_skip "GNU touch required"
   fi
 }
 
 setup_file() {
   ll_require_gnu_ls
-  ll_require_gnu_awk
 }
 
 ll_mk_testdir() {
