@@ -69,6 +69,8 @@ if [[ ! "$NOW_EPOCH" =~ ^[0-9]+$ ]]; then
 fi
 
 USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+DELIM=$'\037'
+TAB_CHAR=$'\011'
 
 # ------------------------------
 # Helpers
@@ -77,7 +79,7 @@ quote_if_needed() {
   # Quote if contains space or tab (matches ll_linux behavior).
   # Keeps content verbatim otherwise.
   local s="$1"
-  if [[ "$s" == *$'\t'* ]] || [[ "$s" == *" "* ]]; then
+  if [[ "$s" == *"$TAB_CHAR"* ]] || [[ "$s" == *" "* ]]; then
     printf '"%s"' "$s"
   else
     printf '%s' "$s"
@@ -320,7 +322,7 @@ fi
 # ------------------------------
 # Build listing: expand directories (unless -d)
 # ------------------------------
-# Rows stored as tab-separated fields to preserve names safely.
+# Rows stored as US-separated fields to preserve names safely.
 # Fields: blocks perms links owner group size epoch name path
 rows=()
 
@@ -334,13 +336,15 @@ a_push_row() {
   if [[ "$stat_path" == -* ]]; then
     stat_path="./$stat_path"
   fi
-  st="$(stat -f '%b\t%Sp\t%l\t%Su\t%Sg\t%u\t%g\t%z\t%m\t%N' "$stat_path" 2>/dev/null || true)"
+  local stat_fmt
+  stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
+  st="$(stat -f "$stat_fmt" "$stat_path" 2>/dev/null || true)"
   if [ -z "$st" ]; then
     return 0
   fi
 
   local b512 perms links su sg uid gid size epoch name
-  IFS=$'\t' read -r b512 perms links su sg uid gid size epoch name <<<"$st"
+  IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
 
   # BSD stat %N may include "name -> target" for symlinks; keep only the name part for display.
   if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
@@ -361,7 +365,7 @@ a_push_row() {
   fi
 
   # Store raw name and path separately.
-  rows+=("${blocks1k}\t${perms}\t${links}\t${owner}\t${group}\t${size}\t${epoch}\t${name}\t${path}")
+  rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${path}")
 }
 
 list_dir_contents() {
@@ -384,18 +388,18 @@ list_dir_contents() {
 # If operand is a directory and not -d, list its contents.
 # If multiple directories are listed, print a header "dir:" between groups.
 
-groups=()  # stores: "HDR\t<dir>" or "ROW\t<path>" markers
+groups=()  # stores: "HDR<US><dir>" or "ROW<US><path>" markers
 
 for op in "${ops[@]}"; do
   if [ "$LISTDIRECTORY" -eq 1 ]; then
-    groups+=("ROW\t$op")
+    groups+=("ROW${DELIM}$op")
     continue
   fi
 
   if [ -d "$op" ] && [ ! -L "$op" ]; then
-    groups+=("HDR\t$op")
+    groups+=("HDR${DELIM}$op")
   else
-    groups+=("ROW\t$op")
+    groups+=("ROW${DELIM}$op")
   fi
 done
 
@@ -403,11 +407,11 @@ done
 # For HDR groups, optionally print headers later; collect rows for that directory.
 # For ROW groups, collect that single path.
 
-dir_markers=() # each marker: "<dir>\t<start_index>\t<end_index>"
+dir_markers=() # each marker: "<dir><US><start_index><US><end_index>"
 
 for g in "${groups[@]}"; do
-  kind="${g%%$'\t'*}"
-  val="${g#*$'\t'}"
+  kind="${g%%${DELIM}*}"
+  val="${g#*${DELIM}}"
 
   if [ "$kind" = "ROW" ]; then
     a_push_row "$val"
@@ -416,7 +420,7 @@ for g in "${groups[@]}"; do
     start_idx=${#rows[@]}
     list_dir_contents "$val"
     end_idx=${#rows[@]}
-    dir_markers+=("${val}\t${start_idx}\t${end_idx}")
+    dir_markers+=("${val}${DELIM}${start_idx}${DELIM}${end_idx}")
   fi
 done
 
@@ -428,10 +432,10 @@ fi
 # ------------------------------
 # Compute widths
 # ------------------------------
-# Use awk to compute widths from the TSV rows (safe w.r.t. names).
+# Use awk to compute widths from the US-separated rows (safe w.r.t. names).
 widths="$(
   printf '%s\n' "${rows[@]}" \
-  | awk -F'\t' -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
+  | awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
     function max(a,b){return (a>b)?a:b}
     BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tprefix=0;w_tnum=0;w_tunit=0;any_fut=0}
     {
@@ -469,11 +473,11 @@ widths="$(
       w_tnum=max(w_tnum, length(num ""))
       w_tunit=max(w_tunit, length(unit))
     }
-    END{printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", w_blocks,w_perms,w_links,w_owner,w_group,w_size,w_tprefix,w_tnum,w_tunit,any_fut}
+    END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,w_tprefix,DELIM,w_tnum,DELIM,w_tunit,DELIM,any_fut}
   '
 )"
 
-IFS=$'\t' read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT ANY_FUT <<<"$widths"
+IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT ANY_FUT <<<"$widths"
 
 lpad() {
   local s="$1" w="$2"
@@ -493,7 +497,7 @@ print_row_by_index() {
 
   local rec="${rows[$idx]}"
   local blocks perms links owner group size epoch name path
-  IFS=$'\t' read -r blocks perms links owner group size epoch name path <<<"$rec"
+  IFS="$DELIM" read -r blocks perms links owner group size epoch name path <<<"$rec"
 
   # Owner substitution
   if [ "$NUMERICUIDGID" -eq 0 ] && [ -n "$USERNAME" ] && [ "$owner" = "$USERNAME" ]; then
@@ -603,7 +607,7 @@ done
 
 # Print directories (if any) in operand order.
 for m in "${dir_markers[@]}"; do
-  IFS=$'\t' read -r d start end <<<"$m"
+  IFS="$DELIM" read -r d start end <<<"$m"
   if [ "$multiple" -eq 1 ]; then
     if [ "$printed_any" -eq 1 ]; then
       printf '\n'
