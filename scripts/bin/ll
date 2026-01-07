@@ -22,11 +22,11 @@ _impl_macos="${_self_dir}/ll_macos"
 
 # 1) Explicit path override wins.
 # Prefer LL_IMPL_PATH; keep LL_SCRIPT as a legacy alias.
-if [ -n "${LL_IMPL_PATH:-}" ]; then
-  if [ ! -x "${LL_IMPL_PATH}" ] || [ ! -f "${LL_IMPL_PATH}" ]; then
-    echo "selector=LL_IMPL_PATH target not executable: ${LL_IMPL_PATH}" >&2
-    exit 1
-  fi
+  if [ -n "${LL_IMPL_PATH:-}" ]; then
+    if [ ! -x "${LL_IMPL_PATH}" ] || [ ! -f "${LL_IMPL_PATH}" ]; then
+    echo "selector=LL_IMPL_PATH LL_IMPL_PATH is set but not executable: ${LL_IMPL_PATH}" >&2
+      exit 1
+    fi
   exec "${LL_IMPL_PATH}" "$@"
 fi
 
@@ -34,7 +34,7 @@ if [ -n "${LL_SCRIPT:-}" ]; then
   # Avoid accidental recursion when callers export LL_SCRIPT to the wrapper path.
   if [ "${LL_SCRIPT}" != "${_self_path}" ]; then
     if [ ! -x "${LL_SCRIPT}" ] || [ ! -f "${LL_SCRIPT}" ]; then
-      echo "selector=LL_SCRIPT target not executable: ${LL_SCRIPT}" >&2
+      echo "selector=LL_SCRIPT LL_SCRIPT is set but not executable: ${LL_SCRIPT}" >&2
       exit 1
     fi
     exec "${LL_SCRIPT}" "$@"

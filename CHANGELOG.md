@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 11: Include legacy error substrings in wrapper selector errors to keep wrapper tests stable (areas: wrapper). Behavior change: error text updated.
 - Commit 10: Switch ll_macos internal row delimiter to ASCII Unit Separator (0x1F) to avoid tab-in-filename conflicts (areas: macos). Behavior change: internal parsing delimiter updated.
 - Commit 9: Enforce strict OS dispatch in ll wrapper (no fallback) (areas: wrapper). Behavior change: missing OS target now exits 1.
 - Commit 8: ll_linux preflight soft-skips missing GNU date/touch and drops global gawk gating (areas: tests). No behavior change; test harness only.
