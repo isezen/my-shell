@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Test suite split: Platform-specific test suites for ll implementation
+  - `tests/ll_linux/`: GNU toolchain-based test suite (moved from `tests/ll/`)
+  - `tests/ll_macos/`: BSD-only test suite skeleton with preflight helpers
+  - Tests split by platform to support BSD-only macOS implementation
 - Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
   - Supports both remote and local installation modes
   - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`

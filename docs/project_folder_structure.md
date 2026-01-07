@@ -46,6 +46,12 @@
 │   │   ├── 20_paths.bats
 │   │   ├── 30_edge.bats
 │   │   └── 40_color.bats
+│   ├── ll_linux
+│   │   ├── 00_harness.bash
+│   │   └── 10_core.bats
+│   ├── ll_macos
+│   │   ├── 00_harness.bash
+│   │   └── 10_core.bats
 │   ├── test_helper
 │   │   ├── bats-assert
 │   │   │   └── load.bash
@@ -61,9 +67,6 @@
 │   └── TEST_COVERAGE.md
 ├── wip
 │   ├── IMPROVEMENTS.md
-│   ├── ll-chatgpt.md
-│   ├── ll-macos-bsd-stat-minimal-plan.md
-│   ├── ll-portability-and-unification-plan.md
 │   ├── ls-compare.md
 │   ├── patch.diff
 │   ├── plan-ll.md
@@ -77,5 +80,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-15 directories, 61 files
+17 directories, 62 files
 ```
