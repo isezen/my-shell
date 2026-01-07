@@ -69,6 +69,7 @@
 ├── wip
 │   ├── cursor-codex.md
 │   ├── IMPROVEMENTS.md
+│   ├── ll-decision.md
 │   ├── ll-perf.md
 │   ├── ls-compare.md
 │   ├── patch.diff
@@ -85,5 +86,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-18 directories, 66 files
+18 directories, 67 files
 ```

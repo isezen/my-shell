@@ -264,3 +264,15 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Phase 7 perf benchmark: initial report captured (macOS host).
+
+## Remediation Update #5
+
+### Changes Applied
+- `wip/ll-decision.md`: recorded decision to keep separate `ll_linux` and `ll_macos` implementations.
+- `CHANGELOG.md`: added Commit 16 entry for decision record.
+
+### Tests Run
+- No code changes; documentation only.
+
+### Status Impact
+- Phase 8 unification decision: documented with rationale tied to perf results.
