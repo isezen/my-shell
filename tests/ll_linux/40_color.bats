@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# tests/ll/40_color.bats
+# tests/ll_linux/40_color.bats
 # Color output checks for scripts/bin/ll
 
 load '../test_helper/bats-support/load'

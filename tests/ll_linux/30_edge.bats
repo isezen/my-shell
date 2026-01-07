@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# tests/ll/30_edge.bats
+# tests/ll_linux/30_edge.bats
 # Edge-case comparisons for scripts/bin/ll
 
 load '../test_helper/bats-support/load'

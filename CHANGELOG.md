@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 1: Split GNU ll tests into `tests/ll_linux` and add macOS suite skeleton (areas: tests). No behavior change; refactor/test only.
 - Test suite split: Platform-specific test suites for ll implementation
   - `tests/ll_linux/`: GNU toolchain-based test suite (moved from `tests/ll/`)
   - `tests/ll_macos/`: BSD-only test suite skeleton with preflight helpers
@@ -204,4 +205,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed ShellCheck warnings in `ll-performance.sh`: SC2034 (unused variables), SC2012 (ls to find), SC2004 (arithmetic variables)
 - Fixed all ShellCheck style warnings: SC2004 (arithmetic variables in alias.sh and ll-performance.sh), SC2012 (ls to find), SC2059 (printf format), SC2262 (alias definition/usage), SC2139/SC2263/SC2032/SC2317 (added to .shellcheckrc as intentional behavior)
 - Created `.shellcheckrc` to disable intentional warnings (SC2139, SC2262, SC2263, SC2032, SC2317)
-

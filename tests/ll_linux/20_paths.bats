@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# tests/ll/20_paths.bats
+# tests/ll_linux/20_paths.bats
 # Path and filename comparisons for scripts/bin/ll
 
 load '../test_helper/bats-support/load'

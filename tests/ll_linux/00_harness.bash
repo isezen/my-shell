@@ -313,4 +313,3 @@ ll_assert_canon_equal() {
     return 1
   fi
 }
-
