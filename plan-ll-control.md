@@ -225,3 +225,17 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Phase 3 MVP verification: improved coverage (parity + colors + tricky filenames); still pending full Phase 5–9 deliverables.
+
+## Remediation Update #2
+
+### Changes Applied
+- `env/activate.bash`: prune gnubin PATH entries when LL_BSD_USERLAND/LL_NO_GNUBIN is set.
+- `env/activate.zsh`: same BSD-only PATH pruning for Zsh activation.
+- `env/activate.fish`: same BSD-only PATH pruning for Fish activation.
+- `CHANGELOG.md`: added Commit 13 entry for BSD-only PATH mode.
+
+### Tests Run
+- `make test-ll-common` (exit 0)
+
+### Status Impact
+- Phase 5 PATH control: implemented for activation scripts (requires validation with LL_BSD_USERLAND/LL_NO_GNUBIN).

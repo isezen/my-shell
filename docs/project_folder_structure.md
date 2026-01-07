@@ -67,6 +67,7 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
+│   ├── cursor-codex.md
 │   ├── IMPROVEMENTS.md
 │   ├── ls-compare.md
 │   ├── patch.diff
@@ -83,5 +84,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-18 directories, 64 files
+18 directories, 65 files
 ```

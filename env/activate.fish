@@ -21,6 +21,23 @@ end
 # Save PATH snapshot for exact restoration
 set -gx MY_SHELL_OLD_PATH $PATH
 
+# Optional BSD-only mode: remove GNU coreutils gnubin paths.
+if test "$LL_BSD_USERLAND" = "1" -o "$LL_NO_GNUBIN" = "1"
+    set -l new_path
+    for p in $PATH
+        switch $p
+            case /opt/local/libexec/gnubin /usr/local/opt/coreutils/libexec/gnubin /opt/homebrew/opt/coreutils/libexec/gnubin
+                continue
+            case /opt/local/bin
+                if test -x /opt/local/bin/gawk -o -x /opt/local/bin/gdate -o -x /opt/local/bin/gtouch
+                    continue
+                end
+        end
+        set -a new_path $p
+    end
+    set -gx PATH $new_path
+end
+
 # Prepend scripts/bin/ and scripts/dev/ to PATH
 set -gx PATH "$MY_SHELL_ROOT/scripts/bin" "$MY_SHELL_ROOT/scripts/dev" $PATH
 

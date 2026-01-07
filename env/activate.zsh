@@ -21,6 +21,27 @@ fi
 # Save PATH snapshot for exact restoration
 export MY_SHELL_OLD_PATH="$PATH"
 
+# Optional BSD-only mode: remove GNU coreutils gnubin paths.
+if [ "${LL_BSD_USERLAND:-}" = "1" ] || [ "${LL_NO_GNUBIN:-}" = "1" ]; then
+    typeset -a _my_shell_path_raw _my_shell_path_parts
+    _my_shell_path_raw=("${(@s/:/)PATH}")
+    for _my_shell_path in "${_my_shell_path_raw[@]}"; do
+        case "$_my_shell_path" in
+            /opt/local/libexec/gnubin|/usr/local/opt/coreutils/libexec/gnubin|/opt/homebrew/opt/coreutils/libexec/gnubin)
+                continue
+                ;;
+            /opt/local/bin)
+                if [ -x /opt/local/bin/gawk ] || [ -x /opt/local/bin/gdate ] || [ -x /opt/local/bin/gtouch ]; then
+                    continue
+                fi
+                ;;
+        esac
+        _my_shell_path_parts+=("$_my_shell_path")
+    done
+    PATH="${(j/:/) _my_shell_path_parts}"
+    export PATH
+fi
+
 # Prepend scripts/bin/ and scripts/dev/ to PATH
 export PATH="$MY_SHELL_ROOT/scripts/bin:$MY_SHELL_ROOT/scripts/dev:$PATH"
 

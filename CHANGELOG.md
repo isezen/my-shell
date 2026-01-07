@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 13: Add BSD-only PATH pruning when LL_BSD_USERLAND/LL_NO_GNUBIN is set (areas: env). Behavior change: gnubin paths are removed during activation.
 - Commit 12: Expand ll_macos suite with MVP parity coverage (fixtures, time buckets, colors, and tricky filenames) (areas: tests). No behavior change; test harness only.
 - Commit 11: Include legacy error substrings in wrapper selector errors to keep wrapper tests stable (areas: wrapper). Behavior change: error text updated.
 - Commit 10: Switch ll_macos internal row delimiter to ASCII Unit Separator (0x1F) to avoid tab-in-filename conflicts (areas: macos). Behavior change: internal parsing delimiter updated.
