@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 14: Make ll-compare deterministic for cross-impl diff and document usage (areas: dev-tools/docs). Behavior change: LL_NOW_EPOCH default fixed; LL_CHATGPT_FAST forced in ll-compare runs.
 - Commit 13: Add BSD-only PATH pruning when LL_BSD_USERLAND/LL_NO_GNUBIN is set (areas: env). Behavior change: gnubin paths are removed during activation.
 - Commit 12: Expand ll_macos suite with MVP parity coverage (fixtures, time buckets, colors, and tricky filenames) (areas: tests). No behavior change; test harness only.
 - Commit 11: Include legacy error substrings in wrapper selector errors to keep wrapper tests stable (areas: wrapper). Behavior change: error text updated.

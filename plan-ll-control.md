@@ -239,3 +239,16 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Phase 5 PATH control: implemented for activation scripts (requires validation with LL_BSD_USERLAND/LL_NO_GNUBIN).
+
+## Remediation Update #3
+
+### Changes Applied
+- `scripts/dev/ll-compare`: deterministic env (LC_ALL/TZ/LL_NOW_EPOCH), robust test-case parsing, and LL_CHATGPT_FAST enforced for comparisons.
+- `wip/ls-compare.md`: documented cross-impl usage for ll-compare.
+- `CHANGELOG.md`: added Commit 14 entry for ll-compare revision.
+
+### Tests Run
+- `scripts/dev/ll-compare --only default ll_linux ll_linux` (exit 0)
+
+### Status Impact
+- Phase 6 ll-compare revision: implemented via deterministic cross-impl compare tool.

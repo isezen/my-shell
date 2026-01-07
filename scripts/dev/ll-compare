@@ -33,6 +33,9 @@
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN_DIR="$PROJECT_ROOT/scripts/bin"
 
+export LC_ALL=C
+export TZ=UTC
+
 # ============================================================================
 # PARSE COMMAND LINE ARGUMENTS
 # ============================================================================
@@ -156,7 +159,7 @@ if [ "${LL_NOW_EPOCH+x}" = "x" ]; then
   _ORIG_LL_NOW_EPOCH_VALUE="$LL_NOW_EPOCH"
 else
   export LL_NOW_EPOCH
-  LL_NOW_EPOCH=$(date +%s)
+  LL_NOW_EPOCH=1577836800
 fi
 
 # Helper: convert an epoch (seconds) into a touch -t timestamp (local time).
@@ -294,7 +297,28 @@ fi
 
 for test_case in "${test_cases[@]}"; do
   # Parse structured test case: NAME|||ARGV|||NO_NORMALIZE
-  IFS='|||' read -r test_name test_argv_str test_no_normalize <<< "$test_case"
+  trim_ws() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+  }
+
+  if [[ "$test_case" == *"|||"* ]]; then
+    test_name="${test_case%%|||*}"
+    rest="${test_case#*|||}"
+    test_argv_str="${rest%%|||*}"
+    test_no_normalize="${rest#*|||}"
+  else
+    test_name="$test_case"
+    test_argv_str=""
+    test_no_normalize="0"
+  fi
+
+  test_name="$(trim_ws "$test_name")"
+  test_argv_str="$(trim_ws "$test_argv_str")"
+  test_no_normalize="$(trim_ws "$test_no_normalize")"
+
   test_name="${test_name:-default}"
   test_argv_str="${test_argv_str:-}"
   test_no_normalize="${test_no_normalize:-0}"
@@ -356,7 +380,7 @@ for test_case in "${test_cases[@]}"; do
   }
 
   for script_path in "${script_paths[@]}"; do
-    output=$(cd "$TEST_DIR" && "$script_path" "${tc_argv[@]}" 2>&1)
+    output=$(cd "$TEST_DIR" && LL_CHATGPT_FAST=1 "$script_path" "${tc_argv[@]}" 2>&1)
     outputs+=("$output")
     if [ "$test_no_normalize" -eq 1 ]; then
       normalized_outputs+=("__NO_NORMALIZE__")
