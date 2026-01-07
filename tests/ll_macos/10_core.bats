@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/ll_macos/10_core.bats
 # Core tests for scripts/bin/ll_macos (BSD-only)
 
 load '../test_helper/bats-support/load'
