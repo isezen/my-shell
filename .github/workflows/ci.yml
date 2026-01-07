@@ -129,7 +129,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| File | Tests | Percent |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|---------|" >> $GITHUB_STEP_SUMMARY
-          for test_file in tests/*.bats tests/ll/*.bats tests/ll_macos/*.bats; do
+          for test_file in tests/ll/*.bats tests/ll_linux/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
               TEST_COUNT=${TEST_COUNT:-0}
@@ -267,7 +267,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| File | Tests | Percent |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|---------|" >> $GITHUB_STEP_SUMMARY
-          for test_file in tests/*.bats tests/ll/*.bats tests/ll_macos/*.bats; do
+          for test_file in tests/ll/*.bats tests/ll_macos/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
               TEST_COUNT=${TEST_COUNT:-0}
