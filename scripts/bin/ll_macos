@@ -1,0 +1,622 @@
+#!/usr/bin/env bash
+# scripts/bin/ll_macos
+# macOS/BSD userland implementation for `ll`.
+#
+# Goals:
+# - Provide a `ll_linux`-compatible *presentation* (colors, relative time buckets, quoting rules)
+# - Use only macOS-default tools (BSD stat/ls/awk), no GNU coreutils required
+# - Best-effort parity for the subset of flags used by the test-suite
+
+set -euo pipefail
+
+# ------------------------------
+# Flag scan (subset)
+# ------------------------------
+ASIZE=0
+HUMANREADABLE=0
+NUMERICUIDGID=0
+OWNER=1
+GROUPNAME=1
+LISTDIRECTORY=0
+
+# Robust scan: consider only options before `--`.
+for arg in "$@"; do
+  case "$arg" in
+    --)
+      break
+      ;;
+
+    --directory)
+      LISTDIRECTORY=1
+      ;;
+    --human-readable|--si)
+      HUMANREADABLE=1
+      ;;
+    --numeric-uid-gid)
+      NUMERICUIDGID=1
+      ;;
+    --size)
+      ASIZE=1
+      ;;
+    --no-group)
+      GROUPNAME=0
+      ;;
+
+    -*)
+      [ "$arg" = "-" ] && continue
+      _flags=${arg#-}
+      for ((i=0; i<${#_flags}; i++)); do
+        case "${_flags:i:1}" in
+          d) LISTDIRECTORY=1 ;;
+          h) HUMANREADABLE=1 ;;
+          n) NUMERICUIDGID=1 ;;
+          g) OWNER=0 ;;
+          G) GROUPNAME=0 ;;
+          o) GROUPNAME=0 ;;
+          s) ASIZE=1 ;;
+          *) ;;
+        esac
+      done
+      ;;
+    *)
+      ;;
+  esac
+done
+
+NOW_EPOCH="${LL_NOW_EPOCH:-}"
+if [[ ! "$NOW_EPOCH" =~ ^[0-9]+$ ]]; then
+  NOW_EPOCH="$(date +%s)"
+fi
+
+USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+
+# ------------------------------
+# Helpers
+# ------------------------------
+quote_if_needed() {
+  # Quote if contains space or tab (matches ll_linux behavior).
+  # Keeps content verbatim otherwise.
+  local s="$1"
+  if [[ "$s" == *$'\t'* ]] || [[ "$s" == *" "* ]]; then
+    printf '"%s"' "$s"
+  else
+    printf '%s' "$s"
+  fi
+}
+
+format_name() {
+  # If symlink, format as: <quoted name> -> <quoted target>
+  # Otherwise: <quoted name>
+  local name="$1"
+  local perms="$2"
+  local path="$3"
+
+  if [[ "$perms" == l* ]]; then
+    local target
+    target="$(readlink "${path}" 2>/dev/null || true)"
+    if [ -n "$target" ]; then
+      printf '%s -> %s' "$(quote_if_needed "$name")" "$(quote_if_needed "$target")"
+      return 0
+    fi
+  fi
+
+  quote_if_needed "$name"
+}
+
+# Convert bytes to human label (base-2), close to GNU ls -h.
+# Output examples: 512B, 2.0K, 12K, 2.0M, 1.0G, 1.0T
+human_size() {
+  local bytes="$1"
+  if [[ ! "$bytes" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$bytes"
+    return 0
+  fi
+
+  local unit="B"
+  local scaled="$bytes"
+
+  # Use awk for floating formatting.
+  if [ "$bytes" -lt 1024 ]; then
+    printf '%sB' "$bytes"
+    return 0
+  fi
+
+  # Decide unit.
+  if [ "$bytes" -lt $((1024 * 1024)) ]; then
+    unit="K"
+    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024.0}')"
+  elif [ "$bytes" -lt $((1024 * 1024 * 1024)) ]; then
+    unit="M"
+    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576.0}')"
+  elif [ "$bytes" -lt $((1024 * 1024 * 1024 * 1024)) ]; then
+    unit="G"
+    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1073741824.0}')"
+  else
+    unit="T"
+    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1099511627776.0}')"
+  fi
+
+  # Trim trailing .0 for readability (GNU-ish).
+  scaled="$(printf '%s' "$scaled" | sed -E 's/\.0$//')"
+  printf '%s%s' "$scaled" "$unit"
+}
+
+# Relative time parts: sets globals: TPREFIX, TNUM, TUNIT, TFUT(0/1)
+time_parts() {
+  local epoch="$1"
+  local dt
+  dt=$((NOW_EPOCH - epoch))
+
+  local prefix=""
+  local abs="$dt"
+  if [ "$dt" -lt 0 ]; then
+    prefix="in"
+    abs=$(( -dt ))
+  fi
+
+  local num unit
+  if [ "$abs" -lt 120 ]; then
+    num="$abs"; unit="sec"
+  elif [ "$abs" -lt 3600 ]; then
+    num=$(( abs / 60 )); unit="min"
+  elif [ "$abs" -lt 172800 ]; then
+    num=$(( abs / 3600 )); unit="hrs"
+  elif [ "$abs" -lt 3888000 ]; then
+    num=$(( abs / 86400 )); unit="day"
+  elif [ "$abs" -lt 31536000 ]; then
+    num=$(( abs / 2592000 )); unit="mon"
+  else
+    num=$(( abs / 31536000 )); unit="yr"
+  fi
+
+  TPREFIX="$prefix"
+  TNUM="$num"
+  TUNIT="$unit"
+  TFUT=0
+  [ -n "$prefix" ] && TFUT=1
+}
+
+# ANSI colors (match ll_linux palette)
+esc=$'\033'
+creset="${esc}[0m"
+
+cd="${esc}[38;5;122m"
+cl="${esc}[38;5;190m"
+cr="${esc}[38;5;119m"
+cw="${esc}[38;5;216m"
+cx="${esc}[38;5;124m"
+cplus="${esc}[38;5;129m"
+
+cusr="${esc}[38;5;66m"
+croot="${esc}[38;5;160m"
+
+cb="${esc}[38;5;240m"
+ck="${esc}[38;5;250m"
+cm="${esc}[38;5;117m"
+cg="${esc}[38;5;208m"
+ct="${esc}[38;5;160m"
+
+clT="${esc}[1;38;5;167m"
+clG="${esc}[1;38;5;220m"
+clM="${esc}[1;38;5;123m"
+clK="${esc}[1;38;5;107m"
+clB="${esc}[1;38;5;248m"
+
+csec="${esc}[38;5;124m"
+cmin="${esc}[38;5;215m"
+chrs="${esc}[38;5;196m"
+cday="${esc}[38;5;230m"
+cmon="${esc}[38;5;151m"
+cyr="${esc}[38;5;241m"
+cfut="${esc}[38;5;39m"
+
+color_perm() {
+  local p="$1"
+  local out=""
+  local ch
+  local i
+
+  for ((i=0; i<${#p}; i++)); do
+    ch="${p:i:1}"
+    case "$ch" in
+      d) out+="${cd}${ch}${creset}" ;;
+      l) out+="${cl}${ch}${creset}" ;;
+      r) out+="${cr}${ch}${creset}" ;;
+      w) out+="${cw}${ch}${creset}" ;;
+      x) out+="${cx}${ch}${creset}" ;;
+      +) out+="${cplus}${ch}${creset}" ;;
+      *) out+="$ch" ;;
+    esac
+  done
+
+  printf '%s' "$out"
+}
+
+size_color_numeric() {
+  local x="$1"
+  if [ "$x" -lt 1024 ]; then printf '%s' "$cb"; return; fi
+  if [ "$x" -lt 1048576 ]; then printf '%s' "$ck"; return; fi
+  if [ "$x" -lt 1073741824 ]; then printf '%s' "$cm"; return; fi
+  if [ "$x" -lt 1099511627776 ]; then printf '%s' "$cg"; return; fi
+  printf '%s' "$ct"
+}
+
+color_size_human() {
+  # Input: <label> (e.g. 12K, 2.5M, 512B). Apply tier color to number and bold to suffix.
+  local s="$1"
+  local num suf
+
+  if [[ "$s" =~ ^([0-9]+(\.[0-9]+)?)([BKMGTP])$ ]]; then
+    num="${BASH_REMATCH[1]}"
+    suf="${BASH_REMATCH[3]}"
+  elif [[ "$s" =~ ^([0-9]+)$ ]]; then
+    num="${BASH_REMATCH[1]}"
+    suf="B"
+  else
+    printf '%s%s%s' "$cb" "$s" "$creset"
+    return 0
+  fi
+
+  case "$suf" in
+    T) printf '%s%s%s%s%s%s' "$ct" "$num" "$creset" "$clT" "$suf" "$creset" ;;
+    G) printf '%s%s%s%s%s%s' "$cg" "$num" "$creset" "$clG" "$suf" "$creset" ;;
+    M) printf '%s%s%s%s%s%s' "$cm" "$num" "$creset" "$clM" "$suf" "$creset" ;;
+    K) printf '%s%s%s%s%s%s' "$ck" "$num" "$creset" "$clK" "$suf" "$creset" ;;
+    B) printf '%s%s%s%s%s%s' "$cb" "$num" "$creset" "$clB" "$suf" "$creset" ;;
+    *) printf '%s%s%s' "$cb" "$s" "$creset" ;;
+  esac
+}
+
+color_reltime() {
+  local raw="$1"
+  local unit="$2"
+  local is_future="$3"
+
+  if [ "$is_future" -eq 1 ]; then
+    printf '%s%s%s' "$cfut" "$raw" "$creset"
+    return 0
+  fi
+
+  case "$unit" in
+    sec) printf '%s%s%s' "$csec" "$raw" "$creset" ;;
+    min) printf '%s%s%s' "$cmin" "$raw" "$creset" ;;
+    hrs) printf '%s%s%s' "$chrs" "$raw" "$creset" ;;
+    day) printf '%s%s%s' "$cday" "$raw" "$creset" ;;
+    mon) printf '%s%s%s' "$cmon" "$raw" "$creset" ;;
+    yr)  printf '%s%s%s' "$cyr"  "$raw" "$creset" ;;
+    *)   printf '%s' "$raw" ;;
+  esac
+}
+
+# ------------------------------
+# Collect operands (respect `--`)
+# ------------------------------
+opts=()
+ops=()
+seen_sep=0
+for arg in "$@"; do
+  if [ "$seen_sep" -eq 0 ] && [ "$arg" = "--" ]; then
+    seen_sep=1
+    continue
+  fi
+  if [ "$seen_sep" -eq 0 ]; then
+    opts+=("$arg")
+  else
+    ops+=("$arg")
+  fi
+done
+
+# Default operand is "." like ls.
+if [ "${#ops[@]}" -eq 0 ]; then
+  ops=(".")
+fi
+
+# Determine if we have multiple operands (for directory headers).
+multiple=0
+if [ "${#ops[@]}" -gt 1 ]; then
+  multiple=1
+fi
+
+# ------------------------------
+# Build listing: expand directories (unless -d)
+# ------------------------------
+# Rows stored as tab-separated fields to preserve names safely.
+# Fields: blocks perms links owner group size epoch name path
+rows=()
+
+a_push_row() {
+  local path="$1"
+
+  # stat format notes:
+  # %b 512-byte blocks, %Sp permissions string, %l links, %Su/%Sg names, %u/%g ids, %z size bytes, %m mtime epoch, %N filename
+  local st
+  local stat_path="$path"
+  if [[ "$stat_path" == -* ]]; then
+    stat_path="./$stat_path"
+  fi
+  st="$(stat -f '%b\t%Sp\t%l\t%Su\t%Sg\t%u\t%g\t%z\t%m\t%N' "$stat_path" 2>/dev/null || true)"
+  if [ -z "$st" ]; then
+    return 0
+  fi
+
+  local b512 perms links su sg uid gid size epoch name
+  IFS=$'\t' read -r b512 perms links su sg uid gid size epoch name <<<"$st"
+
+  # BSD stat %N may include "name -> target" for symlinks; keep only the name part for display.
+  if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+    name="${name%% -> *}"
+  fi
+
+  # blocks column: approximate GNU 1K blocks from BSD 512-blocks.
+  local blocks1k
+  blocks1k=$(( (b512 + 1) / 2 ))
+
+  local owner group
+  if [ "$NUMERICUIDGID" -eq 1 ]; then
+    owner="$uid"
+    group="$gid"
+  else
+    owner="$su"
+    group="$sg"
+  fi
+
+  # Store raw name and path separately.
+  rows+=("${blocks1k}\t${perms}\t${links}\t${owner}\t${group}\t${size}\t${epoch}\t${name}\t${path}")
+}
+
+list_dir_contents() {
+  local d="$1"
+
+  # Best-effort: mimic ls default (no dotfiles).
+  # Use /bin/ls for enumeration; do not rely on GNU extensions.
+  local ls_dir="$d"
+  if [[ "$ls_dir" == -* ]]; then
+    ls_dir="./$ls_dir"
+  fi
+  local entry
+  while IFS= read -r entry; do
+    # entry is a bare name, may include spaces/tabs; preserve as-is.
+    a_push_row "${d%/}/$entry"
+  done < <(/bin/ls -1A "$ls_dir" 2>/dev/null | sed -E '/^\./d')
+}
+
+# Grouped output order: files first, then directories (like many ls builds). Keep simple: keep operand order.
+# If operand is a directory and not -d, list its contents.
+# If multiple directories are listed, print a header "dir:" between groups.
+
+groups=()  # stores: "HDR\t<dir>" or "ROW\t<path>" markers
+
+for op in "${ops[@]}"; do
+  if [ "$LISTDIRECTORY" -eq 1 ]; then
+    groups+=("ROW\t$op")
+    continue
+  fi
+
+  if [ -d "$op" ] && [ ! -L "$op" ]; then
+    groups+=("HDR\t$op")
+  else
+    groups+=("ROW\t$op")
+  fi
+done
+
+# Collect rows in group-order.
+# For HDR groups, optionally print headers later; collect rows for that directory.
+# For ROW groups, collect that single path.
+
+dir_markers=() # each marker: "<dir>\t<start_index>\t<end_index>"
+
+for g in "${groups[@]}"; do
+  kind="${g%%$'\t'*}"
+  val="${g#*$'\t'}"
+
+  if [ "$kind" = "ROW" ]; then
+    a_push_row "$val"
+  else
+    # Directory expansion
+    start_idx=${#rows[@]}
+    list_dir_contents "$val"
+    end_idx=${#rows[@]}
+    dir_markers+=("${val}\t${start_idx}\t${end_idx}")
+  fi
+done
+
+# If nothing collected, exit cleanly.
+if [ "${#rows[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+# ------------------------------
+# Compute widths
+# ------------------------------
+# Use awk to compute widths from the TSV rows (safe w.r.t. names).
+widths="$(
+  printf '%s\n' "${rows[@]}" \
+  | awk -F'\t' -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
+    function max(a,b){return (a>b)?a:b}
+    BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tprefix=0;w_tnum=0;w_tunit=0;any_fut=0}
+    {
+      blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7
+
+      if (ASIZE) w_blocks=max(w_blocks, length(blocks))
+      w_perms=max(w_perms, length(perms))
+      w_links=max(w_links, length(links))
+
+      if (OWNER) {
+        o=owner
+        if (!NUMERIC && USERNAME!="" && o==USERNAME) o="you"
+        w_owner=max(w_owner, length(o))
+      }
+      if (GROUPNAME) w_group=max(w_group, length(group))
+
+      if (HUMAN && size ~ /^[0-9]+$/) size=size"B"
+      w_size=max(w_size, length(size))
+
+      # time widths: prefix may be "in"
+      # We keep conservative widths based on computed buckets.
+      now = NOW_EPOCH
+      if (now !~ /^[0-9]+$/) now = systime()
+      dt = now - epoch
+      prefix=""; abs=dt
+      if (dt<0){prefix="in"; abs=-dt; any_fut=1}
+      if (abs<120){num=abs; unit="sec"}
+      else if (abs<3600){num=int(abs/60); unit="min"}
+      else if (abs<172800){num=int(abs/3600); unit="hrs"}
+      else if (abs<3888000){num=int(abs/86400); unit="day"}
+      else if (abs<31536000){num=int(abs/2592000); unit="mon"}
+      else {num=int(abs/31536000); unit="yr"}
+
+      w_tprefix=max(w_tprefix, length(prefix))
+      w_tnum=max(w_tnum, length(num ""))
+      w_tunit=max(w_tunit, length(unit))
+    }
+    END{printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", w_blocks,w_perms,w_links,w_owner,w_group,w_size,w_tprefix,w_tnum,w_tunit,any_fut}
+  '
+)"
+
+IFS=$'\t' read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT ANY_FUT <<<"$widths"
+
+lpad() {
+  local s="$1" w="$2"
+  printf '%*s' "$w" "$s"
+}
+
+rpad() {
+  local s="$1" w="$2"
+  printf '%-*s' "$w" "$s"
+}
+
+# ------------------------------
+# Print groups in requested order
+# ------------------------------
+print_row_by_index() {
+  local idx="$1"
+
+  local rec="${rows[$idx]}"
+  local blocks perms links owner group size epoch name path
+  IFS=$'\t' read -r blocks perms links owner group size epoch name path <<<"$rec"
+
+  # Owner substitution
+  if [ "$NUMERICUIDGID" -eq 0 ] && [ -n "$USERNAME" ] && [ "$owner" = "$USERNAME" ]; then
+    owner="you"
+  fi
+
+  # Colorize owner
+  local owner_colored="$owner"
+  if [ "$owner" = "you" ]; then
+    owner_colored="${cusr}${owner}${creset}"
+  elif [ "$owner" = "root" ]; then
+    owner_colored="${croot}${owner}${creset}"
+  fi
+
+  # Size formatting/coloring
+  local size_disp="$size"
+  local size_colored
+  if [ "$HUMANREADABLE" -eq 1 ]; then
+    size_disp="$(human_size "$size")"
+    size_colored="$(color_size_human "$size_disp")"
+  else
+    local c
+    c="$(size_color_numeric "$size")"
+    size_colored="${c}${size}${creset}"
+  fi
+
+  # Blocks formatting/coloring
+  local blocks_colored=""
+  if [ "$ASIZE" -eq 1 ]; then
+    if [ "$HUMANREADABLE" -eq 1 ]; then
+      # Keep blocks numeric, but treat it as bytes-like label for coloring consistency.
+      blocks_colored="${cb}$(lpad "$blocks" "$W_BLOCKS")${creset} "
+    else
+      blocks_colored="${cb}$(lpad "$blocks" "$W_BLOCKS")${creset} "
+    fi
+  fi
+
+  # Time
+  time_parts "$epoch"
+  local num_s unit_s prefix_s t_raw t_col
+  num_s="$(lpad "$TNUM" "$W_TNUM")"
+  unit_s="$(rpad "$TUNIT" "$W_TUNIT")"
+  if [ "$W_TPREFIX" -gt 0 ]; then
+    prefix_s="$(lpad "$TPREFIX" "$W_TPREFIX")"
+    t_raw="${prefix_s} ${num_s} ${unit_s}"
+  else
+    t_raw="${num_s} ${unit_s}"
+  fi
+  t_col="$(color_reltime "$t_raw" "$TUNIT" "$TFUT")"
+
+  # Permissions
+  local perms_col
+  perms_col="$(color_perm "$perms")"
+
+  # Name
+  local name_out
+  name_out="$(format_name "$name" "$perms" "$path")"
+
+  # Emit
+  out=""
+  if [ "$ASIZE" -eq 1 ]; then
+    out+="$blocks_colored"
+  fi
+  out+="$(rpad "$perms_col" "$W_PERMS") "
+  out+="$(lpad "$links" "$W_LINKS") "
+
+  if [ "$OWNER" -eq 1 ]; then
+    out+="$(rpad "$owner_colored" "$W_OWNER") "
+  fi
+  if [ "$GROUPNAME" -eq 1 ]; then
+    out+="$(rpad "$group" "$W_GROUP") "
+  fi
+
+  out+="$(lpad "$size_colored" "$W_SIZE") "
+  out+="${t_col} "
+  out+="$name_out"
+
+  printf '%s\n' "$out"
+}
+
+# If multiple operands and we have directory groups, print headers like ls.
+# We use dir_markers to identify which slices came from which dir.
+printed_any=0
+
+# First, print standalone ROW operands in operand order.
+# Then, for directories, print header + slice.
+# This is a simplified grouping that stays deterministic.
+
+# Print ROW ops in order (including -d directories).
+for g in "${groups[@]}"; do
+  kind="${g%%$'\t'*}"
+  val="${g#*$'\t'}"
+
+  if [ "$kind" = "ROW" ]; then
+    # Find matching row indices by path (we appended in the same order, so linear scan is ok).
+    for i in "${!rows[@]}"; do
+      rec="${rows[$i]}"
+      path="${rec##*$'\t'}"
+      if [ "$path" = "$val" ]; then
+        print_row_by_index "$i"
+        printed_any=1
+        break
+      fi
+    done
+  fi
+done
+
+# Print directories (if any) in operand order.
+for m in "${dir_markers[@]}"; do
+  IFS=$'\t' read -r d start end <<<"$m"
+  if [ "$multiple" -eq 1 ]; then
+    if [ "$printed_any" -eq 1 ]; then
+      printf '\n'
+    fi
+    printf '%s:\n' "$d"
+  fi
+
+  for ((i=start; i<end; i++)); do
+    print_row_by_index "$i"
+  done
+
+  printed_any=1
+
+done
+
+exit 0

@@ -13,7 +13,9 @@
 │   │   ├── dus
 │   │   ├── dusf
 │   │   ├── dusf.
-│   │   └── ll
+│   │   ├── ll
+│   │   ├── ll_linux
+│   │   └── ll_macos
 │   └── dev
 │       ├── ll-compare
 │       ├── ll-perf
@@ -60,9 +62,11 @@
 ├── wip
 │   ├── IMPROVEMENTS.md
 │   ├── ll-chatgpt.md
+│   ├── ll-macos-bsd-stat-minimal-plan.md
+│   ├── ll-portability-and-unification-plan.md
 │   ├── ls-compare.md
 │   ├── patch.diff
-│   ├── plan.md
+│   ├── plan-ll.md
 │   └── SHELLCHECK_AND_PRE_COMMIT_EXPLANATION.md
 ├── CHANGELOG.md
 ├── colortable.sh
@@ -73,5 +77,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-15 directories, 57 files
+15 directories, 61 files
 ```
