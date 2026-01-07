@@ -24,7 +24,7 @@ _impl_macos="${_self_dir}/ll_macos"
 # Prefer LL_IMPL_PATH; keep LL_SCRIPT as a legacy alias.
 if [ -n "${LL_IMPL_PATH:-}" ]; then
   if [ ! -x "${LL_IMPL_PATH}" ] || [ ! -f "${LL_IMPL_PATH}" ]; then
-    echo "LL_IMPL_PATH is set but not executable: ${LL_IMPL_PATH}" >&2
+    echo "selector=LL_IMPL_PATH target not executable: ${LL_IMPL_PATH}" >&2
     exit 1
   fi
   exec "${LL_IMPL_PATH}" "$@"
@@ -34,7 +34,7 @@ if [ -n "${LL_SCRIPT:-}" ]; then
   # Avoid accidental recursion when callers export LL_SCRIPT to the wrapper path.
   if [ "${LL_SCRIPT}" != "${_self_path}" ]; then
     if [ ! -x "${LL_SCRIPT}" ] || [ ! -f "${LL_SCRIPT}" ]; then
-      echo "LL_SCRIPT is set but not executable: ${LL_SCRIPT}" >&2
+      echo "selector=LL_SCRIPT target not executable: ${LL_SCRIPT}" >&2
       exit 1
     fi
     exec "${LL_SCRIPT}" "$@"
@@ -46,14 +46,14 @@ case "${LL_IMPL:-}" in
   "") : ;;
   linux)
     if [ ! -x "${_impl_linux}" ] || [ ! -f "${_impl_linux}" ]; then
-      echo "ll_linux not found or not executable: ${_impl_linux}" >&2
+      echo "selector=LL_IMPL target not executable: ${_impl_linux}" >&2
       exit 1
     fi
     exec "${_impl_linux}" "$@"
     ;;
   macos)
     if [ ! -x "${_impl_macos}" ] || [ ! -f "${_impl_macos}" ]; then
-      echo "ll_macos not found or not executable: ${_impl_macos}" >&2
+      echo "selector=LL_IMPL target not executable: ${_impl_macos}" >&2
       exit 1
     fi
     exec "${_impl_macos}" "$@"
@@ -68,25 +68,19 @@ esac
 _os="$(uname -s 2>/dev/null || echo unknown)"
 case "${_os}" in
   Darwin)
-    if [ -x "${_impl_macos}" ]; then
-      exec "${_impl_macos}" "$@"
+    if [ ! -x "${_impl_macos}" ] || [ ! -f "${_impl_macos}" ]; then
+      echo "selector=uname(Darwin) target not executable: ${_impl_macos}" >&2
+      exit 1
     fi
-    # Fallback while ll_macos is not present yet.
-    if [ -x "${_impl_linux}" ]; then
-      exec "${_impl_linux}" "$@"
-    fi
-    echo "Neither ll_macos nor ll_linux is available in ${_self_dir}" >&2
+    exec "${_impl_macos}" "$@"
     exit 1
     ;;
   *)
-    if [ -x "${_impl_linux}" ]; then
-      exec "${_impl_linux}" "$@"
+    if [ ! -x "${_impl_linux}" ] || [ ! -f "${_impl_linux}" ]; then
+      echo "selector=uname(non-Darwin) target not executable: ${_impl_linux}" >&2
+      exit 1
     fi
-    # Fallback if linux impl is missing.
-    if [ -x "${_impl_macos}" ]; then
-      exec "${_impl_macos}" "$@"
-    fi
-    echo "Neither ll_linux nor ll_macos is available in ${_self_dir}" >&2
+    exec "${_impl_linux}" "$@"
     exit 1
     ;;
 esac
