@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 3: Added test-ll targets and GNU preflight soft-skip for ll_linux suite (areas: makefile/tests). No behavior change; refactor/test only.
 - Commit 2: Added stub-based wrapper tests under `tests/ll` (areas: tests). No behavior change; refactor/test only.
 - Commit 1: Split GNU ll tests into `tests/ll_linux` and add macOS suite skeleton (areas: tests). No behavior change; refactor/test only.
 - Test suite split: Platform-specific test suites for ll implementation

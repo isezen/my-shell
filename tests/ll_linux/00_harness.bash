@@ -52,6 +52,27 @@ elif [ -x /opt/local/libexec/gnubin/touch ]; then
   LL_GNU_TOUCH="/opt/local/libexec/gnubin/touch"
 fi
 
+ll_warn() {
+  echo "WARNING: $*" >&2
+}
+
+ll_soft_skip() {
+  ll_warn "$@"
+  skip "$@"
+}
+
+ll_require_gnu_ls() {
+  if [ -z "$LL_GNU_LS" ]; then
+    ll_soft_skip "GNU ls required"
+  fi
+}
+
+ll_require_gnu_awk() {
+  if [ -z "$LL_GNU_AWK" ]; then
+    ll_soft_skip "GNU awk required"
+  fi
+}
+
 ll_require_gnu_date() {
   if [ -z "$LL_GNU_DATE" ]; then
     skip "GNU date required"
@@ -62,6 +83,11 @@ ll_require_gnu_touch() {
   if [ -z "$LL_GNU_TOUCH" ]; then
     skip "GNU touch required"
   fi
+}
+
+setup_file() {
+  ll_require_gnu_ls
+  ll_require_gnu_awk
 }
 
 ll_mk_testdir() {
