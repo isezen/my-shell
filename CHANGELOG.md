@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 6: Clarified macOS suite preflight warning for non-Darwin hosts (areas: tests). No behavior change; refactor/test only.
 - Commit 5: Hardened ll wrapper dispatch checks for executable files (areas: wrapper). No behavior change; refactor/test only.
 - Commit 4: Update CI report file lists to match per-OS ll suites (areas: ci). No behavior change; refactor/test only.
 - Commit 3: Added test-ll targets and GNU preflight soft-skip for ll_linux suite (areas: makefile/tests). No behavior change; refactor/test only.

@@ -24,11 +24,10 @@ ll_soft_skip() {
 
 ll_require_macos_userland() {
   if [ "$(uname -s)" != "Darwin" ]; then
-    ll_soft_skip "Not running on macOS (Darwin)"
+    ll_soft_skip "ll_macos tests cannot run on Linux locally; they are validated in macOS CI. Skipping."
     return 1
   fi
   for bin in /bin/ls /usr/bin/awk /usr/bin/stat; do
     [ -x "$bin" ] || { ll_soft_skip "Required macOS binary $bin not found"; return 1; }
   done
 }
-
