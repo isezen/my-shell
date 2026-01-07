@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `test-ll-macos`: Run macOS-specific tests (BSD toolchain)
   - `test-ll`: Run platform-appropriate test suite (auto-detects OS)
   - `test-ll-all`: Run all test suites (unsuitable ones will soft-skip)
+- CI workflow updates: Use platform-aware test targets
+  - Ubuntu job: `make test-ll` (runs common + ll_linux suite)
+  - macOS job: `make test-ll` (runs common + ll_macos suite)
+  - Report steps: Use `make test-ll` output instead of hardcoded globs
 - Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
   - Supports both remote and local installation modes
   - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`
