@@ -71,6 +71,7 @@ fi
 USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
 DELIM=$'\037'
 TAB_CHAR=$'\011'
+# NOTE: Filenames with literal newlines are out-of-scope (line-based records).
 
 # ------------------------------
 # Helpers

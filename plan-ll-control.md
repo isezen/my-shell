@@ -288,3 +288,16 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Phase 0 snapshot: recorded baseline logs for current state.
+
+## Remediation Update #7
+
+### Changes Applied
+- `scripts/bin/ll_macos`: documented newline-in-filename out-of-scope for line-based records.
+- `tests/ll_macos/00_harness.bash`: same out-of-scope note near delimiter definition.
+- `CHANGELOG.md`: added Commit 18 entry for newline out-of-scope note.
+
+### Tests Run
+- Not applicable (comment-only change).
+
+### Status Impact
+- Known trap “newline filenames out-of-scope”: explicitly documented.

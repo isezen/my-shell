@@ -15,6 +15,7 @@ LL_SCRIPT="${PROJECT_ROOT}/scripts/bin/ll"
 LL_MACOS_IMPL="${PROJECT_ROOT}/scripts/bin/ll_macos"
 LL_MACOS_DELIM=$'\037'
 LL_MACOS_TAB=$'\011'
+# NOTE: Filenames with literal newlines are out-of-scope (line-based records).
 LL_MACOS_USER="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
 
 ll_warn() {
