@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exit codes: 1 (missing/unexecutable), 2 (invalid LL_IMPL)
   - Arg forwarding: Arguments forwarded verbatim without modification
   - No behavior change; refactor/test only
+- macOS test suite: Finalized BSD-only preflight skeleton
+  - `tests/ll_macos/00_harness.bash`: Preflight helpers (ll_warn, ll_soft_skip, ll_require_macos_userland)
+  - `tests/ll_macos/10_core.bats`: Smoke test for preflight on Darwin
+  - Suite ready for Phase 3 implementation
 - Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
   - Supports both remote and local installation modes
   - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`
