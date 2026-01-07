@@ -1,7 +1,7 @@
 # Makefile for my-shell project
 # Provides convenient commands for linting, formatting, and testing
 
-.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-act clean
+.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-ll-common test-ll-linux test-ll-macos test-ll test-ll-all test-act clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -95,6 +95,40 @@ test-bats: ## Run BATS tests
 		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
 		exit 1; \
 	fi
+
+test-ll-common: ## Run common/wrapper tests
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll-linux: ## Run Linux-specific tests (GNU toolchain)
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll_linux/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll-macos: ## Run macOS-specific tests (BSD toolchain)
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll_macos/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll: ## Run platform-appropriate test suite
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		$(MAKE) test-ll-common test-ll-macos; \
+	else \
+		$(MAKE) test-ll-common test-ll-linux; \
+	fi
+
+test-ll-all: ## Run all test suites (unsuitable ones will soft-skip)
+	@$(MAKE) test-ll-common test-ll-linux test-ll-macos
 
 test-act: ## Run GitHub Actions workflow locally with act (Ubuntu only)
 	@echo "$(COLOR_GREEN)Running GitHub Actions workflow locally with act...$(COLOR_RESET)"
