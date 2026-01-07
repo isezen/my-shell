@@ -126,16 +126,16 @@ human_size() {
   # Decide unit.
   if [ "$bytes" -lt $((1024 * 1024)) ]; then
     unit="K"
-    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024.0}')"
+    scaled="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024.0}')"
   elif [ "$bytes" -lt $((1024 * 1024 * 1024)) ]; then
     unit="M"
-    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576.0}')"
+    scaled="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576.0}')"
   elif [ "$bytes" -lt $((1024 * 1024 * 1024 * 1024)) ]; then
     unit="G"
-    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1073741824.0}')"
+    scaled="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1073741824.0}')"
   else
     unit="T"
-    scaled="$(awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1099511627776.0}')"
+    scaled="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1099511627776.0}')"
   fi
 
   # Trim trailing .0 for readability (GNU-ish).
@@ -175,7 +175,10 @@ time_parts() {
   TNUM="$num"
   TUNIT="$unit"
   TFUT=0
-  [ -n "$prefix" ] && TFUT=1
+  if [ -n "$prefix" ]; then
+    TFUT=1
+  fi
+  return 0
 }
 
 # ANSI colors (match ll_linux palette)
@@ -338,7 +341,7 @@ a_push_row() {
   fi
   local stat_fmt
   stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
-  st="$(stat -f "$stat_fmt" "$stat_path" 2>/dev/null || true)"
+  st="$(/usr/bin/stat -f "$stat_fmt" "$stat_path" 2>/dev/null || true)"
   if [ -z "$st" ]; then
     return 0
   fi
@@ -435,7 +438,7 @@ fi
 # Use awk to compute widths from the US-separated rows (safe w.r.t. names).
 widths="$(
   printf '%s\n' "${rows[@]}" \
-  | awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
+  | /usr/bin/awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
     function max(a,b){return (a>b)?a:b}
     BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tprefix=0;w_tnum=0;w_tunit=0;any_fut=0}
     {
@@ -588,14 +591,14 @@ printed_any=0
 
 # Print ROW ops in order (including -d directories).
 for g in "${groups[@]}"; do
-  kind="${g%%$'\t'*}"
-  val="${g#*$'\t'}"
+  kind="${g%%${DELIM}*}"
+  val="${g#*${DELIM}}"
 
   if [ "$kind" = "ROW" ]; then
     # Find matching row indices by path (we appended in the same order, so linear scan is ok).
     for i in "${!rows[@]}"; do
       rec="${rows[$i]}"
-      path="${rec##*$'\t'}"
+      path="${rec##*${DELIM}}"
       if [ "$path" = "$val" ]; then
         print_row_by_index "$i"
         printed_any=1

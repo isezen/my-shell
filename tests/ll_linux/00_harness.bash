@@ -86,6 +86,9 @@ ll_require_gnu_touch() {
 }
 
 setup_file() {
+  if [ "$(uname -s)" = "Darwin" ] && [ -z "$LL_GNU_LS" ]; then
+    ll_soft_skip "GNU ls required on macOS (install coreutils to run ll_linux suite)"
+  fi
   ll_require_gnu_ls
 }
 
@@ -197,6 +200,23 @@ ll_run_ls() {
 }
 
 ll_run_ll() {
+  if [ "$(uname -s)" = "Darwin" ]; then
+    if [ -n "$LL_GNU_LS" ]; then
+      if [ -n "$LL_GNU_AWK" ]; then
+        LL_IMPL=linux LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
+      else
+        LL_IMPL=linux LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" "${LL_SCRIPT}" "$@" 2>&1
+      fi
+    else
+      if [ -n "$LL_GNU_AWK" ]; then
+        LL_IMPL=linux LL_CHATGPT_FAST=1 LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
+      else
+        LL_IMPL=linux LL_CHATGPT_FAST=1 "${LL_SCRIPT}" "$@" 2>&1
+      fi
+    fi
+    return
+  fi
+
   if [ -n "$LL_GNU_LS" ]; then
     if [ -n "$LL_GNU_AWK" ]; then
       LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
