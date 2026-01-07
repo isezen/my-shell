@@ -276,3 +276,15 @@ Overall Verdict: NON-COMPLIANT (improved; remaining gaps are Phase 6–9 and unv
 
 ### Status Impact
 - Phase 8 unification decision: documented with rationale tied to perf results.
+
+## Remediation Update #6
+
+### Changes Applied
+- `wip/ll-before.md`: added Phase 0 baseline snapshot of test commands and results.
+- `CHANGELOG.md`: added Commit 17 entry for baseline snapshot.
+
+### Tests Run
+- `make test-ll-common`, `make test-ll`, `make test-ll-all`, `make test-ll-linux`, `make test-ll-macos` (exit 0; outputs captured in `wip/ll-before.md`).
+
+### Status Impact
+- Phase 0 snapshot: recorded baseline logs for current state.

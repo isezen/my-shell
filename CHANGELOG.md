@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Commit 17: Add Phase 0 baseline snapshot log for ll tests (areas: docs). No behavior change; docs only.
 - Commit 16: Add ll implementation decision record (areas: docs/decision). No behavior change; docs only.
 - Commit 15: Add ll-perf benchmark report (areas: docs/perf). No behavior change; docs only.
 - Commit 14: Make ll-compare deterministic for cross-impl diff and document usage (areas: dev-tools/docs). Behavior change: LL_NOW_EPOCH default fixed; LL_CHATGPT_FAST forced in ll-compare runs.
