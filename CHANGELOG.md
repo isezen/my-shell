@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ubuntu job: `make test-ll` (runs common + ll_linux suite)
   - macOS job: `make test-ll` (runs common + ll_macos suite)
   - Report steps: Use `make test-ll` output instead of hardcoded globs
+- Wrapper dispatch contract: Hardened thin wrapper dispatch contract
+  - Priority order: LL_IMPL_PATH > LL_SCRIPT (recursion guard) > LL_IMPL > OS sniff
+  - Exit codes: 1 (missing/unexecutable), 2 (invalid LL_IMPL)
+  - Arg forwarding: Arguments forwarded verbatim without modification
+  - No behavior change; refactor/test only
 - Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
   - Supports both remote and local installation modes
   - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`
