@@ -41,8 +41,11 @@
 │   └── aliases.yml
 ├── tests
 │   ├── ll
+│   │   ├── fixtures
+│   │   │   └── ll_stub_impl.bash
 │   │   ├── 00_harness.bash
 │   │   ├── 10_core.bats
+│   │   ├── 10_wrapper_stub.bats
 │   │   ├── 20_paths.bats
 │   │   ├── 30_edge.bats
 │   │   └── 40_color.bats
@@ -80,5 +83,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-17 directories, 62 files
+18 directories, 64 files
 ```

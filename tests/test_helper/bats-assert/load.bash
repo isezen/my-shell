@@ -58,6 +58,44 @@ assert_output() {
   fi
 }
 
+# Assert that a line in output contains string
+assert_line() {
+  local expected
+  local found=0
+  
+  if [ "$1" = "--partial" ]; then
+    expected="$2"
+    while IFS= read -r line; do
+      if [[ "$line" == *"$expected"* ]]; then
+        found=1
+        break
+      fi
+    done <<< "$output"
+    
+    if [ "$found" -eq 0 ]; then
+      {
+        echo "no line in output contains '$expected'"
+        echo "output: $output"
+      } | flunk
+    fi
+  else
+    expected="$1"
+    while IFS= read -r line; do
+      if [ "$line" = "$expected" ]; then
+        found=1
+        break
+      fi
+    done <<< "$output"
+    
+    if [ "$found" -eq 0 ]; then
+      {
+        echo "no line in output matches '$expected'"
+        echo "output: $output"
+      } | flunk
+    fi
+  fi
+}
+
 # Flunk - print error and exit
 flunk() {
   {

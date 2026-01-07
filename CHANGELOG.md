@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tests/ll_linux/`: GNU toolchain-based test suite (moved from `tests/ll/`)
   - `tests/ll_macos/`: BSD-only test suite skeleton with preflight helpers
   - Tests split by platform to support BSD-only macOS implementation
+- Wrapper test suite: Stub-based platform-independent wrapper contract tests
+  - `tests/ll/10_wrapper_stub.bats`: Tests for wrapper dispatch, override, and arg forwarding
+  - `tests/ll/fixtures/ll_stub_impl.bash`: Stub executable for testing wrapper behavior
+  - Tests verify LL_IMPL_PATH priority, LL_IMPL selection, LL_SCRIPT recursion guard, and exit codes
 - Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
   - Supports both remote and local installation modes
   - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`
