@@ -51,6 +51,11 @@
 │   ├── make-tests.txt
 │   ├── repo-meta.txt
 │   ├── scripts-bin.txt
+│   ├── shellcheck-files.txt
+│   ├── shellcheck-fixed.txt
+│   ├── shellcheck-invocations.md
+│   ├── shellcheck-invocations.raw
+│   ├── shellcheck-root-cause.md
 │   ├── shellcheck.txt
 │   ├── test-count-by-file.txt
 │   ├── test-count.txt
@@ -78,7 +83,8 @@
 │       ├── ll-perf
 │       ├── ls-compare
 │       ├── ls-compare-canon-ls.pl
-│       └── ls-compare-canon-script.pl
+│       ├── ls-compare-canon-script.pl
+│       └── run-shellcheck
 ├── shell
 │   ├── bash
 │   │   ├── aliases.bash
@@ -124,16 +130,12 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
-│   ├── cursor-codex.md
 │   ├── IMPROVEMENTS.md
 │   ├── ll-before.md
 │   ├── ll-decision.md
 │   ├── ll-perf.md
-│   ├── ls-compare.md
-│   ├── patch.diff
-│   ├── plan-ll-control.md
-│   ├── plan-ll.md
-│   └── SHELLCHECK_AND_PRE_COMMIT_EXPLANATION.md
+│   └── ls-compare.md
+├── ~
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
@@ -144,5 +146,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-31 directories, 112 files
+32 directories, 113 files
 ```
