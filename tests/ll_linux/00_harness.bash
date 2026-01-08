@@ -56,6 +56,12 @@ ll_warn() {
   echo "WARNING: $*" >&2
 }
 
+ll_fail() {
+  echo "ERROR: $*" >&2
+  ll_rm_testdir
+  return 1
+}
+
 ll_soft_skip() {
   ll_warn "$@"
   skip "$@"
@@ -126,6 +132,9 @@ ll_seed_fixtures_common() {
   tab_name=$'a\tb.txt'
   printf "tab" > "${tab_name}"
   printf "utf" > "İçerik-ğüşöç.txt"
+  printf "hidden" > ".hidden_file"
+  mkdir -p ".hidden_dir"
+  printf "hidden" > ".hidden_dir/inside.txt"
   long_name="$(printf 'a%.0s' {1..210}).txt"
   printf "long" > "${long_name}"
 
@@ -149,6 +158,7 @@ ll_seed_fixtures_common() {
   touch -t 202001010000.00 \
     file1.txt file2.txt file3.txt dir1 dir2 \
     "a b.txt" " file-leading-space.txt" "${tab_name}" "İçerik-ğüşöç.txt" \
+    ".hidden_file" ".hidden_dir" ".hidden_dir/inside.txt" \
     "${long_name}" link-to-file1 broken-link symlink-to-file1 broken-symlink \
     fifo1 setuid-file setgid-file setgid-dir sticky-dir future.txt
 
@@ -235,6 +245,63 @@ ll_run_ll() {
       LL_CHATGPT_FAST=1 "${LL_SCRIPT}" "$@" 2>&1
     fi
   fi
+}
+
+ll_capture_ls() {
+  local stdout_file
+  local stderr_file
+
+  if [ -z "$LL_GNU_LS" ]; then
+    echo "GNU ls is required for ll tests" >&2
+    return 1
+  fi
+
+  stdout_file="$(mktemp)"
+  stderr_file="$(mktemp)"
+  set +e
+  "$LL_GNU_LS" --color -l --time-style=+"%s" "$@" >"$stdout_file" 2>"$stderr_file"
+  # shellcheck disable=SC2034
+  LL_CAPTURE_STATUS=$?
+  set -e
+  # shellcheck disable=SC2034
+  LL_CAPTURE_STDOUT="$(cat "$stdout_file")"
+  # shellcheck disable=SC2034
+  LL_CAPTURE_STDERR="$(cat "$stderr_file")"
+  rm -f "$stdout_file" "$stderr_file"
+  return 0
+}
+
+ll_capture_ll() {
+  local stdout_file
+  local stderr_file
+  local -a env_cmd
+
+  stdout_file="$(mktemp)"
+  stderr_file="$(mktemp)"
+
+  env_cmd=(env LL_CHATGPT_FAST=1)
+  if [ "$(uname -s)" = "Darwin" ]; then
+    env_cmd+=(LL_IMPL=linux)
+  fi
+  if [ -n "$LL_GNU_LS" ]; then
+    env_cmd+=(LL_CHATGPT_LS="$LL_GNU_LS")
+  fi
+  if [ -n "$LL_GNU_AWK" ]; then
+    env_cmd+=(LL_CHATGPT_AWK="$LL_GNU_AWK")
+  fi
+  env_cmd+=("$LL_SCRIPT")
+
+  set +e
+  "${env_cmd[@]}" "$@" >"$stdout_file" 2>"$stderr_file"
+  # shellcheck disable=SC2034
+  LL_CAPTURE_STATUS=$?
+  set -e
+  # shellcheck disable=SC2034
+  LL_CAPTURE_STDOUT="$(cat "$stdout_file")"
+  # shellcheck disable=SC2034
+  LL_CAPTURE_STDERR="$(cat "$stderr_file")"
+  rm -f "$stdout_file" "$stderr_file"
+  return 0
 }
 
 ll_set_compare_env() {

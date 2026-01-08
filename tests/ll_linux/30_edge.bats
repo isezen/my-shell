@@ -98,3 +98,123 @@ load './00_harness.bash'
   ll_assert_canon_equal
   ll_rm_testdir
 }
+
+@test "ll edge: nonexistent path errors match ls" {
+  local ls_out
+  local ls_err
+  local ll_out
+  local ll_err
+  local ls_status
+  local ll_status
+
+  ll_mk_testdir
+
+  ll_capture_ls -- does-not-exist
+  ls_status="$LL_CAPTURE_STATUS"
+  ls_out="$LL_CAPTURE_STDOUT"
+  ls_err="$LL_CAPTURE_STDERR"
+
+  ll_capture_ll -- does-not-exist
+  ll_status="$LL_CAPTURE_STATUS"
+  ll_out="$LL_CAPTURE_STDOUT"
+  ll_err="$LL_CAPTURE_STDERR"
+
+  if [ "$ll_status" -ne "$ls_status" ]; then
+    ll_fail "expected ll status $ls_status, got $ll_status"
+  fi
+  if [ -n "$ll_out" ] || [ -n "$ls_out" ]; then
+    ll_fail "expected empty stdout for nonexistent path"
+  fi
+  if [ -z "$ll_err" ] || [ -z "$ls_err" ]; then
+    ll_fail "expected stderr for nonexistent path"
+  fi
+  if [ "$ll_err" != "$ls_err" ]; then
+    ll_fail "stderr mismatch for nonexistent path"
+  fi
+
+  ll_rm_testdir
+}
+
+@test "ll edge: invalid option errors match ls" {
+  local ls_out
+  local ls_err
+  local ll_out
+  local ll_err
+  local ls_status
+  local ll_status
+
+  ll_mk_testdir
+
+  ll_capture_ls --not-a-real-flag
+  ls_status="$LL_CAPTURE_STATUS"
+  ls_out="$LL_CAPTURE_STDOUT"
+  ls_err="$LL_CAPTURE_STDERR"
+
+  ll_capture_ll --not-a-real-flag
+  ll_status="$LL_CAPTURE_STATUS"
+  ll_out="$LL_CAPTURE_STDOUT"
+  ll_err="$LL_CAPTURE_STDERR"
+
+  if [ "$ll_status" -ne "$ls_status" ]; then
+    ll_fail "expected ll status $ls_status, got $ll_status"
+  fi
+  if [ -n "$ll_out" ] || [ -n "$ls_out" ]; then
+    ll_fail "expected empty stdout for invalid option"
+  fi
+  if [ -z "$ll_err" ] || [ -z "$ls_err" ]; then
+    ll_fail "expected stderr for invalid option"
+  fi
+  if [ "$ll_err" != "$ls_err" ]; then
+    ll_fail "stderr mismatch for invalid option"
+  fi
+
+  ll_rm_testdir
+}
+
+@test "ll edge: unreadable directory errors match ls" {
+  local ls_out
+  local ls_err
+  local ll_out
+  local ll_err
+  local ls_status
+  local ll_status
+
+  ll_mk_testdir
+  mkdir noaccess
+  if ! chmod 000 noaccess; then
+    ll_rm_testdir
+    skip "chmod failed for unreadable dir"
+  fi
+
+  ll_capture_ls -- noaccess
+  ls_status="$LL_CAPTURE_STATUS"
+  ls_out="$LL_CAPTURE_STDOUT"
+  ls_err="$LL_CAPTURE_STDERR"
+
+  ll_capture_ll -- noaccess
+  ll_status="$LL_CAPTURE_STATUS"
+  ll_out="$LL_CAPTURE_STDOUT"
+  ll_err="$LL_CAPTURE_STDERR"
+
+  chmod 700 noaccess 2>/dev/null || true
+
+  if [ "$ls_status" -eq 0 ]; then
+    ll_rm_testdir
+    skip "ls did not fail on unreadable directory"
+  fi
+
+  if [ "$ll_status" -ne "$ls_status" ]; then
+    ll_fail "expected ll status $ls_status, got $ll_status"
+  fi
+  if [ -n "$ll_out" ] || [ -n "$ls_out" ]; then
+    ll_fail "expected empty stdout for unreadable directory"
+  fi
+  if [ -z "$ll_err" ] || [ -z "$ls_err" ]; then
+    ll_fail "expected stderr for unreadable directory"
+  fi
+  if [ "$ll_err" != "$ls_err" ]; then
+    ll_fail "stderr mismatch for unreadable directory"
+  fi
+
+  ll_rm_testdir
+}

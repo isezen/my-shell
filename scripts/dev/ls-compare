@@ -946,8 +946,13 @@ for idx in "${!test_case_names[@]}"; do
   done
   ls_argv=("${ls_opts[@]}" "${ls_operands[@]}")
 
-  ls_output_raw=$(cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" 2>&1)
+  ls_stdout_file=$(mktemp)
+  ls_stderr_file=$(mktemp)
+  (cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file")
   ls_status=$?
+  ls_stdout_raw="$(cat "$ls_stdout_file")"
+  ls_stderr_raw="$(cat "$ls_stderr_file")"
+  rm -f "$ls_stdout_file" "$ls_stderr_file"
 
   # Export env for canonicalizers
   export LS_COMPARE_USER
@@ -955,23 +960,29 @@ for idx in "${!test_case_names[@]}"; do
   LS_COMPARE_USER="$(id -un 2>/dev/null || true)"
   LS_COMPARE_NOW_EPOCH="${LL_NOW_EPOCH:-$(date +%s)}"
 
-  # If no scripts provided, just show ls output
+  # If no scripts provided, just show ls stdout
   if [ ${#script_paths[@]} -eq 0 ]; then
-    echo "$ls_output_raw"
+    echo "$ls_stdout_raw"
     ((passed++))
   else
     # Run all scripts and capture outputs
-    outputs=()
-    outputs_raw=()
+    outputs_out=()
+    outputs_err=()
+    outputs_out_raw=()
+    outputs_err_raw=()
     script_statuses=()
     validation_failed=0
     validation_msg=""
     status_failed=0
     status_msg=""
+    stdout_match=true
+    stderr_match=true
 
     # Column 0 is the ls baseline
-    outputs_raw+=("$ls_output_raw")
-    outputs+=("$(canonicalize_ls_output "$ls_output_raw")")
+    outputs_out_raw+=("$ls_stdout_raw")
+    outputs_err_raw+=("$ls_stderr_raw")
+    outputs_out+=("$(canonicalize_ls_output "$ls_stdout_raw")")
+    outputs_err+=("$(canonicalize_ls_output "$ls_stderr_raw")")
     if [ "$ls_status" -ne 0 ]; then
       status_failed=1
       status_msg="ls exit $ls_status"
@@ -980,13 +991,20 @@ for idx in "${!test_case_names[@]}"; do
     for i in "${!script_paths[@]}"; do
       script_path="${script_paths[$i]}"
       script_name="${script_names[$i]}"
-      output_raw=$(cd "$TEST_DIR" && "$script_path" "${tc_argv_clean[@]}" 2>&1)
+      script_stdout_file=$(mktemp)
+      script_stderr_file=$(mktemp)
+      (cd "$TEST_DIR" && "$script_path" "${tc_argv_clean[@]}" >"$script_stdout_file" 2>"$script_stderr_file")
       script_status=$?
+      output_stdout_raw="$(cat "$script_stdout_file")"
+      output_stderr_raw="$(cat "$script_stderr_file")"
+      rm -f "$script_stdout_file" "$script_stderr_file"
       script_statuses+=("$script_status")
-      outputs_raw+=("$output_raw")
-      outputs+=("$(canonicalize_script_output "$output_raw")")
+      outputs_out_raw+=("$output_stdout_raw")
+      outputs_err_raw+=("$output_stderr_raw")
+      outputs_out+=("$(canonicalize_script_output "$output_stdout_raw")")
+      outputs_err+=("$(canonicalize_script_output "$output_stderr_raw")")
       if [ "$script_name" = "ll" ] || [ "$script_name" = "ll_linux" ]; then
-        if ! validate_ll_output "$output_raw"; then
+        if ! validate_ll_output "$output_stdout_raw"; then
           validation_failed=1
           validation_msg="future time color missing"
         fi
@@ -1001,18 +1019,26 @@ for idx in "${!test_case_names[@]}"; do
       fi
     done
 
-    # Check if all outputs match baseline exactly after canonicalization.
+    # Check if stdout/stderr outputs match baseline exactly after canonicalization.
     all_match=true
-    baseline_exact="${outputs[0]}"
-    for i in $(seq 1 $((${#outputs[@]} - 1))); do
-      candidate_exact="${outputs[$i]}"
-      if [ "$candidate_exact" != "$baseline_exact" ]; then
-        all_match=false
+    baseline_out="${outputs_out[0]}"
+    for i in $(seq 1 $((${#outputs_out[@]} - 1))); do
+      candidate_out="${outputs_out[$i]}"
+      if [ "$candidate_out" != "$baseline_out" ]; then
+        stdout_match=false
+        break
+      fi
+    done
+    baseline_err="${outputs_err[0]}"
+    for i in $(seq 1 $((${#outputs_err[@]} - 1))); do
+      candidate_err="${outputs_err[$i]}"
+      if [ "$candidate_err" != "$baseline_err" ]; then
+        stderr_match=false
         break
       fi
     done
     
-    if [ "$validation_failed" -eq 1 ] || [ "$status_failed" -eq 1 ]; then
+    if [ "$validation_failed" -eq 1 ] || [ "$status_failed" -eq 1 ] || [ "$stdout_match" = false ] || [ "$stderr_match" = false ]; then
       all_match=false
     fi
 
@@ -1021,9 +1047,12 @@ for idx in "${!test_case_names[@]}"; do
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
           echo "PASS - All outputs match exactly"
           echo "  Side-by-side comparison:"
+          outputs=("${outputs_out[@]}")
+          outputs_raw=("${outputs_out_raw[@]}")
           print_side_by_side
         else
           # Vertical format: show outputs directly without "PASS" message
+          outputs_raw=("${outputs_out_raw[@]}")
           print_vertical
         fi
       fi
@@ -1031,41 +1060,150 @@ for idx in "${!test_case_names[@]}"; do
     else
       if [ "$FAIL_ONLY" -eq 0 ]; then
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
+          fail_reasons=()
           if [ "$status_failed" -eq 1 ]; then
-            echo "FAIL - Non-zero exit status (${status_msg})"
-          elif [ "$validation_failed" -eq 1 ]; then
-            echo "FAIL - Formatting validation failed (${validation_msg})"
+            fail_reasons+=("Non-zero exit status (${status_msg})")
+          fi
+          if [ "$validation_failed" -eq 1 ]; then
+            fail_reasons+=("Formatting validation failed (${validation_msg})")
+          fi
+          if [ "$stdout_match" = false ]; then
+            fail_reasons+=("STDOUT differs")
+          fi
+          if [ "$stderr_match" = false ]; then
+            fail_reasons+=("STDERR differs")
+          fi
+          if [ "${#fail_reasons[@]}" -gt 0 ]; then
+            IFS='; ' printf 'FAIL - %s\n' "${fail_reasons[*]}"
+            unset IFS
           else
             echo "FAIL - Outputs differ"
           fi
-          echo "  Side-by-side comparison:"
-          print_side_by_side
+          show_stdout=0
+          show_stderr=0
+          if [ "$stdout_match" = false ]; then
+            show_stdout=1
+          fi
+          if [ "$stderr_match" = false ]; then
+            show_stderr=1
+          fi
+          if [ "$show_stdout" -eq 0 ] && [ "$show_stderr" -eq 0 ]; then
+            show_stdout=1
+            show_stderr=1
+          fi
+          if [ "$show_stdout" -eq 1 ]; then
+            echo "  STDOUT:"
+            outputs=("${outputs_out[@]}")
+            outputs_raw=("${outputs_out_raw[@]}")
+            print_side_by_side
+          fi
+          if [ "$show_stderr" -eq 1 ]; then
+            echo "  STDERR:"
+            outputs=("${outputs_err[@]}")
+            outputs_raw=("${outputs_err_raw[@]}")
+            print_side_by_side
+          fi
         else
+          fail_reasons=()
           if [ "$status_failed" -eq 1 ]; then
-            echo "FAIL - Non-zero exit status (${status_msg})"
-          elif [ "$validation_failed" -eq 1 ]; then
-            echo "FAIL - Formatting validation failed (${validation_msg})"
+            fail_reasons+=("Non-zero exit status (${status_msg})")
+          fi
+          if [ "$validation_failed" -eq 1 ]; then
+            fail_reasons+=("Formatting validation failed (${validation_msg})")
+          fi
+          if [ "$stdout_match" = false ]; then
+            fail_reasons+=("STDOUT differs")
+          fi
+          if [ "$stderr_match" = false ]; then
+            fail_reasons+=("STDERR differs")
+          fi
+          if [ "${#fail_reasons[@]}" -gt 0 ]; then
+            IFS='; ' printf 'FAIL - %s\n' "${fail_reasons[*]}"
+            unset IFS
           else
             echo "FAIL - Outputs differ"
           fi
-          # Vertical format: show outputs directly
-          print_vertical
+          show_stdout=0
+          show_stderr=0
+          if [ "$stdout_match" = false ]; then
+            show_stdout=1
+          fi
+          if [ "$stderr_match" = false ]; then
+            show_stderr=1
+          fi
+          if [ "$show_stdout" -eq 0 ] && [ "$show_stderr" -eq 0 ]; then
+            show_stdout=1
+            show_stderr=1
+          fi
+          if [ "$show_stdout" -eq 1 ]; then
+            echo "  STDOUT:"
+            outputs_raw=("${outputs_out_raw[@]}")
+            print_vertical
+          fi
+          if [ "$show_stderr" -eq 1 ]; then
+            echo "  STDERR:"
+            outputs_raw=("${outputs_err_raw[@]}")
+            print_vertical
+          fi
         fi
       else
         echo "Test #$test_num: $test_name"
         echo "----------------------------------"
+        fail_reasons=()
         if [ "$status_failed" -eq 1 ]; then
-          echo "FAIL - Non-zero exit status (${status_msg})"
-        elif [ "$validation_failed" -eq 1 ]; then
-          echo "FAIL - Formatting validation failed (${validation_msg})"
+          fail_reasons+=("Non-zero exit status (${status_msg})")
+        fi
+        if [ "$validation_failed" -eq 1 ]; then
+          fail_reasons+=("Formatting validation failed (${validation_msg})")
+        fi
+        if [ "$stdout_match" = false ]; then
+          fail_reasons+=("STDOUT differs")
+        fi
+        if [ "$stderr_match" = false ]; then
+          fail_reasons+=("STDERR differs")
+        fi
+        if [ "${#fail_reasons[@]}" -gt 0 ]; then
+          IFS='; ' printf 'FAIL - %s\n' "${fail_reasons[*]}"
+          unset IFS
         else
           echo "FAIL - Outputs differ"
         fi
+        show_stdout=0
+        show_stderr=0
+        if [ "$stdout_match" = false ]; then
+          show_stdout=1
+        fi
+        if [ "$stderr_match" = false ]; then
+          show_stderr=1
+        fi
+        if [ "$show_stdout" -eq 0 ] && [ "$show_stderr" -eq 0 ]; then
+          show_stdout=1
+          show_stderr=1
+        fi
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          echo "  Side-by-side comparison:"
-          print_side_by_side
+          if [ "$show_stdout" -eq 1 ]; then
+            echo "  STDOUT:"
+            outputs=("${outputs_out[@]}")
+            outputs_raw=("${outputs_out_raw[@]}")
+            print_side_by_side
+          fi
+          if [ "$show_stderr" -eq 1 ]; then
+            echo "  STDERR:"
+            outputs=("${outputs_err[@]}")
+            outputs_raw=("${outputs_err_raw[@]}")
+            print_side_by_side
+          fi
         else
-          print_vertical
+          if [ "$show_stdout" -eq 1 ]; then
+            echo "  STDOUT:"
+            outputs_raw=("${outputs_out_raw[@]}")
+            print_vertical
+          fi
+          if [ "$show_stderr" -eq 1 ]; then
+            echo "  STDERR:"
+            outputs_raw=("${outputs_err_raw[@]}")
+            print_vertical
+          fi
         fi
       fi
       ((errors++))
