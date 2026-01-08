@@ -8,9 +8,10 @@ repos:
     hooks:
       - id: shellcheck
         name: ShellCheck (bash/sh scripts)
-        args: ["--severity=warning"]
-        types: [file]
-        files: \.(sh|bash)$
+        entry: bash -c 'SHELLCHECK_OPTS="--severity=warning" scripts/dev/run-shellcheck' --
+        language: system
+        pass_filenames: false
+        always_run: true
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -63,4 +64,3 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-

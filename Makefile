@@ -27,7 +27,7 @@ lint: lint-bash lint-fish ## Run all linting checks
 lint-bash: ## Check bash/sh scripts with ShellCheck
 	@echo "$(COLOR_GREEN)Checking bash/sh scripts with ShellCheck...$(COLOR_RESET)"
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck $(BASH_SCRIPTS) || exit 1; \
+		scripts/dev/run-shellcheck || exit 1; \
 		echo "$(COLOR_GREEN)✓ All bash scripts passed ShellCheck$(COLOR_RESET)"; \
 	else \
 		echo "$(COLOR_RED)✗ ShellCheck not found. Install with: brew install shellcheck$(COLOR_RESET)"; \
