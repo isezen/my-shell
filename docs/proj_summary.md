@@ -1,1038 +1,959 @@
 # Project Summary: my-shell
 
+This document provides a comprehensive summary of the project structure, modules, functions, and architectural decisions for shell script projects.
+
 ## Project Overview
 
 ### Purpose
 
-my-shell is a collection of shell environment settings, aliases, and utility scripts designed to enhance productivity on both Linux and macOS. The project provides a unified, cross-platform shell configuration system that works with Bash, Zsh, and Fish shells.
+A collection of shell environment settings, aliases, and utility scripts for bash and fish shells. Designed to work on both Linux and macOS.
 
 ### Scope
 
-The project includes:
-
-- **Shell Configuration**: Modular shell-specific configurations for Bash, Zsh, and Fish
-  - Aliases and functions for common operations
-  - Enhanced prompts with git integration
-  - Environment variable management
-  - History management utilities
-
-- **Utility Scripts**: Cross-platform command-line tools
-  - `ll`: Colorful long listing with enhanced formatting (platform-specific implementations)
-  - `dus`: Disk usage analysis with sorting and coloring
-  - `dusf`: File-based disk usage analysis
-  - `dusf.`: Alternative disk usage format
-
-- **Environment Activation System**: Virtual environment-like activation for development
-  - Shell switching capabilities
-  - PATH management
-  - Configuration reloading
-
-- **Testing Infrastructure**: Comprehensive BATS test suite
-  - 55+ automated tests
-  - Platform-specific test suites
-  - Wrapper contract tests
+The project provides:
+- Shell-specific configurations for Bash, Zsh, and Fish shells
+- Environment activation system (similar to Python virtual environments)
+- Utility scripts for file operations (`ll`, `dus`, `dusf`, `dusf.`)
+- Comprehensive aliases and functions for file operations, system information, history management, and directory navigation
+- Cross-platform support for Linux and macOS
+- Automated testing suite with 55 BATS tests
+- Code quality tools (ShellCheck, pre-commit hooks)
 
 ### Platform Support
 
-- **Operating Systems**:
-  - macOS 10.13+ (High Sierra or later)
-  - Linux (Ubuntu 18.04+, Debian 10+, Fedora 30+)
-  - ARM64 (Apple Silicon) and x86_64 architectures
-
-- **Shells**:
-  - Bash 4.0+
-  - Fish 4.0+
-  - Zsh (with bash compatibility)
+- **Linux**: Ubuntu 18.04+, Debian 10+, Fedora 30+, and other modern distributions
+- **macOS**: macOS 10.13 (High Sierra) or later, tested on macOS 13.6
+- **Shells**: Bash 4.0+, Fish 4.0+, Zsh (with bash compatibility)
+- **Architectures**: ARM64 (Apple Silicon) and x86_64 (Intel) supported
 
 ### Dependency Strategy
 
-- **Core Dependencies**: POSIX-compliant utilities (usually pre-installed)
-  - Standard Unix tools: `ls`, `find`, `grep`, `sed`, `awk`, `date`, etc.
-  - `curl` or `wget` for installation
-
-- **Development Dependencies**:
-  - ShellCheck 0.7.0+ for static analysis
-  - BATS 1.0.0+ for testing
-  - pre-commit 2.0.0+ (optional) for git hooks
-
-- **Optional Enhancements**:
-  - `ncdu`, `htop`, `grc`, `dfc` for enhanced functionality
-  - GNU coreutils on macOS (for `ll_linux` implementation)
-
-- **Platform-Specific Tools**:
-  - macOS: Uses BSD tools (`/bin/ls`, `/usr/bin/stat`, `/usr/bin/awk`)
-  - Linux: Uses GNU tools (`ls --time-style`, `gawk`)
+- **Core dependencies**: POSIX-compliant utilities (ls, find, grep, sed, awk, etc.)
+- **Required tools**: curl or wget for installation
+- **Optional enhancements**: ncdu, htop, grc, dfc, imagemagick, fortune
+- **Development tools**: ShellCheck 0.7.0+, BATS 1.0.0+, Fish 4.0+ for development
+- **No external package dependencies**: All scripts use standard system utilities
 
 ### Main Use Cases
 
-1. **Daily Shell Usage**: Enhanced aliases and functions for file operations, navigation, system information
-2. **Development Environment**: Activation system for isolated development testing
-3. **Cross-Platform Development**: Consistent shell experience across macOS and Linux
-4. **Script Development**: Utility scripts for common tasks (disk usage, file listing)
+1. **Shell Environment Setup**: Quick installation of shell configurations for Bash, Zsh, or Fish
+2. **Development Environment**: Activate project-specific shell environment with utility scripts in PATH
+3. **File Operations**: Enhanced `ls` and `ll` commands with colors and formatting
+4. **System Information**: Quick access to memory usage, IP address, disk usage, and process information
+5. **History Management**: Enhanced history commands with search and statistics
+6. **Directory Navigation**: Shortcuts for quick directory navigation (`.1`, `.2`, `..`, `...`, etc.)
+7. **Time Utilities**: Quick date/time commands (`now`, `nowtime`, `nowdate`)
 
 ### Key Features
 
-- **Modular Architecture**: Shell configurations split into logical modules (init, aliases, prompt, env)
-- **Platform-Aware Implementations**: Separate `ll_linux` and `ll_macos` implementations for optimal platform support
-- **Comprehensive Testing**: BATS test suite with platform-specific test harnesses
-- **Quality Assurance**: ShellCheck validation, pre-commit hooks, CI/CD integration
-- **Easy Installation**: One-liner installation script with multiple options
-- **Environment Activation**: Virtual environment-like activation for development
+- **Shell Aliases & Functions**: Enhanced file operations, system information, history management, and navigation shortcuts
+- **Fish Shell Support**: Full fish shell configuration with colorful prompt and git integration
+- **Utility Scripts**: `ll` (colorful long listing), `dus` (disk usage), `dusf` (file-based disk usage)
+- **Quality Assurance**: ShellCheck validation, 55 BATS tests, CI/CD integration
+- **Environment Activation System**: Virtual environment-like activation for shell environments
+- **Cross-Platform**: Works on both Linux and macOS with automatic platform detection
 
 ## Architecture Overview
 
 ### Layered Architecture
 
-The project follows a layered architecture organized by functionality:
+The project follows a shell-specific layered architecture:
 
-1. **Shell Configuration Layer** (`shell/`):
-   - Shell-specific configurations (bash, zsh, fish)
-   - Modular structure: `init.*`, `aliases.*`, `prompt.*`, `env.*`
-   - Single entrypoint pattern via `init.*` files
+1. **Activation Layer** (`env/`): Environment activation scripts that set up the shell environment
+   - `activate.bash`, `activate.zsh`, `activate.fish`: Shell-specific activators
+   - Handles PATH modification, prompt customization, and environment variable management
 
-2. **Utility Scripts Layer** (`scripts/bin/`):
-   - Executable command-line utilities
-   - Platform-specific implementations where needed (`ll_linux`, `ll_macos`)
-   - Thin wrapper pattern for platform dispatch (`ll`)
+2. **Initialization Layer** (`shell/*/init.*`): Entry points for shell-specific configurations
+   - Sources all configuration components in the correct order
+   - Provides single entry point for shell initialization
 
-3. **Environment Activation Layer** (`env/`):
-   - Shell activation scripts
-   - PATH management
-   - Configuration loading orchestration
+3. **Configuration Layer** (`shell/*/`): Shell-specific configuration modules
+   - `aliases.*`: Aliases and utility functions
+   - `prompt.*`: Prompt customization
+   - `env.*`: Environment variable settings
 
-4. **Testing Layer** (`tests/`):
-   - Platform-specific test suites (`tests/ll_linux/`, `tests/ll_macos/`)
-   - Common wrapper tests (`tests/ll/`)
-   - Test harnesses with preflight checks
-
-5. **Development Tools Layer** (`scripts/dev/`):
-   - Development utilities (comparison tools, performance benchmarks)
-   - Canonicalization scripts for testing
+4. **Utility Scripts Layer** (`scripts/bin/`): Executable utility scripts
+   - `ll`: Colorful long listing
+   - `dus`, `dusf`, `dusf.`: Disk usage utilities
 
 ### Design Patterns
 
-1. **Thin Wrapper Pattern** (`scripts/bin/ll`):
-   - Platform detection and dispatch
-   - No business logic in wrapper
-   - Environment variable overrides for testing
-
-2. **Single Entrypoint Pattern** (`shell/*/init.*`):
-   - Each shell has one entrypoint file
-   - Entrypoint sources other modules in correct order
-   - Simplifies activation and maintenance
-
-3. **Platform-Specific Implementation Pattern**:
-   - Separate implementations for platform-specific features
-   - Shared interface/contract via wrapper
-   - Platform-aware test suites
-
-4. **Soft-Skip Pattern** (test harnesses):
-   - Preflight checks for required tools
-   - Warning + skip (not failure) for missing dependencies
-   - Enables cross-platform test execution
+- **Activation Pattern**: Similar to Python virtual environments, provides isolated shell environments
+- **Single Entry Point**: Each shell uses a single `init.*` file that sources all components
+- **Shell Abstraction**: Common functionality abstracted across Bash, Zsh, and Fish with shell-specific implementations
+- **Best-Effort Portability**: Functions ported from Fish to Bash/Zsh with best-effort compatibility
 
 ### Architectural Principles
 
-1. **POSIX Compliance**: Scripts aim for POSIX compliance where possible
-2. **Cross-Platform Compatibility**: Automatic platform detection and appropriate tool selection
-3. **Modularity**: Clear separation of concerns (aliases, prompts, environment)
-4. **Testability**: Comprehensive test coverage with platform-specific suites
-5. **Quality First**: ShellCheck validation, pre-commit hooks, CI/CD integration
-6. **User Experience**: Easy installation, clear documentation, helpful error messages
+1. **Shell Compatibility**: Support for Bash, Zsh, and Fish with shell-specific implementations
+2. **POSIX Compliance**: Where possible, scripts use POSIX-compliant utilities
+3. **Platform Detection**: Automatic detection of Linux vs macOS with appropriate command usage
+4. **Environment Isolation**: Activation system provides isolated environment with clean deactivation
+5. **Modularity**: Configuration split into logical modules (aliases, prompt, env)
+6. **Testability**: Comprehensive test suite with BATS covering core functionality
 
 ### Dependency Flow
 
-```
-User Shell (bash/zsh/fish)
-    ↓
-env/activate.* (activation)
-    ↓
-shell/*/init.* (entrypoint)
-    ↓
-shell/*/{aliases,prompt,env}.* (modules)
-    ↓
-scripts/bin/* (utilities)
-    ↓
-Platform-specific tools (GNU/BSD)
-```
+1. **Activation Flow**:
+   - User sources `env/activate.<shell>` or uses global switcher `env/activate`
+   - Activator sets `MY_SHELL_ROOT` and modifies PATH
+   - Activator sources `shell/<shell>/init.<shell>`
+   - `init.*` sources `aliases.*`, `prompt.*`, and `env.*` in order
+   - Prompt is customized with `(my-shell)` prefix
+
+2. **Initialization Flow**:
+   - `init.*` → `aliases.*` → `prompt.*` → `env.*`
+   - Each module can depend on previous modules
+
+3. **Deactivation Flow**:
+   - `deactivate` function restores PATH, prompt, and environment variables
+   - If shell was switched, returns to original shell
 
 ### Key Architectural Features
 
-- **Platform Abstraction**: Wrapper pattern hides platform differences
-- **Modular Configuration**: Shell configs split into logical, reusable modules
-- **Test-Driven Development**: Platform-specific test suites ensure correctness
-- **Development Environment**: Activation system enables isolated testing
-- **Quality Gates**: Multiple quality checks (ShellCheck, tests, CI/CD)
+- **Environment Activation System**: Virtual environment-like system for shell environments with activation/deactivation
+- **Shell Switching**: Ability to switch between Bash, Zsh, and Fish while maintaining environment
+- **Prompt Customization**: Shell-specific prompt customization with `(my-shell)` prefix
+- **Function Persistence**: In Fish exec-activation, functions persist in new interactive session using init files
+- **PATH Management**: Snapshot and restore PATH for exact restoration during deactivation
+- **Cross-Platform Support**: Automatic platform detection and appropriate command usage
 
 ## Module Catalog
 
-### Shell Configuration Modules
+This section catalogs all source modules organized by directory structure.
 
-#### `shell/bash/init.bash`
+### 3.1 env/
 
-**Purpose**: Bash initialization entrypoint that sources all bash configuration modules in the correct order.
+#### 3.2 `env/activate.bash`
 
-**Layer**: Shell Configuration Layer
+**Purpose**: Bash environment activation script. Provides activation system similar to Python virtual environments. Sets up PATH, sources shell configuration, and customizes prompt with `(my-shell)` prefix.
+**Shell Type**: bash
+**Layer**: Activation Layer
 
-**Dependencies**: 
-- `shell/bash/aliases.bash`
-- `shell/bash/prompt.bash`
-- `shell/bash/env.bash`
+**Dependencies**: activate.bash, env/activate.bash, gawk, if, shell/bash/init.bash
+**Aliases**: colortable
 
-**Exports**: All aliases, functions, and environment variables defined in dependent modules.
 
-**Functions**: None (sourcing script)
+#### Functions
 
----
+##### `reactivate()`
 
-#### `shell/bash/aliases.bash`
+- **Purpose**: Reactivate function
 
-**Purpose**: Defines bash aliases and functions for file operations, navigation, system information, history management, and time utilities.
+##### `deactivate()`
 
-**Layer**: Shell Configuration Layer
+- **Purpose**: Deactivate function
 
-**Dependencies**: Standard POSIX utilities
+#### 3.3 `env/activate.fish`
 
-**Exports**: 
-- Aliases: `ls`, `la`, `lf`, `ld`, `cdh`, `.1`, `.2`, `..`, `...`, `h`, `hg`, `now`, `nowtime`, `nowdate`, `mem`, `myip`, `du`, `du.`, `du2`, `ports`
-- Functions: `hs` (history statistics), `fhere`, `FindFiles`
+**Purpose**: Fish environment activation script. Provides activation system similar to Python virtual environments. Sets up PATH, sources shell configuration, and customizes prompt with `(my-shell)` prefix using function copying strategy.
+**Shell Type**: fish
+**Layer**: Activation Layer
 
-**Key Features**:
-- Enhanced `ls` with colorization and directory-first sorting
-- Quick navigation shortcuts
-- History search and statistics
-- System information utilities
-- Platform-aware implementations (macOS vs Linux)
+**Dependencies**: &&, activate.fish, env/activate.fish, gawk, if, shell/fish/init.fish
 
----
+#### Functions
 
-#### `shell/bash/prompt.bash`
+##### `colortable()`
 
-**Purpose**: Configures bash prompt with colors, git integration, and directory display.
+- **Purpose**: Define colortable function (global scope)
 
-**Layer**: Shell Configuration Layer
+##### `__my_shell_prompt_prefix()`
 
-**Dependencies**: Git (optional, for git prompt features)
+- **Purpose**: Define prompt prefix function (global scope)
 
-**Exports**: `PS1` environment variable
+##### `reactivate()`
 
-**Features**:
-- Colorized prompt
-- Git branch display
-- Current directory display
-- Customizable colors
+- **Purpose**: Reactivate function (global scope)
 
----
+##### `deactivate()`
 
-#### `shell/bash/env.bash`
+- **Purpose**: Deactivate function (global scope)
 
-**Purpose**: Sets bash environment variables, history configuration, and shell options.
+#### 3.4 `env/activate.zsh`
 
-**Layer**: Shell Configuration Layer
+**Purpose**: Zsh environment activation script. Provides activation system similar to Python virtual environments. Sets up PATH, sources shell configuration, and customizes prompt with `(my-shell)` prefix.
+**Shell Type**: zsh
+**Layer**: Activation Layer
+
+**Dependencies**: activate.zsh, env/activate.zsh, gawk, if, shell/zsh/init.zsh
+**Aliases**: colortable
+
+
+#### Functions
+
+##### `reactivate()`
+
+- **Purpose**: Reactivate function
+
+##### `deactivate()`
+
+- **Purpose**: Deactivate function
+
+### 3.5 shell/bash/
+
+#### 3.6 `shell/bash/aliases.bash`
+
+**Purpose**: Bash aliases and utility functions (best-effort port from fish). Provides file operations, system information, history management, directory navigation, and time utilities.
+**Shell Type**: bash
+**Layer**: Configuration Layer
+
+**Dependencies**: -maxdepth, -name, -path, -type, awk, bc, find, grep, ll, ls, perl, profile/config, sed, ~/.bash_profile, ~/.bashrc, ...
+
+#### Functions
+
+##### `__my_shell_has()`
+
+- **Purpose**: !/usr/bin/env bash
+
+##### `__get_os()`
+
+- **Purpose**: Get operating system type (Linux or macOS). Helper function for system detection.
+
+##### `cdh()`
+
+- **Purpose**: ============================================================================
+
+##### `j()`
+
+- **Purpose**: Basic listing aliases
+
+##### `l()`
+
+- **Purpose**: list entries by columns
+
+##### `la()`
+
+- **Purpose**: list regular + hidden
+
+##### `sl()`
+
+- **Purpose**: typo correction for ls
+
+##### `laf()`
+
+- **Purpose**: list regular+hidden files
+
+##### `ld()`
+
+- **Purpose**: list regular directories
+
+##### `lf()`
+
+- **Purpose**: list regular files
+
+##### `lh()`
+
+- **Purpose**: list hidden items
+
+##### `lhd()`
+
+- **Purpose**: list hidden directories
+
+##### `lhf()`
+
+- **Purpose**: list hidden files
+
+##### `lad()`
+
+- **Purpose**: list all directories
+
+##### `lla()`
+
+- **Purpose**: long list all
+
+##### `lld()`
+
+- **Purpose**: long list regular directories
+
+##### `llh()`
+
+- **Purpose**: long list hidden
+
+##### `llhd()`
+
+- **Purpose**: long list hidden directories
+
+##### `llf()`
+
+- **Purpose**: long list regular files
+
+##### `llad()`
+
+- **Purpose**: long list all directories
+
+##### `llaf()`
+
+- **Purpose**: long list all files + hidden
+
+##### `llhf()`
+
+- **Purpose**: long list only hidden files
+
+##### `FindFiles()`
+
+- **Purpose**: ============================================================================
+
+##### `fhere()`
+
+- **Purpose**: find in current directory
+
+##### `h()`
+
+- **Purpose**: ============================================================================
+
+##### `hc()`
+
+- **Purpose**: history clear
+
+##### `clhist()`
+
+- **Purpose**: clear history
+
+##### `hs()`
+
+- **Purpose**: statistics of history
+
+##### `now()`
+
+- **Purpose**: current time
+
+##### `nowtime()`
+
+- **Purpose**: current time
+
+##### `nowdate()`
+
+- **Purpose**: current date
+
+##### `showpath()`
+
+- **Purpose**: show PATH
+
+##### `psg()`
+
+- **Purpose**: searchable process table
+
+##### `pfind()`
+
+- **Purpose**: find process
+
+##### `mcd()`
+
+- **Purpose**: ============================================================================
+
+##### `mkd()`
+
+- **Purpose**: mkdir with parent directories and verbose output
+
+##### `mkdir()`
+
+- **Purpose**: mkdir with parent directories
+
+##### `sourceme()`
+
+- **Purpose**: source profile/config
+
+#### 3.7 `shell/bash/env.bash`
+
+**Purpose**: Environment settings for bash shell. Contains environment variable configurations including history settings, dircolors, and other environment customizations.
+**Shell Type**: bash
+**Layer**: Configuration Layer
+
+**Dependencies**: curl, dircolors, export, ls
+
+#### 3.8 `shell/bash/init.bash`
+
+**Purpose**: my-shell bash initialization entrypoint. Sources all bash configuration components (aliases, prompt, env) in the correct order.
+**Shell Type**: bash
+**Layer**: Initialization Layer
 
 **Dependencies**: None
 
-**Exports**: Environment variables for history, locale, shell options
+#### 3.9 `shell/bash/prompt.bash`
 
-**Features**:
-- History size and format configuration
-- Locale settings
-- Shell option settings (e.g., `histappend`)
+**Purpose**: Prompt configuration for bash shell. Provides shiny bash prompt support with date, time, user, host, and path information. Uses PROMPT_COMMAND to update path dynamically.
+**Shell Type**: bash
+**Layer**: Configuration Layer
 
----
+**Dependencies**: #, Keep, PS1='\[\033[0, PS1='\h
 
-#### `shell/fish/init.fish`
+#### Functions
 
-**Purpose**: Fish shell initialization entrypoint that sources all fish configuration modules.
+##### `bash_prompt_command()`
 
-**Layer**: Shell Configuration Layer
+- **Purpose**: # bash_prompt_command function
 
-**Dependencies**:
-- `shell/fish/aliases.fish`
-- `shell/fish/prompt.fish`
-- `shell/fish/env.fish`
+##### `bash_prompt()`
 
-**Exports**: All fish functions and environment variables
+- **Purpose**: Set up bash prompt with date, time, user, host, and path information. Configures PROMPT_COMMAND to update path dynamically.
 
----
+### 3.10 shell/fish/
 
-#### `shell/fish/aliases.fish`
+#### 3.11 `shell/fish/aliases.fish`
 
-**Purpose**: Defines fish functions (fish doesn't support aliases the same way) for file operations, navigation, and system utilities.
+**Purpose**: Fish aliases and utility functions. Provides file operations, system information, history management, directory navigation, and time utilities. Native Fish implementation.
+**Shell Type**: fish
+**Layer**: Configuration Layer
 
-**Layer**: Shell Configuration Layer
+**Dependencies**: -maxdepth, -name, -type, \, awk, find, grep, ll, ls, perl, profile/config, sed, ~/.config/fish/config.fish
 
-**Dependencies**: Standard POSIX utilities
+#### Functions
 
-**Exports**: Fish functions equivalent to bash aliases
+##### `__my_shell_has()`
 
-**Note**: Fish uses functions instead of aliases, so all "aliases" are implemented as functions.
+- **Purpose**: !/usr/bin/env fish
 
----
+##### `__get_os()`
 
-#### `shell/fish/prompt.fish`
+- **Purpose**: Get OS
 
-**Purpose**: Configures fish prompt with colors, git integration, and directory display.
+##### `cdh()`
 
-**Layer**: Shell Configuration Layer
+- **Purpose**: ============================================================================
 
-**Dependencies**: Git (optional)
+##### `j()`
 
-**Exports**: Fish `fish_prompt` function
+- **Purpose**: Basic listing aliases
 
-**Features**:
-- Colorized prompt with git branch
-- Directory colors support
-- Customizable appearance
+##### `ld()`
 
----
+- **Purpose**: list regular directories
 
-#### `shell/fish/env.fish`
+##### `lh()`
 
-**Purpose**: Sets fish environment variables and shell configuration.
+- **Purpose**: list hidden items
 
-**Layer**: Shell Configuration Layer
+##### `lad()`
+
+- **Purpose**: list all directories
+
+##### `lla()`
+
+- **Purpose**: Long listing functions
+
+##### `fhere()`
+
+- **Purpose**: find in current directory
+
+##### `h()`
+
+- **Purpose**: ============================================================================
+
+##### `clhist()`
+
+- **Purpose**: clear history
+
+##### `now()`
+
+- **Purpose**: current time
+
+##### `psg()`
+
+- **Purpose**: searchable process table
+
+##### `mcd()`
+
+- **Purpose**: ============================================================================
+
+#### 3.12 `shell/fish/env.fish`
+
+**Purpose**: Environment settings for fish shell. Contains environment variable configurations including dircolors and other environment customizations.
+**Shell Type**: fish
+**Layer**: Configuration Layer
+
+**Dependencies**: ls, sed
+
+#### Functions
+
+##### `set_dircolors()`
+
+- **Purpose**: set_dircolors function
+
+#### 3.13 `shell/fish/init.fish`
+
+**Purpose**: my-shell fish initialization entrypoint. Sources all fish configuration components (aliases, prompt, env) in the correct order.
+**Shell Type**: fish
+**Layer**: Initialization Layer
+
+**Dependencies**: &&
+
+#### 3.14 `shell/fish/prompt.fish`
+
+**Purpose**: Prompt configuration for fish shell. Provides shiny fish prompt support with git integration and colorful output.
+**Shell Type**: fish
+**Layer**: Configuration Layer
+
+**Dependencies**: -f
+
+#### Functions
+
+##### `fish_prompt()`
+
+- **Purpose**: !/usr/bin/env fish
+
+### 3.15 shell/zsh/
+
+#### 3.16 `shell/zsh/aliases.zsh`
+
+**Purpose**: Zsh aliases and utility functions (best-effort port from fish). Provides file operations, system information, history management, directory navigation, and time utilities.
+**Shell Type**: zsh
+**Layer**: Configuration Layer
+
+**Dependencies**: #, -maxdepth, -name, -path, -type, awk, bc, find, grep, ll, ls, perl, profile/config, sed, ~/.zlogin, ...
+
+#### Functions
+
+##### `__my_shell_has()`
+
+- **Purpose**: !/usr/bin/env zsh
+
+##### `__get_os()`
+
+- **Purpose**: Get operating system type (Linux or macOS). Helper function for system detection.
+
+##### `cdh()`
+
+- **Purpose**: ============================================================================
+
+##### `j()`
+
+- **Purpose**: Basic listing aliases
+
+##### `l()`
+
+- **Purpose**: list entries by columns
+
+##### `la()`
+
+- **Purpose**: list regular + hidden
+
+##### `sl()`
+
+- **Purpose**: typo correction for ls
+
+##### `laf()`
+
+- **Purpose**: Advanced listing functions
+
+##### `ld()`
+
+- **Purpose**: list regular directories
+
+##### `lf()`
+
+- **Purpose**: list regular files
+
+##### `lh()`
+
+- **Purpose**: list hidden items
+
+##### `lhd()`
+
+- **Purpose**: list hidden directories
+
+##### `lhf()`
+
+- **Purpose**: list hidden files
+
+##### `lad()`
+
+- **Purpose**: list all directories
+
+##### `lla()`
+
+- **Purpose**: Long listing functions
+
+##### `lld()`
+
+- **Purpose**: long list regular directories
+
+##### `llh()`
+
+- **Purpose**: long list hidden
+
+##### `llhd()`
+
+- **Purpose**: long list hidden directories
+
+##### `llf()`
+
+- **Purpose**: long list regular files
+
+##### `llad()`
+
+- **Purpose**: long list all directories
+
+##### `llaf()`
+
+- **Purpose**: long list all files + hidden
+
+##### `llhf()`
+
+- **Purpose**: long list only hidden files
+
+##### `FindFiles()`
+
+- **Purpose**: ============================================================================
+
+##### `fhere()`
+
+- **Purpose**: find in current directory
+
+##### `h()`
+
+- **Purpose**: ============================================================================
+
+##### `hc()`
+
+- **Purpose**: Zsh cannot "history --clear" like fish; emulate with fc builtin.
+
+##### `clhist()`
+
+- **Purpose**: clear history
+
+##### `hs()`
+
+- **Purpose**: statistics of history
+
+##### `now()`
+
+- **Purpose**: current time
+
+##### `nowtime()`
+
+- **Purpose**: current time
+
+##### `nowdate()`
+
+- **Purpose**: current date
+
+##### `showpath()`
+
+- **Purpose**: show PATH
+
+##### `psg()`
+
+- **Purpose**: searchable process table
+
+##### `pfind()`
+
+- **Purpose**: find process
+
+##### `mcd()`
+
+- **Purpose**: ============================================================================
+
+##### `mkd()`
+
+- **Purpose**: mkdir with parent directories and verbose output
+
+##### `mkdir()`
+
+- **Purpose**: mkdir with parent directories
+
+##### `sourceme()`
+
+- **Purpose**: source profile/config
+
+#### 3.17 `shell/zsh/env.zsh`
+
+**Purpose**: Environment settings for zsh shell. Contains environment variable configurations including history settings, dircolors, and other environment customizations.
+**Shell Type**: zsh
+**Layer**: Configuration Layer
+
+**Dependencies**: curl, dircolors, ls
+
+#### 3.18 `shell/zsh/init.zsh`
+
+**Purpose**: my-shell zsh initialization entrypoint. Sources all zsh configuration components (aliases, prompt, env) in the correct order.
+**Shell Type**: zsh
+**Layer**: Initialization Layer
 
 **Dependencies**: None
 
-**Exports**: Environment variables for fish shell
+#### 3.19 `shell/zsh/prompt.zsh`
 
----
-
-#### `shell/zsh/init.zsh`
-
-**Purpose**: Zsh initialization entrypoint that sources all zsh configuration modules.
-
-**Layer**: Shell Configuration Layer
-
-**Dependencies**:
-- `shell/zsh/aliases.zsh`
-- `shell/zsh/prompt.zsh`
-- `shell/zsh/env.zsh`
-
-**Exports**: All zsh aliases, functions, and environment variables
-
----
-
-#### `shell/zsh/aliases.zsh`
-
-**Purpose**: Defines zsh aliases and functions compatible with bash aliases.
-
-**Layer**: Shell Configuration Layer
-
-**Dependencies**: Standard POSIX utilities
-
-**Exports**: Zsh aliases and functions
-
----
-
-#### `shell/zsh/prompt.zsh`
-
-**Purpose**: Configures zsh prompt with colors and git integration.
-
-**Layer**: Shell Configuration Layer
-
-**Dependencies**: Git (optional)
-
-**Exports**: Zsh prompt configuration
-
----
-
-#### `shell/zsh/env.zsh`
-
-**Purpose**: Sets zsh environment variables and shell options.
-
-**Layer**: Shell Configuration Layer
+**Purpose**: Prompt configuration for zsh shell. Provides zsh prompt support using bash prompt strategy ported to Zsh (native). Uses prompt substitution to compute truncated path.
+**Shell Type**: zsh
+**Layer**: Configuration Layer
 
 **Dependencies**: None
 
-**Exports**: Zsh environment variables
+#### Functions
 
----
+##### `__my_shell_zsh_prompt_command()`
 
-### Utility Scripts
-
-#### `scripts/bin/ll`
-
-**Purpose**: Thin wrapper that dispatches to platform-specific `ll` implementation based on OS detection or environment variables.
-
-**Layer**: Utility Scripts Layer
-
-**Dependencies**: 
-- `scripts/bin/ll_linux` (Linux implementation)
-- `scripts/bin/ll_macos` (macOS implementation)
-
-**Exports**: Command-line interface for colorful long listing
-
-**Dispatch Logic**:
-1. `LL_IMPL_PATH` (highest priority - direct path override)
-2. `LL_SCRIPT` (legacy alias, with recursion guard)
-3. `LL_IMPL` (explicit: `linux` or `macos`)
-4. OS detection (`uname -s`): Darwin → `ll_macos`, otherwise → `ll_linux`
-
-**Exit Codes**:
-- `1`: Missing or non-executable implementation
-- `2`: Invalid `LL_IMPL` value
-
-**Behavior**: Forwards all arguments verbatim to selected implementation.
-
----
-
-#### `scripts/bin/ll_linux`
-
-**Purpose**: GNU toolchain-based implementation of colorful long listing for Linux systems.
-
-**Layer**: Utility Scripts Layer
-
-**Dependencies**: 
-- GNU `ls` with `--time-style=+%s` support
-- GNU `awk` (preferably `gawk`) for advanced features
-- GNU `date` and `touch` for test fixtures (optional)
-
-**Features**:
-- Colorized output with time-based color buckets
-- Relative time display (sec/min/hrs/day/mon/yr)
-- Permission-based coloring
-- Owner/group display with "you" substitution
-- Size tier coloring
-- Human-readable size support
-- Block size display
-- Numeric UID/GID support
-- Directory listing with `-d` flag
-- `--` sentinel support for tricky filenames
-
-**Output Format**: Compatible with GNU `ls -l --time-style=+%s` canonicalization
-
----
-
-#### `scripts/bin/ll_macos`
-
-**Purpose**: BSD toolchain-based implementation of colorful long listing for macOS systems.
-
-**Layer**: Utility Scripts Layer
-
-**Dependencies**:
-- `/bin/ls` (BSD ls)
-- `/usr/bin/stat` (BSD stat)
-- `/usr/bin/awk` (BSD awk)
-- `/usr/bin/readlink` (for symlink targets)
-
-**Features**:
-- Colorized output matching `ll_linux` semantics
-- Relative time buckets (same as `ll_linux`)
-- Permission-based coloring
-- Owner/group display with "you" substitution
-- Size tier coloring
-- Human-readable size support
-- Block size display
-- Numeric UID/GID support
-- Directory listing with `-d` flag
-- `--` sentinel support
-
-**Internal Format**: Uses ASCII Unit Separator (0x1F) as delimiter to avoid conflicts with tab characters in filenames
-
-**Output Format**: Canonically equivalent to `ll_linux` after normalization
-
----
-
-#### `scripts/bin/dus`
-
-**Purpose**: Disk usage script with sorting and coloring.
-
-**Layer**: Utility Scripts Layer
-
-**Dependencies**: Standard POSIX utilities (`du`, `sort`, `awk`)
-
-**Features**:
-- Directory size analysis
-- Sorting options
-- Colorized output
-- File/directory filtering
-
----
-
-#### `scripts/bin/dusf`
-
-**Purpose**: File-based disk usage analysis.
-
-**Layer**: Utility Scripts Layer
-
-**Dependencies**: Standard POSIX utilities
-
-**Features**: File-level disk usage reporting
-
----
-
-#### `scripts/bin/dusf.`
-
-**Purpose**: Alternative disk usage format.
-
-**Layer**: Utility Scripts Layer
-
-**Dependencies**: Standard POSIX utilities
-
-**Features**: Alternative formatting for disk usage
-
----
-
-### Environment Activation
-
-#### `env/activate`
-
-**Purpose**: Global shell switcher (Bash script) that spawns a new interactive shell of the specified type.
-
-**Layer**: Environment Activation Layer
-
-**Dependencies**: 
-- `env/activate.bash`
-- `env/activate.zsh`
-- `env/activate.fish`
-
-**Usage**: `./env/activate <shell>` where `<shell>` is `bash`, `zsh`, or `fish`
-
-**Behavior**: Spawns new interactive shell with activation applied
-
----
-
-#### `env/activate.bash`
-
-**Purpose**: Bash environment activation script that modifies PATH and sources bash configuration.
-
-**Layer**: Environment Activation Layer
-
-**Dependencies**: 
-- `shell/bash/init.bash`
-- `colortable.sh`
-
-**Behavior**:
-1. Sets `MY_SHELL_ROOT` to project root
-2. Prevents double activation
-3. Saves original PATH
-4. Prepends `scripts/bin/` to PATH
-5. Sources `shell/bash/init.bash`
-6. Defines `colortable` alias
-7. Adds `(my-shell)` prefix to prompt
-
-**Exports**: 
-- `MY_SHELL_ROOT`
-- `MY_SHELL_ACTIVATED`
-- `MY_SHELL_ACTIVATION_MODE`
-- `MY_SHELL_OLD_PATH`
-- `deactivate` function
-- `reactivate` function
-
----
-
-#### `env/activate.zsh`
-
-**Purpose**: Zsh environment activation script (similar to bash version).
-
-**Layer**: Environment Activation Layer
-
-**Dependencies**: 
-- `shell/zsh/init.zsh`
-- `colortable.sh`
-
-**Behavior**: Same as `activate.bash` but for zsh
-
----
-
-#### `env/activate.fish`
-
-**Purpose**: Fish environment activation script (similar to bash version).
-
-**Layer**: Environment Activation Layer
-
-**Dependencies**: 
-- `shell/fish/init.fish`
-- `colortable.sh`
-
-**Behavior**: Same as `activate.bash` but for fish (uses fish-specific syntax)
-
----
-
-### Installation
-
-#### `install.sh`
-
-**Purpose**: Unified installation script that installs both shell settings and utility scripts.
-
-**Layer**: Installation Layer
-
-**Dependencies**: `curl` or `wget`
-
-**Features**:
-- Automatic shell detection
-- Automatic OS detection
-- Interactive overwrite prompts
-- Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`
-- Environment variable overrides
-- Bash 3.2 compatibility
-
-**Installation Targets**:
-- Shell settings: `~/.my-shell/<shell>/`
-- Utility scripts: `/usr/local/bin` (or custom `BIN_PREFIX`)
-
----
-
-### Test Infrastructure
-
-#### `tests/ll/10_wrapper_stub.bats`
-
-**Purpose**: Platform-independent wrapper contract tests using stub implementations.
-
-**Layer**: Testing Layer
-
-**Dependencies**: 
-- `tests/ll/fixtures/ll_stub_impl.bash`
-- `tests/test_helper/bats-assert/load.bash`
-- `tests/test_helper/bats-support/load.bash`
-
-**Tests**:
-- `LL_IMPL_PATH` priority and argument forwarding
-- `LL_IMPL` selection (linux/macos)
-- `LL_SCRIPT` recursion guard
-- Invalid `LL_IMPL` exit code (2)
-- Non-executable path error handling
-
-**Key Feature**: Uses stub executable to test wrapper behavior without platform dependencies
-
----
-
-#### `tests/ll_linux/00_harness.bash`
-
-**Purpose**: GNU toolchain test harness for `ll_linux` implementation tests.
-
-**Layer**: Testing Layer
-
-**Dependencies**: 
-- GNU `ls` with `--time-style=+%s`
-- GNU `awk` (preferably `gawk`)
-- GNU `date` and `touch` (optional, for fixtures)
-
-**Functions**:
-- `ll_require_gnu_ls()`: Soft-skip if GNU ls unavailable
-- `ll_require_gnu_awk()`: Soft-skip if gawk unavailable
-- `ll_require_gnu_date()`: Soft-skip if GNU date unavailable
-- `ll_require_gnu_touch()`: Soft-skip if GNU touch unavailable
-- `ll_mk_testdir()`: Create temporary test directory
-- `ll_rm_testdir()`: Cleanup test directory
-- `ll_seed_fixtures_common()`: Create common test fixtures
-- `ll_assert_canon_equal()`: Compare `ll` output with GNU `ls` canonicalized output
-
-**Preflight**: `setup_file()` function checks for GNU ls on macOS and soft-skips if unavailable
-
----
-
-#### `tests/ll_linux/10_core.bats`
-
-**Purpose**: Core option matrix tests for `ll_linux` implementation.
-
-**Layer**: Testing Layer
-
-**Dependencies**: `tests/ll_linux/00_harness.bash`
-
-**Tests**: 144 flag combinations covering:
-- Directory variants (`-d`, `-d .`)
-- Block size variants (`-s`)
-- Human-readable variants (`-h`, `--si`)
-- Numeric UID/GID variants (`-n`)
-- Owner/group toggle variants (`-g`, `-G`, `-g -G`, `--no-group`)
-
-**Additional Tests**: Alias sanity checks and permission combinations
-
----
-
-#### `tests/ll_macos/00_harness.bash`
-
-**Purpose**: BSD toolchain test harness for `ll_macos` implementation tests.
-
-**Layer**: Testing Layer
-
-**Dependencies**: 
-- `/bin/ls` (BSD ls)
-- `/usr/bin/awk` (BSD awk)
-- `/usr/bin/stat` (BSD stat)
-
-**Functions**:
-- `ll_require_macos_userland()`: Soft-skip if not on macOS or required binaries missing
-- `ll_mk_testdir()`: Create temporary test directory
-- `ll_rm_testdir()`: Cleanup test directory
-- `ll_seed_fixtures_common()`: Create common test fixtures using BSD tools
-- `ll_macos_ref_generate()`: Generate reference output using BSD tools
-- `ll_macos_assert_canon_equal()`: Compare `ll_macos` output with BSD reference
-
-**Key Feature**: BSD-only reference generator (no GNU dependencies)
-
----
-
-#### `tests/ll_macos/10_core.bats`
-
-**Purpose**: Core tests for `ll_macos` implementation.
-
-**Layer**: Testing Layer
-
-**Dependencies**: `tests/ll_macos/00_harness.bash`
-
-**Tests**:
-- Preflight validation on Darwin
-- Core parity tests (flag combinations)
-- Tricky filename preservation
-- Symlink arrow preservation
-- Time bucket and color validation
-- Permission and owner color validation
-- Size tier color validation
-
----
-
-### Development Tools
-
-#### `scripts/dev/ll-compare`
-
-**Purpose**: Cross-implementation comparison tool for `ll_linux` vs `ll_macos`.
-
-**Layer**: Development Tools Layer
-
-**Dependencies**: 
-- `scripts/bin/ll_linux`
-- `scripts/bin/ll_macos`
-- `scripts/dev/ls-compare-canon-*.pl`
-
-**Features**: 
-- Deterministic comparison using `LL_NOW_EPOCH`
-- Canonicalization for semantic equivalence
-- Diff reporting
-
----
-
-#### `scripts/dev/ls-compare`
-
-**Purpose**: GNU ls baseline comparison tool.
-
-**Layer**: Development Tools Layer
-
-**Dependencies**: GNU `ls` with `--time-style=+%s`
-
-**Features**: Compare script output with GNU ls baseline
-
----
-
-#### `scripts/dev/ll-perf`
-
-**Purpose**: Performance benchmarking tool for `ll` implementations.
-
-**Layer**: Development Tools Layer
-
-**Dependencies**: `hyperfine` or `time` command
-
-**Features**: Benchmark `ll_linux` and `ll_macos` performance
+- **Purpose**: Compute truncated path before each prompt (bash_prompt_command equivalent)
 
 ---
 
 ## Data Flow
 
-### Shell Configuration Loading
+### Activation Flow
 
-```
-User starts shell
-    ↓
-RC file sources ~/.my-shell/<shell>/init.*
-    ↓
-init.* sources aliases.*, prompt.*, env.*
-    ↓
-Aliases/functions available in shell
-```
+1. **User triggers activation**:
+   - Direct: `source env/activate.<shell>`
+   - Global switcher: `./env/activate` or `./env/activate <shell>`
 
-### Environment Activation Flow
+2. **Environment setup**:
+   - `MY_SHELL_ROOT` is set to project root directory
+   - PATH snapshot saved to `MY_SHELL_OLD_PATH`
+   - `scripts/bin/` prepended to PATH
 
-```
-User runs: source env/activate.bash
-    ↓
-Activation script:
-  1. Sets MY_SHELL_ROOT
-  2. Checks for double activation
-  3. Saves original PATH
-  4. Prepends scripts/bin/ to PATH
-  5. Sources shell/bash/init.bash
-  6. Defines colortable alias
-  7. Adds (my-shell) prompt prefix
-    ↓
-User has access to:
-  - scripts/bin/* commands
-  - All shell aliases/functions
-  - Visual prompt indicator
-```
+3. **Configuration loading**:
+   - Activator sources `shell/<shell>/init.<shell>`
+   - `init.*` sources `aliases.*`, `prompt.*`, and `env.*` in sequence
+   - Each module loads its functions, aliases, and environment variables
 
-### ll Command Execution Flow
+4. **Prompt customization**:
+   - Bash/Zsh: `PS1` modified with `(my-shell)` prefix, original stored in `MY_SHELL_OLD_PS1`
+   - Fish: `fish_prompt` function copied to `__my_shell_old_fish_prompt`, new prompt calls prefix function
 
-```
-User runs: ll -h /path
-    ↓
-scripts/bin/ll (wrapper):
-  1. Checks LL_IMPL_PATH (highest priority)
-  2. Checks LL_SCRIPT (with recursion guard)
-  3. Checks LL_IMPL (linux|macos)
-  4. Falls back to OS detection
-    ↓
-Selected implementation (ll_linux or ll_macos):
-  1. Parses arguments
-  2. Collects file metadata (GNU ls or BSD stat)
-  3. Formats output with colors
-  4. Prints to stdout
-```
+5. **Function definitions**:
+   - `deactivate` and `reactivate` functions defined
+   - `colortable` alias/function defined
+   - `MY_SHELL_ACTIVATED=1` set
 
-### Test Execution Flow
+### Deactivation Flow
 
-```
-make test-ll
-    ↓
-OS detection (uname -s)
-    ↓
-Linux: make test-ll-common && make test-ll-linux
-macOS: make test-ll-common && make test-ll-macos
-    ↓
-Each suite:
-  1. Preflight checks (soft-skip if requirements missing)
-  2. Run test fixtures
-  3. Compare output with reference
-  4. Report results
-```
+1. **User triggers deactivation**: `deactivate`
+
+2. **Environment restoration**:
+   - PATH restored from `MY_SHELL_OLD_PATH` snapshot
+   - Prompt restored from `MY_SHELL_OLD_PS1` (Bash/Zsh) or function copy (Fish)
+   - Environment variables unset
+
+3. **Function cleanup**:
+   - `deactivate` and `reactivate` functions removed
+   - `colortable` removed
+   - Fish: `__my_shell_old_fish_prompt` and `__my_shell_prompt_prefix` removed
+
+4. **Shell switching** (if applicable):
+   - If `MY_SHELL_SWITCHED_FROM` is set, return to original shell
+   - If Fish exec-activation, exit Fish session
+
+### Reactivation Flow
+
+1. **User triggers reactivation**: `reactivate`
+
+2. **Configuration reload**:
+   - Re-source `shell/<shell>/init.<shell>`
+   - All configuration modules reloaded
+   - `colortable` redefined
+   - Prompt prefix ensured
+
+3. **No environment changes**:
+   - PATH remains modified
+   - Environment remains active
+   - Only configuration files reloaded
+
+---
 
 ## Dependency Analysis
 
-### Module Dependency Graph
+Total modules analyzed: 15
+Total unique dependencies: 41
 
-```
-install.sh
-    ↓
-env/activate.*
-    ↓
-shell/*/init.*
-    ↓
-shell/*/{aliases,prompt,env}.*
-    ↓
-scripts/bin/*
-    ↓
-Platform tools (GNU/BSD)
-```
+### Module Dependencies
+
+**Activation Layer**:
+- `env/activate.*` → `shell/*/init.*` (sources initialization entrypoint)
+
+**Initialization Layer**:
+- `shell/*/init.*` → `shell/*/aliases.*` (sources aliases)
+- `shell/*/init.*` → `shell/*/prompt.*` (sources prompt)
+- `shell/*/init.*` → `shell/*/env.*` (sources environment)
+
+**Configuration Layer**:
+- Modules are independent but loaded in sequence: aliases → prompt → env
+- `prompt.*` may depend on functions defined in `aliases.*`
+- `env.*` may depend on functions defined in `aliases.*`
+
+**Utility Scripts Layer**:
+- Independent executables in `scripts/bin/`
+- No dependencies on configuration modules
+- Can be used standalone or within activated environment
 
 ### Layer Violations
 
-None identified. The architecture maintains clear layer separation:
-- Shell configuration layer is independent
-- Utility scripts layer depends only on platform tools
-- Environment activation layer orchestrates loading
-- Testing layer is isolated
+No layer violations detected. The architecture maintains clear separation:
+- Activation layer only depends on initialization layer
+- Initialization layer only depends on configuration layer
+- Configuration modules are independent within their layer
+- Utility scripts are independent
 
 ### Circular Dependencies
 
-None identified. All dependencies flow in one direction:
-- Shell configs → utilities → platform tools
-- Tests → implementations → platform tools
-- Activation → shell configs
+No circular dependencies detected. Dependency flow is unidirectional:
+- Activation → Initialization → Configuration
+- No module depends on a module that depends on it
 
 ### External Dependencies
 
-**Required**:
-- POSIX utilities (pre-installed on most systems)
-- `curl` or `wget` (for installation)
-
-**Development**:
-- ShellCheck (static analysis)
-- BATS (testing)
-- pre-commit (optional, git hooks)
+**System Utilities** (POSIX-compliant, usually pre-installed):
+- `ls`, `find`, `grep`, `sed`, `awk`, `cut`, `sort`, `wc`, `head`, `tail`
+- `date`, `mkdir`, `cd`, `pwd`, `echo`, `printf`
+- `curl`, `wget` (for installation)
 
 **Platform-Specific**:
-- Linux: GNU coreutils (ls, awk, date, touch)
-- macOS: BSD tools (/bin/ls, /usr/bin/stat, /usr/bin/awk)
+- macOS: `vm_stat`, `system_profiler`
+- Linux: `free`, `lsb_release`
 
-**Optional**:
-- `ncdu`, `htop`, `grc`, `dfc` (enhanced functionality)
-- GNU coreutils on macOS (for `ll_linux` testing)
+**Optional Enhancements**:
+- `ncdu`, `htop`, `grc`, `dfc`, `imagemagick`, `fortune`
+
+**Development Tools**:
+- ShellCheck 0.7.0+ (for linting)
+- BATS 1.0.0+ (for testing)
+- Fish 4.0+ (for fish script development)
+
+---
 
 ## Architectural Decisions
 
-### Decision 1: Platform-Specific Implementations for `ll`
+### 1. Environment Activation System
 
-**Decision**: Separate `ll_linux` and `ll_macos` implementations instead of a single unified implementation.
-
-**Rationale**:
-- GNU and BSD tools have different capabilities and syntax
-- Platform-specific implementations can leverage native tools optimally
-- Better performance by avoiding compatibility layers
-- Clearer code without extensive platform conditionals
-
-**Trade-offs**:
-- ✅ Pros: Optimal performance, cleaner code, better maintainability
-- ⚠️ Cons: Code duplication, requires separate testing
-
-**Alternatives Considered**:
-- Single unified implementation: Rejected due to complexity and performance concerns
-- Compatibility layer: Rejected due to overhead and maintenance burden
-
-**Known Limitations**:
-- Requires maintaining two implementations
-- Test coverage must be maintained for both platforms
-
-**Future Considerations**:
-- Potential unification if performance and complexity allow
-- Decision documented in `wip/ll-decision.md`
-
----
-
-### Decision 2: Thin Wrapper Pattern for Platform Dispatch
-
-**Decision**: `scripts/bin/ll` is a thin wrapper that only handles dispatch, with no business logic.
+**Decision**: Implement a virtual environment-like activation system for shell environments.
 
 **Rationale**:
-- Clear separation of concerns
-- Easy testing with stub implementations
-- Flexible override mechanism for development
-- Minimal overhead
+- Provides isolated environment for development
+- Allows switching between shells while maintaining environment
+- Enables clean deactivation and restoration
+- Similar to Python virtual environments, familiar to developers
 
 **Trade-offs**:
-- ✅ Pros: Simple, testable, flexible
-- ⚠️ Cons: Extra indirection (minimal impact)
+- ✅ Pros: Clean environment management, easy activation/deactivation, shell switching support
+- ⚠️ Cons: Additional complexity, requires understanding of activation flow
 
 **Alternatives Considered**:
-- Inline platform detection in each implementation: Rejected due to duplication
-- Configuration file: Rejected due to complexity
+- Direct sourcing: Simpler but no clean deactivation
+- Symlink installation: Requires system-level changes, harder to uninstall
 
----
+### 2. Shell-Specific Implementations
 
-### Decision 3: Modular Shell Configuration Structure
-
-**Decision**: Split shell configurations into separate files (`init.*`, `aliases.*`, `prompt.*`, `env.*`) instead of monolithic files.
+**Decision**: Maintain separate implementations for Bash, Zsh, and Fish rather than a single POSIX-compliant script.
 
 **Rationale**:
-- Better organization and maintainability
-- Easier to understand and modify
-- Single entrypoint (`init.*`) simplifies activation
-- Clear separation of concerns
+- Each shell has unique features and syntax
+- Fish has native functions and better error handling
+- Bash/Zsh compatibility allows best-effort porting from Fish
+- Shell-specific optimizations possible
 
 **Trade-offs**:
-- ✅ Pros: Maintainability, clarity, modularity
-- ⚠️ Cons: More files to manage
+- ✅ Pros: Better shell integration, native features, optimized for each shell
+- ⚠️ Cons: Code duplication, maintenance overhead for three implementations
 
 **Alternatives Considered**:
-- Monolithic files: Rejected due to maintainability concerns
-- Per-feature files: Rejected due to excessive fragmentation
+- Single POSIX script: Would lose shell-specific features and optimizations
+- Shell detection at runtime: More complex, less efficient
 
----
+### 3. Function Copying Strategy for Fish Prompt
 
-### Decision 4: Platform-Specific Test Suites
-
-**Decision**: Separate test suites (`tests/ll_linux/`, `tests/ll_macos/`) with platform-specific harnesses.
+**Decision**: Use function copying strategy for Fish prompt customization instead of modifying prompt string.
 
 **Rationale**:
-- Each platform requires different tools (GNU vs BSD)
-- Soft-skip pattern allows cross-platform test execution
-- Clear test organization
-- Platform-specific reference generators
+- Fish uses functions, not strings, for prompts
+- Function copying preserves original prompt functionality
+- Allows clean restoration during deactivation
+- No orphaned functions after deactivation
 
 **Trade-offs**:
-- ✅ Pros: Accurate testing, clear organization, cross-platform compatibility
-- ⚠️ Cons: Test suite duplication
+- ✅ Pros: Clean restoration, preserves original functionality, no orphaned functions
+- ⚠️ Cons: More complex than string modification (but necessary for Fish)
 
 **Alternatives Considered**:
-- Single test suite with platform conditionals: Rejected due to complexity
-- Platform-specific test execution only: Rejected due to development workflow needs
+- String modification: Not applicable to Fish (uses functions)
+- Global variable: Less clean, harder to restore
 
----
+### 4. PATH Snapshot and Restoration
 
-### Decision 5: ASCII Unit Separator for Internal Delimiters
-
-**Decision**: Use ASCII Unit Separator (0x1F) instead of tab character for internal row delimiters in `ll_macos`.
+**Decision**: Snapshot PATH at activation and restore exactly during deactivation.
 
 **Rationale**:
-- Test fixtures include filenames with literal tab characters (`a\tb.txt`)
-- Tab delimiter would break parsing
-- Unit Separator is safe (not used in filenames)
+- Ensures exact restoration of PATH
+- Prevents PATH pollution from activation
+- Allows clean deactivation without side effects
+- Discards any PATH changes made while active
 
 **Trade-offs**:
-- ✅ Pros: Handles tricky filenames correctly
-- ⚠️ Cons: Non-standard delimiter (documented)
+- ✅ Pros: Clean restoration, no PATH pollution, predictable behavior
+- ⚠️ Cons: PATH changes during activation are lost (by design)
 
 **Alternatives Considered**:
-- Tab delimiter: Rejected due to filename conflicts
-- Newline delimiter: Rejected (newline filenames out of scope)
+- Append-only PATH: Simpler but allows PATH pollution
+- Smart PATH management: More complex, may not restore exactly
 
-**Known Limitations**:
-- Newline characters in filenames are explicitly out of scope
+### 5. Single Entry Point (init.*)
 
----
-
-### Decision 6: Soft-Skip Pattern for Test Preflight
-
-**Decision**: Test harnesses use warning + skip (not failure) when platform requirements are missing.
+**Decision**: Use single entry point (`init.*`) that sources all configuration modules.
 
 **Rationale**:
-- Enables cross-platform development workflow
-- Clear feedback about missing dependencies
-- Tests don't fail on wrong platform (expected behavior)
+- Simplifies activation flow
+- Ensures correct loading order
+- Single point of control for configuration
+- Easier to maintain and understand
 
 **Trade-offs**:
-- ✅ Pros: Better developer experience, cross-platform compatibility
-- ⚠️ Cons: Requires careful test design
+- ✅ Pros: Simple activation, correct order, single point of control
+- ⚠️ Cons: Less flexibility in loading order (but order is intentional)
 
 **Alternatives Considered**:
-- Hard failure: Rejected due to workflow disruption
-- Silent skip: Rejected due to lack of feedback
+- Direct sourcing in activator: More complex, harder to maintain order
+- Multiple entry points: More flexible but harder to manage
 
----
+### 6. Best-Effort Portability
 
-### Decision 7: Environment Activation System
-
-**Decision**: Implement virtual environment-like activation system for development.
+**Decision**: Port Fish functions to Bash/Zsh with best-effort compatibility rather than full feature parity.
 
 **Rationale**:
-- Isolated development environment
-- Easy testing across shells
-- PATH management
-- Visual feedback (prompt prefix)
+- Fish has superior features (native functions, better error handling)
+- Some Fish features cannot be fully replicated in Bash/Zsh
+- Better to have working subset than no port at all
+- Allows gradual improvement
 
 **Trade-offs**:
-- ✅ Pros: Better development workflow, shell switching, isolation
-- ⚠️ Cons: Additional complexity
+- ✅ Pros: Functionality available in all shells, gradual improvement possible
+- ⚠️ Cons: Some features may not work identically, requires testing
 
 **Alternatives Considered**:
-- Manual PATH setup: Rejected due to user friction
-- Symlink installation: Rejected due to system modification requirements
+- Full feature parity: Impossible due to shell differences
+- No porting: Would limit functionality in Bash/Zsh
 
----
+### 7. No Nested Activation Support
 
-### Decision 8: Unified Installer Script
-
-**Decision**: Single `install.sh` script handles both shell settings and utility script installation.
+**Decision**: Do not support nested activation (activating within an already activated environment).
 
 **Rationale**:
-- Simpler user experience
-- Consistent installation process
-- Flexible options (settings-only, scripts-only)
-- Automatic detection (shell, OS)
+- Adds significant complexity
+- Rare use case
+- Activation-started Fish sessions are not nested activation
+- Simpler to prevent than to support
 
 **Trade-offs**:
-- ✅ Pros: User experience, maintainability
-- ⚠️ Cons: Larger script (manageable)
+- ✅ Pros: Simpler implementation, clearer behavior
+- ⚠️ Cons: Cannot nest activations (rarely needed)
 
 **Alternatives Considered**:
-- Separate installers: Rejected due to user confusion
-- Package manager: Rejected due to platform differences
+- Nested activation support: More complex, rarely needed
+- Stack-based activation: Even more complex, not worth the effort
+
+### 8. Exec-Activation for Fish via Global Switcher
+
+**Decision**: Use `exec` to start Fish when activated via global switcher, with init file for function persistence.
+
+**Rationale**:
+- Global switcher is Bash script, cannot be sourced by Fish
+- `exec` replaces current process with Fish
+- Init file ensures functions persist in new interactive session
+- Allows `deactivate` to work in exec-activated Fish session
+
+**Trade-offs**:
+- ✅ Pros: Works with global switcher, functions persist, `deactivate` available
+- ⚠️ Cons: Process replacement (by design), requires init file management
+
+**Alternatives Considered**:
+- Subprocess Fish: Functions wouldn't persist, `deactivate` wouldn't work
+- Fish-specific switcher: More complex, duplicate logic
 
 ---
-
-## Summary
-
-This project summary documents the my-shell project architecture, modules, and design decisions. The project follows a modular, layered architecture with clear separation between shell configurations, utility scripts, and testing infrastructure.
-
-Key architectural strengths:
-- Platform-aware implementations for optimal performance
-- Comprehensive testing with platform-specific suites
-- Modular shell configuration structure
-- Quality assurance through ShellCheck and CI/CD
-
-Areas for future enhancement:
-- Complete Phase 3-9 items from plan-ll.md (ll_macos MVP, PATH control, performance benchmarks)
-- Expand test coverage for edge cases
-- Consider unification decision for ll implementations
-
