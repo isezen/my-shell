@@ -181,7 +181,7 @@ done
 # ============================================================================
 # SETUP TEST ENVIRONMENT
 # ============================================================================
-TEST_DIR="/tmp/ll-test-$$"
+TEST_DIR="/tmp/ll-compare-test-$$"
 mkdir -p "$TEST_DIR"
 echo "Test directory: $TEST_DIR"
 cd "$TEST_DIR" || exit 1
@@ -202,10 +202,15 @@ touch " file-leading-space.txt"
 printf '' > $'a\tb.txt'
 # Unicode filename
 printf '' > $'İçerik-ğüşöç.txt'
+# Very long name (210 chars + .txt)
+_long_name="$(printf 'a%.0s' {1..210}).txt"
+printf '' > "$_long_name"
 
 # Symlink fixtures
 ln -s file1.txt symlink-to-file1
 ln -s does-not-exist broken-symlink
+ln -s file1.txt link-to-file1 2>/dev/null || true
+ln -s missing-target broken-link 2>/dev/null || true
 
 # FIFO fixture (may fail on some restricted FS; ignore errors)
 mkfifo fifo1 2>/dev/null || true
@@ -214,6 +219,9 @@ mkfifo fifo1 2>/dev/null || true
 printf '' > setuid-file
 chmod 755 setuid-file
 chmod u+s setuid-file 2>/dev/null || true
+printf '' > setgid-file
+chmod 755 setgid-file
+chmod 2755 setgid-file 2>/dev/null || true
 
 mkdir -p setgid-dir sticky-dir
 chmod 2755 setgid-dir 2>/dev/null || true
@@ -225,7 +233,24 @@ chmod 1777 sticky-dir 2>/dev/null || true
 # Make baseline mtimes deterministic (Jan 1, 2020 00:00:00 local time).
 touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2 \
   "a b.txt" " file-leading-space.txt" $'a\tb.txt' $'İçerik-ğüşöç.txt' \
-  symlink-to-file1 broken-symlink setuid-file setgid-dir sticky-dir || true
+  "$_long_name" symlink-to-file1 broken-symlink link-to-file1 broken-link \
+  fifo1 setuid-file setgid-file setgid-dir sticky-dir || true
+
+# Symlink target with space.
+mkdir -p "case-symlink-target-space"
+printf "space" > "case-symlink-target-space/target file.txt"
+ln -s "target file.txt" "case-symlink-target-space/link name.txt" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-space/target file.txt" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-target-space/link name.txt" 2>/dev/null || true
+
+# Symlink target with tab.
+mkdir -p "case-symlink-target-tab"
+_tab_target=$'t\ta'
+_tab_link=$'l\ti'
+printf "tab" > "case-symlink-target-tab/$_tab_target"
+ln -s "$_tab_target" "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-tab/$_tab_target" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
 
 # Make relative-time computations deterministic between scripts by freezing “now”.
 # If the caller already set LL_NOW_EPOCH, respect it.
@@ -267,17 +292,94 @@ create_mtime_fixture() {
   touch -t "$ts" "$name" 2>/dev/null || true
 }
 
+create_future_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((LL_NOW_EPOCH + delta))
+  local ts
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
+}
+
 create_mtime_fixture "mtime-now-1s" 1
 create_mtime_fixture "mtime-now-119s" 119
 create_mtime_fixture "mtime-now-120s" 120
 create_mtime_fixture "mtime-now-3599s" 3599
 create_mtime_fixture "mtime-now-3600s" 3600
 create_mtime_fixture "mtime-now-2days" 172800
+create_future_mtime_fixture "mtime-now-3yr" $((3 * 31536000))
+create_future_mtime_fixture "mtime-now-35yr" $((35 * 31536000))
+create_future_mtime_fixture "mtime-now-125yr" $((125 * 31536000))
 
-# Future mtime fixture (negative delta behavior). Use a fixed far-future date.
-printf '' > future-mtime
-# Jan 1, 2030 00:00:00
- touch -t 203001010000.00 future-mtime 2>/dev/null || true
+# Additional edge-case directories (ls-compare parity).
+_now_epoch="${LL_NOW_EPOCH:-$(date +%s)}"
+
+# Future-only listing.
+mkdir -p "case-future-only"
+printf '' > "case-future-only/f1.txt"
+printf '' > "case-future-only/f2.txt"
+_f1_epoch=$((_now_epoch + 2 * 24 * 3600))
+_f2_epoch=$((_now_epoch + 12 * 24 * 3600))
+_f1_ts=$(epoch_to_touch_ts "$_f1_epoch") || _f1_ts=""
+_f2_ts=$(epoch_to_touch_ts "$_f2_epoch") || _f2_ts=""
+if [ -n "$_f1_ts" ]; then
+  touch -t "$_f1_ts" "case-future-only/f1.txt" 2>/dev/null || true
+fi
+if [ -n "$_f2_ts" ]; then
+  touch -t "$_f2_ts" "case-future-only/f2.txt" 2>/dev/null || true
+fi
+
+# Mixed units and time widths.
+mkdir -p "case-mixed-time-width"
+printf '' > "case-mixed-time-width/sec.txt"
+printf '' > "case-mixed-time-width/hrs.txt"
+printf '' > "case-mixed-time-width/day.txt"
+printf '' > "case-mixed-time-width/mon.txt"
+printf '' > "case-mixed-time-width/future-3yr.txt"
+printf '' > "case-mixed-time-width/future-35yr.txt"
+printf '' > "case-mixed-time-width/future-125yr.txt"
+printf '' > "case-mixed-time-width/future-1000yr.txt"
+_sec_epoch=$((_now_epoch - 5))
+_hrs_epoch=$((_now_epoch - 3 * 3600))
+_day_epoch=$((_now_epoch - 12 * 24 * 3600))
+_mon_epoch=$((_now_epoch - 120 * 24 * 3600))
+_yr3_epoch=$((_now_epoch + 3 * 31536000))
+_yr35_epoch=$((_now_epoch + 35 * 31536000))
+_yr125_epoch=$((_now_epoch + 125 * 31536000))
+_yr1000_epoch=$((_now_epoch + 1000 * 31536000))
+_sec_ts=$(epoch_to_touch_ts "$_sec_epoch") || _sec_ts=""
+_hrs_ts=$(epoch_to_touch_ts "$_hrs_epoch") || _hrs_ts=""
+_day_ts=$(epoch_to_touch_ts "$_day_epoch") || _day_ts=""
+_mon_ts=$(epoch_to_touch_ts "$_mon_epoch") || _mon_ts=""
+_yr3_ts=$(epoch_to_touch_ts "$_yr3_epoch") || _yr3_ts=""
+_yr35_ts=$(epoch_to_touch_ts "$_yr35_epoch") || _yr35_ts=""
+_yr125_ts=$(epoch_to_touch_ts "$_yr125_epoch") || _yr125_ts=""
+_yr1000_ts=$(epoch_to_touch_ts "$_yr1000_epoch") || _yr1000_ts=""
+if [ -n "$_sec_ts" ]; then
+  touch -t "$_sec_ts" "case-mixed-time-width/sec.txt" 2>/dev/null || true
+fi
+if [ -n "$_hrs_ts" ]; then
+  touch -t "$_hrs_ts" "case-mixed-time-width/hrs.txt" 2>/dev/null || true
+fi
+if [ -n "$_day_ts" ]; then
+  touch -t "$_day_ts" "case-mixed-time-width/day.txt" 2>/dev/null || true
+fi
+if [ -n "$_mon_ts" ]; then
+  touch -t "$_mon_ts" "case-mixed-time-width/mon.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr3_ts" ]; then
+  touch -t "$_yr3_ts" "case-mixed-time-width/future-3yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr35_ts" ]; then
+  touch -t "$_yr35_ts" "case-mixed-time-width/future-35yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr125_ts" ]; then
+  touch -t "$_yr125_ts" "case-mixed-time-width/future-125yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr1000_ts" ]; then
+  touch -t "$_yr1000_ts" "case-mixed-time-width/future-1000yr.txt" 2>/dev/null || true
+fi
 
 # ============================================================================
 # TEST CASES
@@ -342,10 +444,13 @@ test_cases=(
   # Symlinks / FIFOs
   "symlink||| symlink-to-file1 |||0"
   "broken symlink||| broken-symlink |||0"
+  "link-to-file1||| link-to-file1 |||0"
+  "broken-link||| broken-link |||0"
   "fifo||| fifo1 |||0"
 
   # Permission edge cases
   "setuid file||| setuid-file |||0"
+  "setgid file||| setgid-file |||0"
   "setgid dir||| setgid-dir |||0"
   "sticky dir||| sticky-dir |||0"
 
@@ -356,7 +461,15 @@ test_cases=(
   "mtime now-3599s||| mtime-now-3599s |||0"
   "mtime now-3600s||| mtime-now-3600s |||0"
   "mtime now-2days||| mtime-now-2days |||0"
-  "future mtime||| future-mtime |||0"
+  "mtime now-3yr||| mtime-now-3yr |||0"
+  "mtime now-35yr||| mtime-now-35yr |||0"
+  "mtime now-125yr||| mtime-now-125yr |||0"
+
+  # Additional edge-case directories
+  "symlink target space||| case-symlink-target-space |||0"
+  "symlink target tab||| case-symlink-target-tab |||0"
+  "future-only||| case-future-only |||0"
+  "mixed time width||| case-mixed-time-width |||0"
 )
 
 # ============================================================================
