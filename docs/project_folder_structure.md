@@ -1,5 +1,61 @@
 ```text
 .
+├── codex
+│   ├── snapshots
+│   │   ├── env
+│   │   │   ├── activate
+│   │   │   ├── activate.bash
+│   │   │   ├── activate.fish
+│   │   │   └── activate.zsh
+│   │   ├── scripts
+│   │   │   └── bin
+│   │   │       ├── dus
+│   │   │       ├── dusf
+│   │   │       ├── dusf.
+│   │   │       ├── ll
+│   │   │       ├── ll_linux
+│   │   │       └── ll_macos
+│   │   ├── shell
+│   │   │   ├── bash
+│   │   │   │   ├── aliases.bash
+│   │   │   │   ├── env.bash
+│   │   │   │   ├── init.bash
+│   │   │   │   └── prompt.bash
+│   │   │   ├── fish
+│   │   │   │   ├── aliases.fish
+│   │   │   │   ├── env.fish
+│   │   │   │   ├── init.fish
+│   │   │   │   └── prompt.fish
+│   │   │   └── zsh
+│   │   │       ├── aliases.zsh
+│   │   │       ├── env.zsh
+│   │   │       ├── init.zsh
+│   │   │       └── prompt.zsh
+│   │   ├── tests
+│   │   │   ├── ll
+│   │   │   │   └── 10_wrapper_stub.bats
+│   │   │   ├── ll_linux
+│   │   │   │   ├── 00_harness.bash
+│   │   │   │   └── 10_core.bats
+│   │   │   └── ll_macos
+│   │   │       ├── 00_harness.bash
+│   │   │       └── 10_core.bats
+│   │   ├── install.sh
+│   │   ├── Makefile
+│   │   └── missing.txt
+│   ├── bats-ll-macos.txt
+│   ├── bats-ll-wrapper.txt
+│   ├── codex-control.md
+│   ├── file-tree.txt
+│   ├── ll-wrapper-evidence.md
+│   ├── make-tests.txt
+│   ├── repo-meta.txt
+│   ├── scripts-bin.txt
+│   ├── shellcheck.txt
+│   ├── test-count-by-file.txt
+│   ├── test-count.txt
+│   ├── test-entrypoints.txt
+│   └── tooling.txt
 ├── docs
 │   ├── ACTIVATION_SPECIFICATION.md
 │   ├── proj_summary.md
@@ -88,5 +144,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-18 directories, 69 files
+31 directories, 112 files
 ```
