@@ -372,10 +372,11 @@ function color_size_human(s,   num, suf, out, prgx) {
   return out
 }
 
-function time_calc(epoch,   dt, v, lbl, now, prefix) {
+function time_calc(epoch,   dt, v, lbl, now, prefix, epoch_num) {
   now = systime()
-  if (NOW_EPOCH ~ /^[0-9]+$/) now = NOW_EPOCH
-  dt = now - epoch
+  if (NOW_EPOCH ~ /^[0-9]+$/) now = NOW_EPOCH + 0
+  epoch_num = epoch + 0
+  dt = int(now - epoch_num)
   if (dt < 0) { prefix = "in"; dt = -dt } else { prefix = "" }
   if      (dt < TIME_2MIN)   { v=dt;                 lbl=lsec }
   else if (dt < TIME_HOUR)   { v=int(dt/TIME_MIN);   lbl=lmin }
@@ -636,14 +637,12 @@ END {
       out = out lpad(s_colored, w_size) " "
     }
 
-    num_s = lpad(sprintf("%d", a_tnum[i]), w_tnum)
+    num_s = sprintf("%d", a_tnum[i])
     unit_s = rpad(a_tunit[i], w_tunit)
-    if (w_tprefix > 0) {
-      prefix_s = lpad(a_tprefix[i], w_tprefix)
-      t_raw = prefix_s " " num_s " " unit_s
-    } else {
-      t_raw = num_s " " unit_s
-    }
+    value_width = any_future ? (w_tnum + 3) : w_tnum
+    value_core = a_tfuture[i] ? ("in " num_s) : num_s
+    value_field = lpad(value_core, value_width)
+    t_raw = value_field " " unit_s
     t_colored = color_reltime_by_lbl(t_raw, a_tunit[i], a_tfuture[i])
     out = out t_colored " "
 
