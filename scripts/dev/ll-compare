@@ -43,19 +43,97 @@ export TZ=UTC
 # Optional flags:
 #   --show-ansi : make ANSI/control chars visible in side-by-side diff output.
 #   --fail-only : only print failing tests (still prints final summary).
+#   --keep-dir  : do not delete test directory after tests complete.
+#   --side-by-side : display outputs side-by-side (default: vertical/stacked format).
+#   --help      : show help message and exit.
 # Flags can be provided in any order, and can be combined.
 ONLY_TESTS=()
 ONLY_MODE=0
 SHOW_ANSI=0
 FAIL_ONLY=0
+KEEP_DIR=0
+SIDE_BY_SIDE=0
 while [ $# -gt 0 ]; do
   case "${1:-}" in
+    --help|-h)
+      cat <<EOF
+Usage: $0 [OPTIONS] <script1> <script2> [script3 ...]
+
+Compare ll script outputs. At least two scripts are required for comparison.
+
+OPTIONS:
+  --help, -h              Show this help message and exit
+  
+  --show-ansi             Make ANSI/control characters visible in side-by-side
+                          diff output (useful for debugging color/formatting issues)
+  
+  --fail-only             Only print failing tests (still prints final summary)
+  
+  --keep-dir              Do not delete test directory after tests complete
+                          (useful for debugging - test directory path is shown at start)
+  
+  --side-by-side          Display outputs side-by-side format
+                          (default: vertical/stacked format where each output is
+                          shown below the previous one)
+  
+  --only <TEST>           Run only specific test case(s). Can be specified multiple times.
+                          Value can be either:
+                          - Test case name (must match exactly)
+                          - Test number (e.g., 22 for Test #22)
+                          Example: --only "default" --only "-s -h" --only 22
+  
+  --only=<TEST>           Same as --only but using equals syntax.
+                          Example: --only="-s -h" --only="default" --only=22
+
+EXAMPLES:
+  # Compare two scripts
+  $0 ll ll-chatgpt
+  
+  # Compare multiple scripts
+  $0 ll ll-chatgpt ll2
+  
+  # Show only failing tests in side-by-side format
+  $0 --fail-only --side-by-side ll ll-chatgpt
+  
+  # Run only specific test cases (by name or number)
+  $0 --only "default" --only "-s -h" --only 22 ll ll-chatgpt
+  
+  # Keep test directory for inspection
+  $0 --keep-dir ll ll-chatgpt
+
+OUTPUT FORMATS:
+  Default (vertical/stacked):
+    Test #1: default
+    ----------------------------------
+      ll:
+      [script output]
+      
+      ll-chatgpt:
+      [script output]
+  
+  With --side-by-side:
+    Test #1: default
+    ----------------------------------
+      Side-by-side comparison:
+      [script1 output] | [script2 output]
+
+EOF
+      exit 0
+      ;;
     --show-ansi)
       SHOW_ANSI=1
       shift
       ;;
     --fail-only)
       FAIL_ONLY=1
+      shift
+      ;;
+    --keep-dir)
+      KEEP_DIR=1
+      shift
+      ;;
+    --side-by-side)
+      SIDE_BY_SIDE=1
       shift
       ;;
     --only)
@@ -81,11 +159,9 @@ while [ $# -gt 0 ]; do
 done
 
 if [ $# -lt 2 ]; then
-  echo "Usage: $0 [--show-ansi] [--fail-only] [--only <TEST>] [--only=<TEST>] <script1> <script2> [script3 ...]" >&2
-  echo "Example: $0 ll ll-chatgpt" >&2
-  echo "Example: $0 --fail-only ll ll-chatgpt" >&2
-  echo "Example: $0 --show-ansi --fail-only ll ll-chatgpt ll2" >&2
-  echo "Example: $0 --fail-only --only \"-s -h\" ll ll-chatgpt" >&2
+  echo "Usage: $0 [OPTIONS] <script1> <script2> [script3 ...]" >&2
+  echo "At least two scripts are required for comparison." >&2
+  echo "Use --help for more information." >&2
   exit 1
 fi
 
@@ -107,6 +183,7 @@ done
 # ============================================================================
 TEST_DIR="/tmp/ll-test-$$"
 mkdir -p "$TEST_DIR"
+echo "Test directory: $TEST_DIR"
 cd "$TEST_DIR" || exit 1
 
 # Create test files (baseline)
@@ -323,12 +400,25 @@ for test_case in "${test_cases[@]}"; do
   test_argv_str="${test_argv_str:-}"
   test_no_normalize="${test_no_normalize:-0}"
 
+  # Calculate the actual test number (test_num will be incremented after this check)
+  actual_test_num=$((test_num + 1))
+
   if [ "$ONLY_MODE" -eq 1 ]; then
     matched=0
     for only in "${ONLY_TESTS[@]}"; do
-      if [ "$only" = "$test_name" ]; then
-        matched=1
-        break
+      # Check if --only value is a number
+      if [[ "$only" =~ ^[0-9]+$ ]]; then
+        # It's a test number - check if it matches this test's number
+        if [ "$only" -eq "$actual_test_num" ]; then
+          matched=1
+          break
+        fi
+      else
+        # It's a test case name - check if it matches
+        if [ "$only" = "$test_name" ]; then
+          matched=1
+          break
+        fi
       fi
     done
     if [ "$matched" -eq 0 ]; then
@@ -412,29 +502,8 @@ for test_case in "${test_cases[@]}"; do
     done
   fi
   
-  if [ "$all_match" = true ]; then
-    if [ "$FAIL_ONLY" -eq 0 ]; then
-      echo "PASS - All outputs match"
-    fi
-    ((passed++))
-  elif [ "$all_match_normalized" = true ]; then
-    if [ "$FAIL_ONLY" -eq 0 ]; then
-      echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
-    fi
-    ((passed++))
-  else
-    if [ "$FAIL_ONLY" -eq 0 ]; then
-      echo "FAIL - Outputs differ"
-    else
-      echo "Test #$test_num: $test_name"
-      echo "----------------------------------"
-      echo "FAIL - Outputs differ"
-    fi
-    ((errors++))
-    
-    # Display side-by-side comparison with proper padding
-    echo "  Side-by-side comparison:"
-    
+  # Function to print side-by-side comparison
+  print_side_by_side() {
     # Function to strip ANSI color codes for length calculation
     strip_colors() {
       local text="$1"
@@ -512,7 +581,16 @@ for test_case in "${test_cases[@]}"; do
         fi
         
         # Calculate padding needed for this line (based on length without colors)
-        line_for_len=$(strip_colors "$line")
+        # If SHOW_ANSI is enabled, line is already processed by make_ansi_visible,
+        # so we need to strip the visible ANSI sequences (\033) for length calculation
+        if [ "${SHOW_ANSI}" -eq 1 ]; then
+          # For visible ANSI, we need to account for the \033 sequences in the length
+          # make_ansi_visible converts \e to \033, so we need to count the actual visible characters
+          # We'll use the line as-is since make_ansi_visible already converted escape sequences
+          line_for_len=$(echo "$line" | perl -pe 's/\\033\[[0-9;?]*[ -\/]*[@-~]//g; s/\\033//g')
+        else
+          line_for_len=$(strip_colors "$line")
+        fi
         line_len=${#line_for_len}
         padding_len=$((max_lens[i] - line_len))
         if [ "$padding_len" -gt 0 ]; then
@@ -534,10 +612,109 @@ for test_case in "${test_cases[@]}"; do
     for temp_file in "${output_lines[@]}"; do
       rm -f "$temp_file"
     done
+  }
+
+  # Function to print vertical/stacked comparison
+  print_vertical() {
+    # ANSI color codes
+    local color_red=$'\033[31m'
+    local color_reset=$'\033[0m'
+    
+    # Function to make ANSI characters visible (same as in print_side_by_side)
+    make_ansi_visible() {
+      # Render control chars (including ESC) as visible escape sequences, without line-wrapping.
+      # This avoids `sed -n 'l'` behavior that inserts backslash-newline continuations and trailing `$`.
+      # NOTE: Input is a single line (caller reads line-by-line).
+      perl -pe 's/\e/\\033/g; s/\t/\\t/g; s/\r/\\r/g; s/\f/\\f/g; s/\v/\\v/g' <<<"$1"
+    }
+    
+    # Build parameter string for display
+    param_str=""
+    if [ ${#tc_argv[@]} -gt 0 ]; then
+      param_str=" ${tc_argv[*]}"
+    fi
+    
+    # Print each script output
+    for i in $(seq 0 $((${#outputs[@]} - 1))); do
+      if [ "$i" -gt 0 ]; then
+        echo ""
+      fi
+      if [ "$i" -lt ${#script_names[@]} ]; then
+        # Print script command in red (excluding the colon)
+        echo "  ${color_red}${script_names[$i]}${param_str}${color_reset}:"
+      else
+        echo "  ${color_red}Script #$((i + 1))${param_str}${color_reset}:"
+      fi
+      # Apply make_ansi_visible if SHOW_ANSI is enabled
+      if [ "${SHOW_ANSI}" -eq 1 ]; then
+        while IFS= read -r line; do
+          make_ansi_visible "$line"
+        done <<<"${outputs[$i]}"
+      else
+        echo "${outputs[$i]}"
+      fi
+    done
+  }
+
+  if [ "$all_match" = true ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      if [ "$SIDE_BY_SIDE" -eq 1 ]; then
+        echo "PASS - All outputs match exactly"
+        echo "  Side-by-side comparison:"
+        print_side_by_side
+      else
+        # Vertical format: show outputs directly without "PASS" message
+        print_vertical
+      fi
+    fi
+    ((passed++))
+  elif [ "$all_match_normalized" = true ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      if [ "$SIDE_BY_SIDE" -eq 1 ]; then
+        echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+        echo "  Side-by-side comparison:"
+        print_side_by_side
+      else
+        echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+        print_vertical
+      fi
+    fi
+    ((passed++))
+  else
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      if [ "$SIDE_BY_SIDE" -eq 1 ]; then
+        echo "FAIL - Outputs differ"
+        echo "  Side-by-side comparison:"
+        print_side_by_side
+      else
+        echo "FAIL - Outputs differ"
+        # Vertical format: show outputs directly
+        print_vertical
+      fi
+    else
+      echo "Test #$test_num: $test_name"
+      echo "----------------------------------"
+      echo "FAIL - Outputs differ"
+      if [ "$SIDE_BY_SIDE" -eq 1 ]; then
+        echo "  Side-by-side comparison:"
+        print_side_by_side
+      else
+        print_vertical
+      fi
+    fi
+    ((errors++))
   fi
   
-  # Add blank line between tests
-  echo ""
+  # Add blank line between tests:
+  # - Normal mode: always separate tests.
+  # - --fail-only: only separate failing tests (avoid printing blank lines for skipped passes).
+  if [ "$FAIL_ONLY" -eq 0 ]; then
+    echo ""
+  else
+    if [ "$all_match" = false ] && [ "$all_match_normalized" = false ]; then
+      echo ""
+    fi
+  fi
 done
 
 if [ "$FAIL_ONLY" -eq 0 ]; then
@@ -551,7 +728,11 @@ echo "Results: $passed passed, $errors failed"
 # ============================================================================
 
 cd /tmp || exit 1
-rm -rf "$TEST_DIR"
+if [ "$KEEP_DIR" -eq 0 ]; then
+  rm -rf "$TEST_DIR"
+else
+  echo "Test directory kept: $TEST_DIR"
+fi
 
 # Restore LL_NOW_EPOCH to avoid leaking state to parent shells when sourced.
 if [ "${_ORIG_LL_NOW_EPOCH_SET:-0}" -eq 1 ]; then
