@@ -366,11 +366,13 @@ fi
 # Build listing: expand directories (unless -d)
 # ------------------------------
 # Rows stored as US-separated fields to preserve names safely.
-# Fields: blocks perms links owner group size epoch name path
+# Fields: blocks perms links owner group size epoch name path is_child
 rows=()
 
 a_push_row() {
   local path="$1"
+  local display_name="${2:-}"
+  local is_child="${3:-0}"
 
   # stat format notes:
   # %b 512-byte blocks, %Sp permissions string, %l links, %Su/%Sg names, %u/%g ids, %z size bytes, %m mtime epoch, %N filename
@@ -397,6 +399,13 @@ a_push_row() {
     name="${name#./}"
   fi
 
+  # If display_name is provided, use it; otherwise use the name from stat.
+  # For directory children (is_child=1), display_name should be the bare entry name.
+  local final_name="$name"
+  if [ -n "$display_name" ]; then
+    final_name="$display_name"
+  fi
+
   # blocks column: approximate GNU 1K blocks from BSD 512-blocks.
   local blocks1k
   blocks1k=$(( (b512 + 1) / 2 ))
@@ -410,8 +419,8 @@ a_push_row() {
     group="$sg"
   fi
 
-  # Store raw name and path separately.
-  rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${path}")
+  # Store raw name (for display), path (for stat/readlink), and is_child flag.
+  rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${final_name}${DELIM}${path}${DELIM}${is_child}")
 }
 
 list_dir_contents() {
@@ -426,7 +435,8 @@ list_dir_contents() {
   local entry
   while IFS= read -r entry; do
     # entry is a bare name, may include spaces/tabs; preserve as-is.
-    a_push_row "${d%/}/$entry"
+    # Pass the full path for stat/readlink, but use bare entry name for display.
+    a_push_row "${d%/}/$entry" "$entry" 1
   done < <(/bin/ls -1A "$ls_dir" 2>/dev/null | sed -E '/^\./d')
 }
 
@@ -556,8 +566,8 @@ print_row_by_index() {
   local idx="$1"
 
   local rec="${rows[$idx]}"
-  local blocks perms links owner group size epoch name path
-  IFS="$DELIM" read -r blocks perms links owner group size epoch name path <<<"$rec"
+  local blocks perms links owner group size epoch name path is_child
+  IFS="$DELIM" read -r blocks perms links owner group size epoch name path is_child <<<"$rec"
 
   # Owner substitution
   if [ "$NUMERICUIDGID" -eq 0 ] && [ -n "$USERNAME" ] && [ "$owner" = "$USERNAME" ]; then
@@ -664,10 +674,13 @@ for g in "${groups[@]}"; do
 
   if [ "$kind" = "ROW" ]; then
     # Find matching row indices by path (we appended in the same order, so linear scan is ok).
+    # Row format: blocks perms links owner group size epoch name path is_child
     for i in "${!rows[@]}"; do
       rec="${rows[$i]}"
-      path="${rec##*"${DELIM}"}"
-      if [ "$path" = "$val" ]; then
+      # Extract path (9th field, before is_child)
+      row_path=""
+      IFS="$DELIM" read -r _ _ _ _ _ _ _ _ row_path _ <<<"$rec" || true
+      if [ "$row_path" = "$val" ]; then
         print_row_by_index "$i"
         printed_any=1
         break
