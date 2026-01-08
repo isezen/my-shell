@@ -167,7 +167,7 @@ human_size() {
   printf '%s%s' "$scaled" "$unit"
 }
 
-# Relative time parts: sets globals: TPREFIX, TNUM, TUNIT, TFUT(0/1)
+# Relative time parts: sets globals: TNUM, TUNIT, TFUT(0/1)
 time_parts() {
   local epoch="$1"
   local dt
@@ -195,7 +195,6 @@ time_parts() {
     num=$(( abs / 31536000 )); unit="yr"
   fi
 
-  TPREFIX="$prefix"
   TNUM="$num"
   TUNIT="$unit"
   TFUT=0
