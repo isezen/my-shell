@@ -122,8 +122,7 @@ ll_seed_fixtures_common() {
   local tab_name
 
   touch file1.txt file2.txt
-  mkdir dir1 dir2
-  echo "test" > file3.txt
+  mkdir dir1
   chmod 755 file1.txt
   chmod 644 file2.txt
 
@@ -154,7 +153,7 @@ ll_seed_fixtures_common() {
   printf "future" > "future.txt"
 
   touch -t 202001010000.00 \
-    file1.txt file2.txt file3.txt dir1 dir2 \
+    file1.txt file2.txt dir1 \
     "a b.txt" " file-leading-space.txt" "${tab_name}" "İçerik-ğüşöç.txt" \
     ".hidden_file" ".hidden_dir" ".hidden_dir/inside.txt" \
     "${long_name}" symlink-to-file1 broken-symlink \

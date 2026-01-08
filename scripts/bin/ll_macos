@@ -111,6 +111,24 @@ format_name() {
   quote_if_needed "$name"
 }
 
+strip_ansi() {
+  /usr/bin/perl -pe '
+    s/\e\[[0-9;?]*[ -\/]*[@-~]//g;
+    s/\e\][^\a]*(\a|\e\\)//g;
+    s/\e[P^_].*?(\e\\)//gs;
+    s/\e[()#][0-9A-Za-z]//g;
+    s/\e[\x40-\x5F]//g;
+    s/\x1b\[[0-9;]*K//g;
+    s/\r//g;
+  '
+}
+
+visible_len() {
+  local raw
+  raw="$(printf '%s' "$1" | strip_ansi)"
+  printf '%s' "${#raw}"
+}
+
 # Convert bytes to human label (base-2), close to GNU ls -h.
 # Output examples: 512B, 2.0K, 12K, 2.0M, 1.0G, 1.0T
 human_size() {
@@ -314,7 +332,7 @@ for arg in "$@"; do
     seen_sep=1
     continue
   fi
-  if [ "$seen_sep" -eq 0 ]; then
+  if [ "$seen_sep" -eq 0 ] && [[ "$arg" == -* ]] && [ "$arg" != "-" ]; then
     opts+=("$arg")
   else
     ops+=("$arg")
@@ -330,6 +348,19 @@ fi
 multiple=0
 if [ "${#ops[@]}" -gt 1 ]; then
   multiple=1
+fi
+
+total_label="total"
+locale_hint="${LC_ALL:-${LANG:-}}"
+if printf '%s' "$locale_hint" | grep -qi '^tr'; then
+  total_label="toplam"
+fi
+
+total_applicable=0
+if [ "$LISTDIRECTORY" -eq 0 ] && [ "$multiple" -eq 0 ] && [ "${#ops[@]}" -eq 1 ]; then
+  if [ -d "${ops[0]}" ] && [ ! -L "${ops[0]}" ]; then
+    total_applicable=1
+  fi
 fi
 
 # ------------------------------
@@ -362,6 +393,9 @@ a_push_row() {
   # BSD stat %N may include "name -> target" for symlinks; keep only the name part for display.
   if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
     name="${name%% -> *}"
+  fi
+  if [[ "$name" == ./* ]]; then
+    name="${name#./}"
   fi
 
   # blocks column: approximate GNU 1K blocks from BSD 512-blocks.
@@ -437,8 +471,11 @@ for g in "${groups[@]}"; do
   fi
 done
 
-# If nothing collected, exit cleanly.
+# If nothing collected, exit cleanly (but keep total for empty dirs).
 if [ "${#rows[@]}" -eq 0 ]; then
+  if [ "$total_applicable" -eq 1 ]; then
+    printf '%s 0\n' "$total_label"
+  fi
   exit 0
 fi
 
@@ -450,7 +487,7 @@ widths="$(
   printf '%s\n' "${rows[@]}" \
   | /usr/bin/awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
     function max(a,b){return (a>b)?a:b}
-    BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tprefix=0;w_tnum=0;w_tunit=0;any_fut=0}
+    BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tnum=0;w_tunit=0;any_fut=0}
     {
       blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7
 
@@ -473,8 +510,8 @@ widths="$(
       now = NOW_EPOCH
       if (now !~ /^[0-9]+$/) now = systime()
       dt = now - epoch
-      prefix=""; abs=dt
-      if (dt<0){prefix="in"; abs=-dt; any_fut=1}
+      abs=dt
+      if (dt<0){abs=-dt; any_fut=1}
       if (abs<120){num=abs; unit="sec"}
       else if (abs<3600){num=int(abs/60); unit="min"}
       else if (abs<172800){num=int(abs/3600); unit="hrs"}
@@ -482,27 +519,35 @@ widths="$(
       else if (abs<31536000){num=int(abs/2592000); unit="mon"}
       else {num=int(abs/31536000); unit="yr"}
 
-      w_tprefix=max(w_tprefix, length(prefix))
       w_tnum=max(w_tnum, length(num ""))
       w_tunit=max(w_tunit, length(unit))
     }
-  # lpad function
-    END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,w_tprefix,DELIM,w_tnum,DELIM,w_tunit}
-  # rpad function
+    END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,any_fut,DELIM,w_tnum,DELIM,w_tunit}
   '
 )"
 
-IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT <<<"$widths"
+IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE ANY_FUT W_TNUM W_TUNIT <<<"$widths"
 
 lpad() {
-  # print_row_by_index function
-  local s="$1" w="$2"
-  printf '%*s' "$w" "$s"
+  local s="$1" w="$2" len pad
+  len="$(visible_len "$s")"
+  if [ "$len" -ge "$w" ]; then
+    printf '%s' "$s"
+    return 0
+  fi
+  pad=$((w - len))
+  printf '%*s%s' "$pad" "" "$s"
 }
 
 rpad() {
-  local s="$1" w="$2"
-  printf '%-*s' "$w" "$s"
+  local s="$1" w="$2" len pad
+  len="$(visible_len "$s")"
+  if [ "$len" -ge "$w" ]; then
+    printf '%s' "$s"
+    return 0
+  fi
+  pad=$((w - len))
+  printf '%s%*s' "$s" "$pad" ""
 }
 
 # ------------------------------
@@ -553,15 +598,21 @@ print_row_by_index() {
 
   # Time
   time_parts "$epoch"
-  local num_s unit_s prefix_s t_raw t_col
-  num_s="$(lpad "$TNUM" "$W_TNUM")"
+  local num_s unit_s t_raw t_col value_width value_core value_field
+  num_s="$TNUM"
   unit_s="$(rpad "$TUNIT" "$W_TUNIT")"
-  if [ "$W_TPREFIX" -gt 0 ]; then
-    prefix_s="$(lpad "$TPREFIX" "$W_TPREFIX")"
-    t_raw="${prefix_s} ${num_s} ${unit_s}"
+  if [ "$ANY_FUT" -eq 1 ]; then
+    value_width=$((W_TNUM + 3))
   else
-    t_raw="${num_s} ${unit_s}"
+    value_width=$W_TNUM
   fi
+  if [ "$TFUT" -eq 1 ]; then
+    value_core="in $num_s"
+  else
+    value_core="$num_s"
+  fi
+  value_field="$(lpad "$value_core" "$value_width")"
+  t_raw="${value_field} ${unit_s}"
   t_col="$(color_reltime "$t_raw" "$TUNIT" "$TFUT")"
 
   # Permissions
@@ -570,7 +621,12 @@ print_row_by_index() {
 
   # Name
   local name_out
+  local name_suffix
   name_out="$(format_name "$name" "$perms" "$path")"
+  name_suffix=""
+  if [ "$(visible_len "$name_out")" -ge 200 ]; then
+    name_suffix=$'\033[K'
+  fi
 
   # Emit
   out=""
@@ -589,7 +645,7 @@ print_row_by_index() {
 
   out+="$(lpad "$size_colored" "$W_SIZE") "
   out+="${t_col} "
-  out+="$name_out"
+  out+="$name_out${name_suffix}"
 
   printf '%s\n' "$out"
 }
@@ -634,6 +690,16 @@ for m in "${dir_markers[@]}"; do
   for ((i=start; i<end; i++)); do
     print_row_by_index "$i"
   done
+
+  if [ "$total_applicable" -eq 1 ]; then
+    total_blocks=0
+    for ((i=start; i<end; i++)); do
+      rec="${rows[$i]}"
+      IFS="$DELIM" read -r blocks _ <<<"$rec"
+      total_blocks=$((total_blocks + blocks))
+    done
+    printf '%s %s\n' "$total_label" "$total_blocks"
+  fi
 
   printed_any=1
 

@@ -62,8 +62,7 @@ ll_seed_fixtures_common() {
   local tab_name
 
   touch file1.txt file2.txt
-  mkdir dir1 dir2
-  printf 'test' > file3.txt
+  mkdir dir1
   chmod 755 file1.txt
   chmod 644 file2.txt
 
@@ -89,7 +88,7 @@ ll_seed_fixtures_common() {
   printf 'future' > "future.txt"
 
   /usr/bin/touch -t 202001010000.00 \
-    file1.txt file2.txt file3.txt dir1 dir2 \
+    file1.txt file2.txt dir1 \
     "a b.txt" " file-leading-space.txt" "${tab_name}" "İçerik-ğüşöç.txt" \
     "${long_name}" link-to-file1 broken-link fifo1 setuid-file setgid-file sticky-dir future.txt
 

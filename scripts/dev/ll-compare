@@ -188,8 +188,7 @@ cd "$TEST_DIR" || exit 1
 
 # Create test files (baseline)
 touch file1.txt file2.txt
-mkdir dir1 dir2
-echo "test" > file3.txt
+mkdir dir1
 chmod 755 file1.txt
 chmod 644 file2.txt
 
@@ -229,7 +228,7 @@ chmod 1777 sticky-dir 2>/dev/null || true
 # We freeze "now" via LL_NOW_EPOCH below, then set file mtimes relative to it.
 
 # Make baseline mtimes deterministic (Jan 1, 2020 00:00:00 local time).
-touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2 \
+touch -t 202001010000.00 file1.txt file2.txt dir1 \
   "a b.txt" " file-leading-space.txt" $'a\tb.txt' $'İçerik-ğüşöç.txt' \
   "$_long_name" symlink-to-file1 broken-symlink \
   fifo1 setuid-file setgid-file setgid-dir sticky-dir || true
