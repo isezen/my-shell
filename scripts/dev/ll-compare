@@ -483,7 +483,7 @@ for test_case in "${test_cases[@]}"; do
     # Find maximum line length for each output (for proper padding)
     declare -a max_lens
     for i in $(seq 0 $((${#outputs[@]} - 1))); do
-      max_lens[$i]=0
+      max_lens[i]=0
       while IFS= read -r line; do
         if [ "${SHOW_ANSI}" -eq 1 ]; then
           line_for_len=$(make_ansi_visible "$line")
@@ -491,8 +491,8 @@ for test_case in "${test_cases[@]}"; do
           line_for_len=$(strip_colors "$line")
         fi
         line_len=${#line_for_len}
-        if [ "$line_len" -gt "${max_lens[$i]}" ]; then
-          max_lens[$i]=$line_len
+        if [ "$line_len" -gt "${max_lens[i]}" ]; then
+          max_lens[i]=$line_len
         fi
       done < "${output_lines[$i]}"
     done
@@ -514,7 +514,7 @@ for test_case in "${test_cases[@]}"; do
         # Calculate padding needed for this line (based on length without colors)
         line_for_len=$(strip_colors "$line")
         line_len=${#line_for_len}
-        padding_len=$((${max_lens[$i]} - line_len))
+        padding_len=$((max_lens[i] - line_len))
         if [ "$padding_len" -gt 0 ]; then
           padding=$(printf "%*s" "$padding_len" "")
           line="${line}${padding}"

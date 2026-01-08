@@ -12,7 +12,7 @@ set -euo pipefail
 # Set LL_CHATGPT_FAST=1 to enable the optimized awk implementation below.
 # Avoid execing ourselves if no legacy script exists.
 if [ "${LL_CHATGPT_FAST:-0}" != "1" ]; then
-  _self_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+  _self_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
   _self_path="${_self_dir}/$(basename -- "$0")"
   _legacy_path="${LL_CHATGPT_LEGACY_PATH:-${_self_dir}/ll.legacy}"
   if [ -x "$_legacy_path" ] && [ "$_legacy_path" != "$_self_path" ]; then
@@ -222,6 +222,7 @@ if ! "$AWK_BIN" 'BEGIN{ if (match("1", /[0-9]+/, a)) exit 0; exit 1 }' </dev/nul
 fi
 
 # Print using a single awk program (stores lines once; computes widths; prints).
+# shellcheck disable=SC2016
 "$AWK_BIN" -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
     -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \

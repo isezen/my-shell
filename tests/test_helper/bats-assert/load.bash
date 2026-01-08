@@ -2,6 +2,10 @@
 # bats-assert - Common assertions for Bats
 # This is a minimal implementation for basic assertions
 
+# Initialized for ShellCheck; Bats run overrides these globals.
+status=0
+output=""
+
 # Assert that command succeeded
 assert_success() {
   if [ "$status" -ne 0 ]; then
@@ -98,13 +102,10 @@ assert_line() {
 
 # Flunk - print error and exit
 flunk() {
-  {
-    if [ "$#" -eq 0 ]; then
-      cat
-    else
-      echo "$@"
-    fi
-  } >&2
+  if [ -t 0 ]; then
+    echo "assertion failed" >&2
+  else
+    cat >&2
+  fi
   return 1
 }
-

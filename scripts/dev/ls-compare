@@ -583,8 +583,8 @@ print_side_by_side() {
   output_files[0]=$(mktemp)
   echo "${source_outputs[0]}" > "${output_files[0]}"
   for i in $(seq 1 $((${#source_outputs[@]} - 1))); do
-    output_files[$i]=$(mktemp)
-    echo "${source_outputs[$i]}" > "${output_files[$i]}"
+    output_files[i]=$(mktemp)
+    echo "${source_outputs[i]}" > "${output_files[i]}"
   done
 
   # Find maximum number of lines
@@ -599,7 +599,7 @@ print_side_by_side() {
   # Find maximum line length for each output (for proper padding)
   declare -a max_lens
   for i in $(seq 0 $((${#source_outputs[@]} - 1))); do
-    max_lens[$i]=0
+    max_lens[i]=0
     while IFS= read -r line; do
       if [ "${SHOW_ANSI}" -eq 1 ]; then
         line_for_len=$(make_ansi_visible "$line")
@@ -607,8 +607,8 @@ print_side_by_side() {
         line_for_len=$(strip_colors "$line")
       fi
       line_len=${#line_for_len}
-      if [ "$line_len" -gt "${max_lens[$i]}" ]; then
-        max_lens[$i]=$line_len
+      if [ "$line_len" -gt "${max_lens[i]}" ]; then
+        max_lens[i]=$line_len
       fi
     done < "${output_files[$i]}"
   done
@@ -639,7 +639,7 @@ print_side_by_side() {
         line_for_len=$(strip_colors "$line")
       fi
       line_len=${#line_for_len}
-      padding_len=$((${max_lens[$i]} - line_len))
+      padding_len=$((max_lens[i] - line_len))
       if [ "$padding_len" -gt 0 ]; then
         padding=$(printf "%*s" "$padding_len" "")
         line="${line}${padding}"
@@ -692,7 +692,7 @@ print_vertical() {
   # Apply make_ansi_visible if SHOW_ANSI is enabled
   if [ "${SHOW_ANSI}" -eq 1 ]; then
     while IFS= read -r line; do
-      echo "$(make_ansi_visible "$line")"
+      make_ansi_visible "$line"
     done <<<"${outputs_raw[0]}"
   else
     echo "${outputs_raw[0]}"
@@ -714,7 +714,7 @@ print_vertical() {
     # Apply make_ansi_visible if SHOW_ANSI is enabled
     if [ "${SHOW_ANSI}" -eq 1 ]; then
       while IFS= read -r line; do
-        echo "$(make_ansi_visible "$line")"
+        make_ansi_visible "$line"
       done <<<"${outputs_raw[$i]}"
     else
       echo "${outputs_raw[$i]}"
@@ -813,7 +813,7 @@ for idx in "${!test_case_names[@]}"; do
   # treat `-l` and `--time-style=...` as filenames and print errors like:
   #   ls: '-l' ... No such file or directory
   # To avoid that, we always place ls options first and then append tc_argv.
-  ls_cmd=(\ls --color -l --time-style=+"%s")
+  ls_cmd=(ls --color -l --time-style=+"%s")
   ls_output_raw=$(cd "$TEST_DIR" && "${ls_cmd[@]}" "${tc_argv_clean[@]}" 2>&1)
 
   # Export env for canonicalizers

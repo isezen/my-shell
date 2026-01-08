@@ -414,8 +414,8 @@ done
 dir_markers=() # each marker: "<dir><US><start_index><US><end_index>"
 
 for g in "${groups[@]}"; do
-  kind="${g%%${DELIM}*}"
-  val="${g#*${DELIM}}"
+  kind="${g%%"${DELIM}"*}"
+  val="${g#*"${DELIM}"}"
 
   if [ "$kind" = "ROW" ]; then
     a_push_row "$val"
@@ -477,11 +477,11 @@ widths="$(
       w_tnum=max(w_tnum, length(num ""))
       w_tunit=max(w_tunit, length(unit))
     }
-    END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,w_tprefix,DELIM,w_tnum,DELIM,w_tunit,DELIM,any_fut}
+    END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,w_tprefix,DELIM,w_tnum,DELIM,w_tunit}
   '
 )"
 
-IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT ANY_FUT <<<"$widths"
+IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT <<<"$widths"
 
 lpad() {
   local s="$1" w="$2"
@@ -592,14 +592,14 @@ printed_any=0
 
 # Print ROW ops in order (including -d directories).
 for g in "${groups[@]}"; do
-  kind="${g%%${DELIM}*}"
-  val="${g#*${DELIM}}"
+  kind="${g%%"${DELIM}"*}"
+  val="${g#*"${DELIM}"}"
 
   if [ "$kind" = "ROW" ]; then
     # Find matching row indices by path (we appended in the same order, so linear scan is ok).
     for i in "${!rows[@]}"; do
       rec="${rows[$i]}"
-      path="${rec##*${DELIM}}"
+      path="${rec##*"${DELIM}"}"
       if [ "$path" = "$val" ]; then
         print_row_by_index "$i"
         printed_any=1

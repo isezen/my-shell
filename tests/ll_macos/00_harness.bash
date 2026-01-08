@@ -17,6 +17,7 @@ LL_MACOS_DELIM=$'\037'
 LL_MACOS_TAB=$'\011'
 # NOTE: Filenames with literal newlines are out-of-scope (line-based records).
 LL_MACOS_USER="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+: "$LL_SCRIPT"
 
 ll_warn() {
   echo "WARNING: $*" >&2

@@ -48,9 +48,13 @@
 │   ├── codex-control.md
 │   ├── file-tree.txt
 │   ├── ll-wrapper-evidence.md
+│   ├── make-test-after.txt
+│   ├── make-test-before.txt
 │   ├── make-tests.txt
 │   ├── repo-meta.txt
 │   ├── scripts-bin.txt
+│   ├── shellcheck-after.txt
+│   ├── shellcheck-before.txt
 │   ├── shellcheck-files.txt
 │   ├── shellcheck-fixed.txt
 │   ├── shellcheck-invocations.md
@@ -146,5 +150,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-32 directories, 113 files
+32 directories, 117 files
 ```
