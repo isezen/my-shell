@@ -74,7 +74,6 @@ while (my $line = <STDIN>) {
 
 my @rows;
 my $any_future = 0;
-my $w_tprefix = 0;
 my $w_tnum = 0;
 my $w_tunit = 0;
 for my $line (@lines) {
@@ -105,7 +104,6 @@ for my $line (@lines) {
 
   my ($tprefix, $tnum, $tunit) = rel_parts($m->{epoch});
   $any_future = 1 if $tprefix eq "in";
-  $w_tprefix = length($tprefix) if length($tprefix) > $w_tprefix;
   $w_tnum = length("$tnum") if length("$tnum") > $w_tnum;
   $w_tunit = length($tunit) if length($tunit) > $w_tunit;
 
@@ -133,15 +131,12 @@ for my $r (@rows) {
   }
 
   my @toks = @{$r->{toks}};
-  my $num_s = lpad("$r->{time_num}", $w_tnum);
+  my $num_s = "$r->{time_num}";
   my $unit_s = rpad($r->{time_unit}, $w_tunit);
-  my $time;
-  if ($w_tprefix > 0) {
-    my $prefix_s = lpad($r->{time_prefix}, $w_tprefix);
-    $time = "$prefix_s $num_s $unit_s";
-  } else {
-    $time = "$num_s $unit_s";
-  }
+  my $value_width = $any_future ? ($w_tnum + 3) : $w_tnum;
+  my $value_core = ($r->{time_prefix} eq "in") ? "in $num_s" : $num_s;
+  my $value_field = lpad($value_core, $value_width);
+  my $time = "$value_field $unit_s";
 
   my $tail_out = format_tail($r->{tail}, $r->{perms});
   print join(" ", @toks, $time) . $tail_out . "\n";

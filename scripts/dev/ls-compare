@@ -207,6 +207,8 @@ printf "long" > "$_long_name"
 # - Symlink and broken symlink
 ln -s "file1.txt" "link-to-file1" 2>/dev/null || true
 ln -s "missing-target" "broken-link" 2>/dev/null || true
+ln -s "file1.txt" "symlink-to-file1" 2>/dev/null || true
+ln -s "does-not-exist" "broken-symlink" 2>/dev/null || true
 # - FIFO (named pipe)
 mkfifo "fifo1" 2>/dev/null || true
 
@@ -216,12 +218,12 @@ cp "file1.txt" "setuid-file" 2>/dev/null || true
 chmod 4755 "setuid-file" 2>/dev/null || true
 cp "file1.txt" "setgid-file" 2>/dev/null || true
 chmod 2755 "setgid-file" 2>/dev/null || true
+# - setgid directory
+mkdir -p "setgid-dir" 2>/dev/null || true
+chmod 2755 "setgid-dir" 2>/dev/null || true
 # - sticky directory
 mkdir -p "sticky-dir" 2>/dev/null || true
 chmod 1777 "sticky-dir" 2>/dev/null || true
-
-# Timestamp edge cases
-printf "future" > "future.txt"
 
 # Make mtimes deterministic so relative-time output doesn't differ by 1-2 seconds
 # between sequential script runs.
@@ -230,10 +232,8 @@ printf "future" > "future.txt"
 touch -t 202001010000.00 \
   file1.txt file2.txt file3.txt dir1 dir2 \
   "a b.txt" " file-leading-space.txt" $'a\tb.txt' "İçerik-ğüşöç.txt" \
-  "$_long_name" link-to-file1 broken-link fifo1 setuid-file setgid-file sticky-dir future.txt
-
-# Make one file intentionally in the future to cover negative deltas
-touch -t 203001010000.00 future.txt 2>/dev/null || true
+  "$_long_name" link-to-file1 broken-link symlink-to-file1 broken-symlink \
+  fifo1 setuid-file setgid-file setgid-dir sticky-dir
 
 # Make relative-time computations deterministic between scripts by freezing "now".
 # If the caller already set LL_NOW_EPOCH, respect it.
@@ -266,6 +266,40 @@ if ! "$GNU_TOUCH" -d "@0" "$TEST_DIR/.touch-test" >/dev/null 2>&1; then
 fi
 rm -f "$TEST_DIR/.touch-test"
 
+# Timestamp boundary fixtures (relative-time bucket boundaries).
+_now_epoch="${LL_NOW_EPOCH:-$(date +%s)}"
+create_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((_now_epoch - delta))
+  local ts
+
+  ts=$("$GNU_DATE" -d "@$target_epoch" '+%Y-%m-%d %H:%M:%S') || return 0
+  printf "" > "$name"
+  "$GNU_TOUCH" -d "$ts" "$name" 2>/dev/null || true
+}
+
+create_future_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((_now_epoch + delta))
+  local ts
+
+  ts=$("$GNU_DATE" -d "@$target_epoch" '+%Y-%m-%d %H:%M:%S') || return 0
+  printf "" > "$name"
+  "$GNU_TOUCH" -d "$ts" "$name" 2>/dev/null || true
+}
+
+create_mtime_fixture "mtime-now-1s" 1
+create_mtime_fixture "mtime-now-119s" 119
+create_mtime_fixture "mtime-now-120s" 120
+create_mtime_fixture "mtime-now-3599s" 3599
+create_mtime_fixture "mtime-now-3600s" 3600
+create_mtime_fixture "mtime-now-2days" 172800
+create_future_mtime_fixture "mtime-now-3yr" $((3 * 31536000))
+create_future_mtime_fixture "mtime-now-35yr" $((35 * 31536000))
+create_future_mtime_fixture "mtime-now-125yr" $((125 * 31536000))
+
 # Symlink target with space.
 mkdir -p "case-symlink-target-space"
 printf "space" > "case-symlink-target-space/target file.txt"
@@ -286,7 +320,6 @@ touch -h -t 202001010000.00 "case-symlink-target-tab/$_tab_link" 2>/dev/null || 
 mkdir -p "case-future-only"
 printf "" > "case-future-only/f1.txt"
 printf "" > "case-future-only/f2.txt"
-_now_epoch="${LL_NOW_EPOCH:-$(date +%s)}"
 _f1_epoch=$((_now_epoch + 2 * 24 * 3600))
 _f2_epoch=$((_now_epoch + 12 * 24 * 3600))
 _f1_str=$("$GNU_DATE" -d "@$_f1_epoch" '+%Y-%m-%d %H:%M:%S')
@@ -300,18 +333,34 @@ printf "" > "case-mixed-time-width/sec.txt"
 printf "" > "case-mixed-time-width/hrs.txt"
 printf "" > "case-mixed-time-width/day.txt"
 printf "" > "case-mixed-time-width/mon.txt"
+printf "" > "case-mixed-time-width/future-3yr.txt"
+printf "" > "case-mixed-time-width/future-35yr.txt"
+printf "" > "case-mixed-time-width/future-125yr.txt"
+printf "" > "case-mixed-time-width/future-1000yr.txt"
 _sec_epoch=$((_now_epoch - 5))
 _hrs_epoch=$((_now_epoch - 3 * 3600))
 _day_epoch=$((_now_epoch - 12 * 24 * 3600))
 _mon_epoch=$((_now_epoch - 120 * 24 * 3600))
+_yr3_epoch=$((_now_epoch + 3 * 31536000))
+_yr35_epoch=$((_now_epoch + 35 * 31536000))
+_yr125_epoch=$((_now_epoch + 125 * 31536000))
+_yr1000_epoch=$((_now_epoch + 1000 * 31536000))
 _sec_str=$("$GNU_DATE" -d "@$_sec_epoch" '+%Y-%m-%d %H:%M:%S')
 _hrs_str=$("$GNU_DATE" -d "@$_hrs_epoch" '+%Y-%m-%d %H:%M:%S')
 _day_str=$("$GNU_DATE" -d "@$_day_epoch" '+%Y-%m-%d %H:%M:%S')
 _mon_str=$("$GNU_DATE" -d "@$_mon_epoch" '+%Y-%m-%d %H:%M:%S')
+_yr3_str=$("$GNU_DATE" -d "@$_yr3_epoch" '+%Y-%m-%d %H:%M:%S')
+_yr35_str=$("$GNU_DATE" -d "@$_yr35_epoch" '+%Y-%m-%d %H:%M:%S')
+_yr125_str=$("$GNU_DATE" -d "@$_yr125_epoch" '+%Y-%m-%d %H:%M:%S')
+_yr1000_str=$("$GNU_DATE" -d "@$_yr1000_epoch" '+%Y-%m-%d %H:%M:%S')
 "$GNU_TOUCH" -d "$_sec_str" "case-mixed-time-width/sec.txt"
 "$GNU_TOUCH" -d "$_hrs_str" "case-mixed-time-width/hrs.txt"
 "$GNU_TOUCH" -d "$_day_str" "case-mixed-time-width/day.txt"
 "$GNU_TOUCH" -d "$_mon_str" "case-mixed-time-width/mon.txt"
+"$GNU_TOUCH" -d "$_yr3_str" "case-mixed-time-width/future-3yr.txt"
+"$GNU_TOUCH" -d "$_yr35_str" "case-mixed-time-width/future-35yr.txt"
+"$GNU_TOUCH" -d "$_yr125_str" "case-mixed-time-width/future-125yr.txt"
+"$GNU_TOUCH" -d "$_yr1000_str" "case-mixed-time-width/future-1000yr.txt"
 
 # ============================================================================
 # TEST CASES
@@ -358,8 +407,14 @@ test_case_names=(
   "-s -g"
   "-s -h -g -G"
 
+  # Option ordering: flags after operands
+  "file then --no-group"
+  "file then -G"
+  "--no-group then file"
+
   # Targeted path arguments
   "-h file1.txt"
+  "--no-group file2.txt"
 
   # Filename edge cases (use -- to stop option parsing)
   "-- a b.txt"
@@ -370,15 +425,26 @@ test_case_names=(
   # File type edge cases
   "-- link-to-file1"
   "-- broken-link"
+  "-- symlink-to-file1"
+  "-- broken-symlink"
   "-- fifo1"
 
   # Permission edge cases
   "-- setuid-file"
   "-- setgid-file"
+  "-- setgid-dir"
   "-- sticky-dir"
 
-  # Timestamp edge case
-  "-- future.txt"
+  # Timestamp boundary fixtures (relative-time bucket boundaries)
+  "mtime now-1s"
+  "mtime now-119s"
+  "mtime now-120s"
+  "mtime now-3599s"
+  "mtime now-3600s"
+  "mtime now-2days"
+  "mtime now-3yr"
+  "mtime now-35yr"
+  "mtime now-125yr"
 
   # Additional edge-case directories
   "symlink target space"
@@ -423,8 +489,14 @@ test_case_argv=(
   "-s -g"
   "-s -h -g -G"
 
+  # Option ordering: flags after operands
+  "file1.txt --no-group"
+  "file1.txt -G"
+  "--no-group file1.txt"
+
   # Targeted path arguments
   "-h file1.txt"
+  "--no-group file2.txt"
 
   # Filename edge cases
   "-- \"a b.txt\""
@@ -435,15 +507,26 @@ test_case_argv=(
   # File type edge cases
   "-- link-to-file1"
   "-- broken-link"
+  "-- symlink-to-file1"
+  "-- broken-symlink"
   "-- fifo1"
 
   # Permission edge cases
   "-- setuid-file"
   "-- setgid-file"
+  "-- setgid-dir"
   "-- sticky-dir"
 
-  # Timestamp edge case
-  "-- future.txt"
+  # Timestamp boundary fixtures (relative-time bucket boundaries)
+  "mtime-now-1s"
+  "mtime-now-119s"
+  "mtime-now-120s"
+  "mtime-now-3599s"
+  "mtime-now-3600s"
+  "mtime-now-2days"
+  "mtime-now-3yr"
+  "mtime-now-35yr"
+  "mtime-now-125yr"
 
   # Additional edge-case directories
   "case-symlink-target-space"
@@ -814,7 +897,23 @@ for idx in "${!test_case_names[@]}"; do
   #   ls: '-l' ... No such file or directory
   # To avoid that, we always place ls options first and then append tc_argv.
   ls_cmd=(ls --color -l --time-style=+"%s")
-  ls_output_raw=$(cd "$TEST_DIR" && "${ls_cmd[@]}" "${tc_argv_clean[@]}" 2>&1)
+
+  # ls doesn't accept options after operands; normalize argv for ls only.
+  ls_opts=()
+  ls_operands=()
+  for a in "${tc_argv_clean[@]}"; do
+    case "$a" in
+      -d|--directory|-g|-G|-o|--no-group|-s|--size|-h|--human-readable|--si|-n|--numeric-uid-gid)
+        ls_opts+=("$a")
+        ;;
+      *)
+        ls_operands+=("$a")
+        ;;
+    esac
+  done
+  ls_argv=("${ls_opts[@]}" "${ls_operands[@]}")
+
+  ls_output_raw=$(cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" 2>&1)
 
   # Export env for canonicalizers
   export LS_COMPARE_USER
