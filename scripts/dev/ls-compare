@@ -224,8 +224,6 @@ printf "long" > "$_long_name"
 
 # Extra file types
 # - Symlink and broken symlink
-ln -s "file1.txt" "link-to-file1" 2>/dev/null || true
-ln -s "missing-target" "broken-link" 2>/dev/null || true
 ln -s "file1.txt" "symlink-to-file1" 2>/dev/null || true
 ln -s "does-not-exist" "broken-symlink" 2>/dev/null || true
 # - FIFO (named pipe)
@@ -251,7 +249,7 @@ chmod 1777 "sticky-dir" 2>/dev/null || true
 touch -t 202001010000.00 \
   file1.txt file2.txt file3.txt dir1 dir2 \
   "a b.txt" " file-leading-space.txt" $'a\tb.txt' "İçerik-ğüşöç.txt" \
-  "$_long_name" link-to-file1 broken-link symlink-to-file1 broken-symlink \
+  "$_long_name" symlink-to-file1 broken-symlink \
   fifo1 setuid-file setgid-file setgid-dir sticky-dir
 
 # Make relative-time computations deterministic between scripts by freezing "now".
@@ -442,8 +440,6 @@ test_case_names=(
   "-- İçerik-ğüşöç.txt"
 
   # File type edge cases
-  "-- link-to-file1"
-  "-- broken-link"
   "-- symlink-to-file1"
   "-- broken-symlink"
   "-- fifo1"
@@ -524,8 +520,6 @@ test_case_argv=(
   "-- \"İçerik-ğüşöç.txt\""
 
   # File type edge cases
-  "-- link-to-file1"
-  "-- broken-link"
   "-- symlink-to-file1"
   "-- broken-symlink"
   "-- fifo1"

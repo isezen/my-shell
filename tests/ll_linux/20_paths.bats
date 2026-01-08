@@ -46,22 +46,6 @@ load './00_harness.bash'
   ll_rm_testdir
 }
 
-@test "ll paths: link-to-file1" {
-  local -a args=(-- link-to-file1)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
-
-@test "ll paths: broken-link" {
-  local -a args=(-- broken-link)
-  ll_mk_testdir
-  ll_seed_fixtures_common
-  ll_assert_canon_equal "${args[@]}"
-  ll_rm_testdir
-}
-
 @test "ll paths: symlink-to-file1" {
   local -a args=(-- symlink-to-file1)
   ll_mk_testdir

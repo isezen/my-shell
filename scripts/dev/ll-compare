@@ -209,8 +209,6 @@ printf '' > "$_long_name"
 # Symlink fixtures
 ln -s file1.txt symlink-to-file1
 ln -s does-not-exist broken-symlink
-ln -s file1.txt link-to-file1 2>/dev/null || true
-ln -s missing-target broken-link 2>/dev/null || true
 
 # FIFO fixture (may fail on some restricted FS; ignore errors)
 mkfifo fifo1 2>/dev/null || true
@@ -233,7 +231,7 @@ chmod 1777 sticky-dir 2>/dev/null || true
 # Make baseline mtimes deterministic (Jan 1, 2020 00:00:00 local time).
 touch -t 202001010000.00 file1.txt file2.txt file3.txt dir1 dir2 \
   "a b.txt" " file-leading-space.txt" $'a\tb.txt' $'İçerik-ğüşöç.txt' \
-  "$_long_name" symlink-to-file1 broken-symlink link-to-file1 broken-link \
+  "$_long_name" symlink-to-file1 broken-symlink \
   fifo1 setuid-file setgid-file setgid-dir sticky-dir || true
 
 # Symlink target with space.
@@ -444,8 +442,6 @@ test_cases=(
   # Symlinks / FIFOs
   "symlink||| symlink-to-file1 |||0"
   "broken symlink||| broken-symlink |||0"
-  "link-to-file1||| link-to-file1 |||0"
-  "broken-link||| broken-link |||0"
   "fifo||| fifo1 |||0"
 
   # Permission edge cases
