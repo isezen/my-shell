@@ -138,7 +138,8 @@
 │   ├── ll-before.md
 │   ├── ll-decision.md
 │   ├── ll-perf.md
-│   └── ls-compare.md
+│   ├── ls-compare.md
+│   └── todo.md
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
@@ -149,5 +150,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-31 directories, 117 files
+31 directories, 118 files
 ```

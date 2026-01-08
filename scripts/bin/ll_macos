@@ -273,11 +273,12 @@ size_color_numeric() {
 }
 
 color_size_human() {
-  # Input: <label> (e.g. 12K, 2.5M, 512B). Apply tier color to number and bold to suffix.
+  # Input: <label> (e.g. 12K, 2.5K, 2,5K, 512B). Apply tier color to number and bold to suffix.
   local s="$1"
   local num suf
 
-  if [[ "$s" =~ ^([0-9]+(\.[0-9]+)?)([BKMGTP])$ ]]; then
+  # Support dot or comma decimal separator.
+  if [[ "$s" =~ ^([0-9]+([\.,][0-9]+)?)([BKMGTP])$ ]]; then
     num="${BASH_REMATCH[1]}"
     suf="${BASH_REMATCH[3]}"
   elif [[ "$s" =~ ^([0-9]+)$ ]]; then
@@ -297,6 +298,48 @@ color_size_human() {
     B) printf '%s%s%s%s%s%s' "$cb" "$num" "$creset" "$clB" "$suf" "$creset" ;;
     *) printf '%s%s%s' "$cb" "$s" "$creset" ;;
   esac
+}
+
+# Format blocks (1K units) into human label like GNU ls -s -h
+# - Uses base-1024 units (K/M/G/T)
+# - Always one decimal for K/M/G/T (e.g., 4.0K), with locale decimal separator
+# - 0 -> 0B
+blocks_human_label() {
+  local blocks="$1"
+  if [[ ! "$blocks" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$blocks"
+    return 0
+  fi
+
+  local bytes
+  bytes=$(( blocks * 1024 ))
+  if [ "$bytes" -lt 1024 ]; then
+    printf '0B'
+    return 0
+  fi
+
+  local val unit out
+  if [ "$bytes" -lt $((1024 * 1024)) ]; then
+    unit="K"
+    val="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1024.0}')"
+  elif [ "$bytes" -lt $((1024 * 1024 * 1024)) ]; then
+    unit="M"
+    val="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1048576.0}')"
+  elif [ "$bytes" -lt $((1024 * 1024 * 1024 * 1024)) ]; then
+    unit="G"
+    val="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1073741824.0}')"
+  else
+    unit="T"
+    val="$(/usr/bin/awk -v b="$bytes" 'BEGIN{printf "%.1f", b/1099511627776.0}')"
+  fi
+
+  # Apply locale decimal separator
+  if [ "$DEC_SEP" != "." ]; then
+    out="$(printf '%s' "$val" | sed 's/\./,/')${unit}"
+  else
+    out="${val}${unit}"
+  fi
+  printf '%s' "$out"
 }
 
 color_reltime() {
@@ -353,6 +396,13 @@ total_label="total"
 locale_hint="${LC_ALL:-${LANG:-}}"
 if printf '%s' "$locale_hint" | grep -qi '^tr'; then
   total_label="toplam"
+fi
+
+# Decimal separator (locale-aware best-effort)
+# GNU ls uses locale for decimal separator. We emulate via language tag.
+DEC_SEP="."
+if printf '%s' "$locale_hint" | grep -qi '^tr'; then
+  DEC_SEP=","  # Turkish uses comma decimal
 fi
 
 total_applicable=0
@@ -494,16 +544,40 @@ fi
 # Use awk to compute widths from the US-separated rows (safe w.r.t. names).
 widths="$(
   printf '%s\n' "${rows[@]}" \
-  | /usr/bin/awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" '
+  | /usr/bin/awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" -v DEC_SEP="$DEC_SEP" '
     function max(a,b){return (a>b)?a:b}
     BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tnum=0;w_tunit=0;any_fut=0}
     {
       blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7
 
       if (ASIZE) {
-        b=blocks
-        if (HUMAN && b ~ /^[0-9]+$/) { b=b "B" }
-        w_blocks=max(w_blocks, length(b))
+        # Human-readable blocks width: mimic GNU ls -s -h
+        # blocks are 1K units; format as K/M/G/T with one decimal, locale-aware decimal separator.
+        if (HUMAN && blocks ~ /^[0-9]+$/) {
+          label=""
+          bytes = blocks * 1024
+          if (bytes < 1024) {
+            label = "0B"
+          } else if (bytes < 1024*1024) {
+            val = bytes / 1024.0
+            label = sprintf("%.1fK", val)
+          } else if (bytes < 1024*1024*1024) {
+            val = bytes / (1024.0*1024.0)
+            label = sprintf("%.1fM", val)
+          } else if (bytes < 1024.0*1024.0*1024.0*1024.0) {
+            val = bytes / (1024.0*1024.0*1024.0)
+            label = sprintf("%.1fG", val)
+          } else {
+            val = bytes / (1024.0*1024.0*1024.0*1024.0)
+            label = sprintf("%.1fT", val)
+          }
+          if (DEC_SEP != ".") {
+            gsub(/\./, DEC_SEP, label)
+          }
+          w_blocks = max(w_blocks, length(label))
+        } else {
+          w_blocks = max(w_blocks, length(blocks))
+        }
       }
       w_perms=max(w_perms, length(perms))
       w_links=max(w_links, length(links))
@@ -603,7 +677,7 @@ print_row_by_index() {
   if [ "$ASIZE" -eq 1 ]; then
     if [ "$HUMANREADABLE" -eq 1 ]; then
       local b_label b_colored
-      b_label="${blocks}B"
+      b_label="$(blocks_human_label "$blocks")"
       b_colored="$(color_size_human "$b_label")"
       blocks_colored="$(lpad "$b_colored" "$W_BLOCKS") "
     else
@@ -716,7 +790,11 @@ for m in "${dir_markers[@]}"; do
       IFS="$DELIM" read -r blocks _ <<<"$rec"
       total_blocks=$((total_blocks + blocks))
     done
-    printf '%s %s\n' "$total_label" "$total_blocks"
+    if [ "$ASIZE" -eq 1 ] && [ "$HUMANREADABLE" -eq 1 ]; then
+      printf '%s %s\n' "$total_label" "$(blocks_human_label "$total_blocks")"
+    else
+      printf '%s %s\n' "$total_label" "$total_blocks"
+    fi
   fi
 
   printed_any=1
