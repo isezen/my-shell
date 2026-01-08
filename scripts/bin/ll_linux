@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_linux
+# Linux-specific implementation of ll command
+# Uses GNU coreutils (ls, awk, date) for Linux compatibility
+# Usage: ll_linux [OPTIONS] [FILES...]
 # sezenismail@gmail.com
 # 2014-11-24 (optimized 2026-01-05)
 # Colorful Long Listing (fast)

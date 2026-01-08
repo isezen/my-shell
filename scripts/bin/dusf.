@@ -1,4 +1,8 @@
 #!/bin/bash
+# scripts/bin/dusf.
+# Alternative disk usage format
+# Display disk usage in alternative format
+# Usage: dusf. [OPTIONS] [DIRECTORY]
 # sezenismail@gmail.com
 # 2014-11-24
 # Disk Usage Info Sorted Only Hidden Files in current directory

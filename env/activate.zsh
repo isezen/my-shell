@@ -1,4 +1,5 @@
 #!/bin/zsh
+# env/activate.zsh
 # activate.zsh - Zsh environment activation
 # Usage: source activate.zsh
 

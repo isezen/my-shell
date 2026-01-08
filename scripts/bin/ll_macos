@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_macos
+# macOS-specific implementation of ll command
+# Uses BSD utilities (ls, awk, stat) for macOS compatibility
+# Usage: ll_macos [OPTIONS] [FILES...]
 # macOS/BSD userland implementation for `ll`.
 #
 # Goals:
@@ -76,6 +79,7 @@ TAB_CHAR=$'\011'
 # ------------------------------
 # Helpers
 # ------------------------------
+  # quote_if_needed function
 quote_if_needed() {
   # Quote if contains space or tab (matches ll_linux behavior).
   # Keeps content verbatim otherwise.
@@ -83,6 +87,7 @@ quote_if_needed() {
   if [[ "$s" == *"$TAB_CHAR"* ]] || [[ "$s" == *" "* ]]; then
     printf '"%s"' "$s"
   else
+  # Format output
     printf '%s' "$s"
   fi
 }
@@ -213,6 +218,7 @@ cmin="${esc}[38;5;215m"
 chrs="${esc}[38;5;196m"
 cday="${esc}[38;5;230m"
 cmon="${esc}[38;5;151m"
+  # Apply color formatting
 cyr="${esc}[38;5;241m"
 cfut="${esc}[38;5;39m"
 
@@ -230,6 +236,7 @@ color_perm() {
       r) out+="${cr}${ch}${creset}" ;;
       w) out+="${cw}${ch}${creset}" ;;
       x) out+="${cx}${ch}${creset}" ;;
+  # Apply color formatting
       +) out+="${cplus}${ch}${creset}" ;;
       *) out+="$ch" ;;
     esac
@@ -242,6 +249,7 @@ size_color_numeric() {
   local x="$1"
   if [ "$x" -lt 1024 ]; then printf '%s' "$cb"; return; fi
   if [ "$x" -lt 1048576 ]; then printf '%s' "$ck"; return; fi
+  # Apply color formatting
   if [ "$x" -lt 1073741824 ]; then printf '%s' "$cm"; return; fi
   if [ "$x" -lt 1099511627776 ]; then printf '%s' "$cg"; return; fi
   printf '%s' "$ct"
@@ -268,6 +276,7 @@ color_size_human() {
     G) printf '%s%s%s%s%s%s' "$cg" "$num" "$creset" "$clG" "$suf" "$creset" ;;
     M) printf '%s%s%s%s%s%s' "$cm" "$num" "$creset" "$clM" "$suf" "$creset" ;;
     K) printf '%s%s%s%s%s%s' "$ck" "$num" "$creset" "$clK" "$suf" "$creset" ;;
+  # Apply color formatting
     B) printf '%s%s%s%s%s%s' "$cb" "$num" "$creset" "$clB" "$suf" "$creset" ;;
     *) printf '%s%s%s' "$cb" "$s" "$creset" ;;
   esac
@@ -477,13 +486,16 @@ widths="$(
       w_tnum=max(w_tnum, length(num ""))
       w_tunit=max(w_tunit, length(unit))
     }
+  # lpad function
     END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,w_tprefix,DELIM,w_tnum,DELIM,w_tunit}
+  # rpad function
   '
 )"
 
 IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE W_TPREFIX W_TNUM W_TUNIT <<<"$widths"
 
 lpad() {
+  # print_row_by_index function
   local s="$1" w="$2"
   printf '%*s' "$w" "$s"
 }

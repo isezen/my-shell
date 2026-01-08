@@ -1,4 +1,5 @@
 #!/usr/bin/env fish
+# shell/fish/init.fish
 # my-shell fish initialization
 # This file sources all fish configuration components
 

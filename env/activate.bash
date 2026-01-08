@@ -1,4 +1,5 @@
 #!/bin/bash
+# env/activate.bash
 # activate.bash - Bash environment activation
 # Usage: source activate.bash
 

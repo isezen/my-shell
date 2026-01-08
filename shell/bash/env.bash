@@ -1,4 +1,7 @@
 #!/bin/bash
+# shell/bash/env.bash
+# Environment settings for bash shell
+# This file contains environment variable configurations
 # 2016-03-27
 # sezenismail@gmail.com
 # Bash environment settings (history, dircolors, etc.)

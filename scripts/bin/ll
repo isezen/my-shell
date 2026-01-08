@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # scripts/bin/ll
+# Colorful long listing utility
+# Enhanced ls replacement with colors, formatting, and cross-platform support
+# Usage: ll [OPTIONS] [FILES...]
 # Wrapper that dispatches to the platform-specific implementation.
 #
 # - Default: select by OS (Darwin -> ll_macos, otherwise -> ll_linux)

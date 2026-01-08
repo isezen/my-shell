@@ -1,10 +1,14 @@
 #!/usr/bin/env fish
+# shell/fish/env.fish
+# Environment settings for fish shell
+# This file contains environment variable configurations
 # 2016-03-28
 # sezenismail@gmail.com
 # Fish environment settings (dircolors, etc.)
 
 set -xU CLICOLOR 1
 
+# set_dircolors function
 function set_dircolors
 	if not test -e ~/.dircolors
 	  curl -sLo ~/.dircolors https://raw.github.com/trapd00r/LS_COLORS/master/LS_COLORS

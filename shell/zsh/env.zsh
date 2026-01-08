@@ -1,4 +1,7 @@
 #!/bin/zsh
+# shell/zsh/env.zsh
+# Environment settings for zsh shell
+# This file contains environment variable configurations
 # Zsh environment settings (history, dircolors, etc.)
 
 export CLICOLOR=1

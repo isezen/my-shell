@@ -1,4 +1,8 @@
 #!/bin/bash
+# scripts/bin/dus
+# Disk usage utility
+# Display disk usage with sorting and coloring options
+# Usage: dus [OPTIONS] [DIRECTORY]
 # sezenismail@gmail.com
 # 2014-11-24
 # Disk Usage Info Sorted and Colored
@@ -7,6 +11,7 @@
 # dus (f|d|h|a)v
 
 
+  # Display usage information
 _usage() {
   echo "Disk Usage Script 2014 Ismail SEZEN"
   echo "Usage: $0 -(f|d|h|a)v *.pdf"

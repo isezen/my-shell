@@ -1,4 +1,8 @@
 #!/bin/bash
+# scripts/bin/dusf
+# File-based disk usage analysis
+# Analyze disk usage by file type and extension
+# Usage: dusf [OPTIONS] [DIRECTORY]
 # sezenismail@gmail.com
 # 2014-11-24
 # Disk Usage Info Sorted Only Regular Files

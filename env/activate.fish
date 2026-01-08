@@ -1,4 +1,5 @@
 #!/usr/bin/env fish
+# env/activate.fish
 # activate.fish - Fish environment activation
 # Usage: source activate.fish
 

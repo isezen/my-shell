@@ -1,4 +1,7 @@
 #!/usr/bin/env fish
+# shell/fish/prompt.fish
+# Prompt configuration for fish shell
+# This file contains prompt customization settings
 # 2016-03-28
 # sezenismail@gmail.com
 # Shiny fish prompt support
