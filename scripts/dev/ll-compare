@@ -473,6 +473,7 @@ test_cases=(
 errors=0
 passed=0
 test_num=0
+global_index=0
 
 if [ "$FAIL_ONLY" -eq 0 ]; then
   echo "Testing comparison: ${script_names[*]}"
@@ -508,8 +509,9 @@ for test_case in "${test_cases[@]}"; do
   test_argv_str="${test_argv_str:-}"
   test_no_normalize="${test_no_normalize:-0}"
 
-  # Calculate the actual test number (test_num will be incremented after this check)
-  actual_test_num=$((test_num + 1))
+  # Calculate the actual test number based on absolute position in the suite
+  global_index=$((global_index + 1))
+  actual_test_num=$global_index
 
   if [ "$ONLY_MODE" -eq 1 ]; then
     matched=0
@@ -533,9 +535,8 @@ for test_case in "${test_cases[@]}"; do
       continue
     fi
   fi
-  ((test_num++))
   if [ "$FAIL_ONLY" -eq 0 ]; then
-    echo "Test #$test_num: $test_name"
+    echo "Test #$actual_test_num: $test_name"
     echo "----------------------------------"
   fi
   
@@ -800,7 +801,7 @@ for test_case in "${test_cases[@]}"; do
         print_vertical
       fi
     else
-      echo "Test #$test_num: $test_name"
+      echo "Test #$actual_test_num: $test_name"
       echo "----------------------------------"
       echo "FAIL - Outputs differ"
       if [ "$SIDE_BY_SIDE" -eq 1 ]; then
