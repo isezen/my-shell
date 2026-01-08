@@ -475,6 +475,11 @@ passed=0
 test_num=0
 global_index=0
 
+# Colors (match ls-compare)
+color_yellow=$'\033[33m'
+color_magenta=$'\033[35m'
+color_reset=$'\033[0m'
+
 if [ "$FAIL_ONLY" -eq 0 ]; then
   echo "Testing comparison: ${script_names[*]}"
   echo "=================================="
@@ -536,7 +541,9 @@ for test_case in "${test_cases[@]}"; do
     fi
   fi
   if [ "$FAIL_ONLY" -eq 0 ]; then
-    echo "Test #$actual_test_num: $test_name"
+    test_num_colored="${color_magenta}Test #$actual_test_num${color_reset}"
+    display_test_name="${color_yellow}${test_name}${color_reset}"
+    echo "$test_num_colored: $display_test_name"
     echo "----------------------------------"
   fi
   
@@ -801,7 +808,9 @@ for test_case in "${test_cases[@]}"; do
         print_vertical
       fi
     else
-      echo "Test #$actual_test_num: $test_name"
+      test_num_colored="${color_magenta}Test #$actual_test_num${color_reset}"
+      display_test_name="${color_yellow}${test_name}${color_reset}"
+      echo "$test_num_colored: $display_test_name"
       echo "----------------------------------"
       echo "FAIL - Outputs differ"
       if [ "$SIDE_BY_SIDE" -eq 1 ]; then

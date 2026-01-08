@@ -1030,21 +1030,53 @@ for idx in "${!test_case_names[@]}"; do
         break
       fi
     done
+
+    # Raw output comparison to detect normalized passes (whitespace/ANSI-only diffs).
+    raw_stdout_match=true
+    baseline_out_raw="${outputs_out_raw[0]}"
+    for i in $(seq 1 $((${#outputs_out_raw[@]} - 1))); do
+      candidate_out_raw="${outputs_out_raw[$i]}"
+      if [ "$candidate_out_raw" != "$baseline_out_raw" ]; then
+        raw_stdout_match=false
+        break
+      fi
+    done
+    raw_stderr_match=true
+    baseline_err_raw="${outputs_err_raw[0]}"
+    for i in $(seq 1 $((${#outputs_err_raw[@]} - 1))); do
+      candidate_err_raw="${outputs_err_raw[$i]}"
+      if [ "$candidate_err_raw" != "$baseline_err_raw" ]; then
+        raw_stderr_match=false
+        break
+      fi
+    done
     
     if [ "$validation_failed" -eq 1 ] || [ "$status_failed" -eq 1 ] || [ "$stdout_match" = false ] || [ "$stderr_match" = false ]; then
       all_match=false
     fi
 
+    normalized_only=false
+    if [ "$all_match" = true ] && [ "$raw_stdout_match" = false -o "$raw_stderr_match" = false ]; then
+      normalized_only=true
+    fi
+
     if [ "$all_match" = true ]; then
       if [ "$FAIL_ONLY" -eq 0 ]; then
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          echo "PASS - All outputs match exactly"
+          if [ "$normalized_only" = true ]; then
+            echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+          else
+            echo "PASS - All outputs match exactly"
+          fi
           echo "  Side-by-side comparison:"
           outputs=("${outputs_out[@]}")
           outputs_raw=("${outputs_out_raw[@]}")
           print_side_by_side
         else
-          # Vertical format: show outputs directly without "PASS" message
+          if [ "$normalized_only" = true ]; then
+            echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+          fi
+          # Vertical format: show outputs directly without "PASS" message for exact match
           outputs_raw=("${outputs_out_raw[@]}")
           print_vertical
         fi
