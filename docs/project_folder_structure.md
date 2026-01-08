@@ -2,6 +2,7 @@
 .
 ├── docs
 │   ├── ACTIVATION_SPECIFICATION.md
+│   ├── proj_summary.md
 │   └── project_folder_structure.md
 ├── env
 │   ├── activate
@@ -87,5 +88,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-18 directories, 68 files
+18 directories, 69 files
 ```
