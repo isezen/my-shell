@@ -500,7 +500,11 @@ widths="$(
     {
       blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7
 
-      if (ASIZE) w_blocks=max(w_blocks, length(blocks))
+      if (ASIZE) {
+        b=blocks
+        if (HUMAN && b ~ /^[0-9]+$/) { b=b "B" }
+        w_blocks=max(w_blocks, length(b))
+      }
       w_perms=max(w_perms, length(perms))
       w_links=max(w_links, length(links))
 
@@ -598,8 +602,10 @@ print_row_by_index() {
   local blocks_colored=""
   if [ "$ASIZE" -eq 1 ]; then
     if [ "$HUMANREADABLE" -eq 1 ]; then
-      # Keep blocks numeric, but treat it as bytes-like label for coloring consistency.
-      blocks_colored="${cb}$(lpad "$blocks" "$W_BLOCKS")${creset} "
+      local b_label b_colored
+      b_label="${blocks}B"
+      b_colored="$(color_size_human "$b_label")"
+      blocks_colored="$(lpad "$b_colored" "$W_BLOCKS") "
     else
       blocks_colored="${cb}$(lpad "$blocks" "$W_BLOCKS")${creset} "
     fi
