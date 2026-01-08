@@ -62,6 +62,22 @@ load './00_harness.bash'
   ll_rm_testdir
 }
 
+@test "ll paths: symlink-to-file1" {
+  local -a args=(-- symlink-to-file1)
+  ll_mk_testdir
+  ll_seed_fixtures_common
+  ll_assert_canon_equal "${args[@]}"
+  ll_rm_testdir
+}
+
+@test "ll paths: broken-symlink" {
+  local -a args=(-- broken-symlink)
+  ll_mk_testdir
+  ll_seed_fixtures_common
+  ll_assert_canon_equal "${args[@]}"
+  ll_rm_testdir
+}
+
 @test "ll paths: fifo1" {
   local -a args=(-- fifo1)
   ll_mk_testdir
@@ -80,6 +96,14 @@ load './00_harness.bash'
 
 @test "ll paths: setgid-file" {
   local -a args=(-- setgid-file)
+  ll_mk_testdir
+  ll_seed_fixtures_common
+  ll_assert_canon_equal "${args[@]}"
+  ll_rm_testdir
+}
+
+@test "ll paths: setgid-dir" {
+  local -a args=(-- setgid-dir)
   ll_mk_testdir
   ll_seed_fixtures_common
   ll_assert_canon_equal "${args[@]}"

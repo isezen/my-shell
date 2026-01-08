@@ -131,12 +131,16 @@ ll_seed_fixtures_common() {
 
   ln -s "file1.txt" "link-to-file1" 2>/dev/null || true
   ln -s "missing-target" "broken-link" 2>/dev/null || true
+  ln -s "file1.txt" "symlink-to-file1" 2>/dev/null || true
+  ln -s "does-not-exist" "broken-symlink" 2>/dev/null || true
   mkfifo "fifo1" 2>/dev/null || true
 
   cp "file1.txt" "setuid-file" 2>/dev/null || true
   chmod 4755 "setuid-file" 2>/dev/null || true
   cp "file1.txt" "setgid-file" 2>/dev/null || true
   chmod 2755 "setgid-file" 2>/dev/null || true
+  mkdir -p "setgid-dir" 2>/dev/null || true
+  chmod 2755 "setgid-dir" 2>/dev/null || true
   mkdir -p "sticky-dir" 2>/dev/null || true
   chmod 1777 "sticky-dir" 2>/dev/null || true
 
@@ -145,7 +149,8 @@ ll_seed_fixtures_common() {
   touch -t 202001010000.00 \
     file1.txt file2.txt file3.txt dir1 dir2 \
     "a b.txt" " file-leading-space.txt" "${tab_name}" "İçerik-ğüşöç.txt" \
-    "${long_name}" link-to-file1 broken-link fifo1 setuid-file setgid-file sticky-dir future.txt
+    "${long_name}" link-to-file1 broken-link symlink-to-file1 broken-symlink \
+    fifo1 setuid-file setgid-file setgid-dir sticky-dir future.txt
 
   touch -t 203001010000.00 future.txt 2>/dev/null || true
 }

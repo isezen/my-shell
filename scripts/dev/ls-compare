@@ -32,6 +32,25 @@
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN_DIR="$PROJECT_ROOT/scripts/bin"
+LS_BIN="${LS_COMPARE_LS:-${LL_CHATGPT_LS:-}}"
+
+if [ -n "$LS_BIN" ]; then
+  if ! "$LS_BIN" --color -l --time-style=+"%s" . >/dev/null 2>&1; then
+    echo "Error: LS_COMPARE_LS must support --time-style=+%s" >&2
+    exit 1
+  fi
+else
+  if ls --color -l --time-style=+"%s" . >/dev/null 2>&1; then
+    LS_BIN="ls"
+  elif command -v gls >/dev/null 2>&1; then
+    LS_BIN="$(command -v gls)"
+  elif [ -x /opt/local/libexec/gnubin/ls ]; then
+    LS_BIN="/opt/local/libexec/gnubin/ls"
+  else
+    echo "Error: GNU ls with --time-style=+%s is required for ls-compare." >&2
+    exit 1
+  fi
+fi
 
 # ============================================================================
 # PARSE COMMAND LINE ARGUMENTS
@@ -612,8 +631,22 @@ canonicalize_script_output() {
 validate_ll_output() {
   local raw="$1"
   local future_line=""
+  local -a future_candidates=(
+    "mtime-now-3yr"
+    "mtime-now-35yr"
+    "mtime-now-125yr"
+    "future-3yr.txt"
+    "future-35yr.txt"
+    "future-125yr.txt"
+    "future-1000yr.txt"
+  )
 
-  future_line="$(printf '%s\n' "$raw" | sed -n '/future\.txt/p' | head -n 1)"
+  for candidate in "${future_candidates[@]}"; do
+    future_line="$(printf '%s\n' "$raw" | grep -F "$candidate" | head -n 1)"
+    if [ -n "$future_line" ]; then
+      break
+    fi
+  done
   if [ -z "$future_line" ]; then
     return 0
   fi
@@ -896,7 +929,7 @@ for idx in "${!test_case_names[@]}"; do
   # treat `-l` and `--time-style=...` as filenames and print errors like:
   #   ls: '-l' ... No such file or directory
   # To avoid that, we always place ls options first and then append tc_argv.
-  ls_cmd=(ls --color -l --time-style=+"%s")
+  ls_cmd=("$LS_BIN" --color -l --time-style=+"%s")
 
   # ls doesn't accept options after operands; normalize argv for ls only.
   ls_opts=()
@@ -914,6 +947,7 @@ for idx in "${!test_case_names[@]}"; do
   ls_argv=("${ls_opts[@]}" "${ls_operands[@]}")
 
   ls_output_raw=$(cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" 2>&1)
+  ls_status=$?
 
   # Export env for canonicalizers
   export LS_COMPARE_USER
@@ -929,23 +963,40 @@ for idx in "${!test_case_names[@]}"; do
     # Run all scripts and capture outputs
     outputs=()
     outputs_raw=()
+    script_statuses=()
     validation_failed=0
     validation_msg=""
+    status_failed=0
+    status_msg=""
 
     # Column 0 is the ls baseline
     outputs_raw+=("$ls_output_raw")
     outputs+=("$(canonicalize_ls_output "$ls_output_raw")")
+    if [ "$ls_status" -ne 0 ]; then
+      status_failed=1
+      status_msg="ls exit $ls_status"
+    fi
 
     for i in "${!script_paths[@]}"; do
       script_path="${script_paths[$i]}"
       script_name="${script_names[$i]}"
       output_raw=$(cd "$TEST_DIR" && "$script_path" "${tc_argv_clean[@]}" 2>&1)
+      script_status=$?
+      script_statuses+=("$script_status")
       outputs_raw+=("$output_raw")
       outputs+=("$(canonicalize_script_output "$output_raw")")
-      if [ "$script_name" = "ll" ]; then
+      if [ "$script_name" = "ll" ] || [ "$script_name" = "ll_linux" ]; then
         if ! validate_ll_output "$output_raw"; then
           validation_failed=1
           validation_msg="future time color missing"
+        fi
+      fi
+      if [ "$script_status" -ne 0 ]; then
+        status_failed=1
+        if [ -n "$status_msg" ]; then
+          status_msg="${status_msg}; ${script_name} exit ${script_status}"
+        else
+          status_msg="${script_name} exit ${script_status}"
         fi
       fi
     done
@@ -961,7 +1012,7 @@ for idx in "${!test_case_names[@]}"; do
       fi
     done
     
-    if [ "$validation_failed" -eq 1 ]; then
+    if [ "$validation_failed" -eq 1 ] || [ "$status_failed" -eq 1 ]; then
       all_match=false
     fi
 
@@ -980,7 +1031,9 @@ for idx in "${!test_case_names[@]}"; do
     else
       if [ "$FAIL_ONLY" -eq 0 ]; then
         if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          if [ "$validation_failed" -eq 1 ]; then
+          if [ "$status_failed" -eq 1 ]; then
+            echo "FAIL - Non-zero exit status (${status_msg})"
+          elif [ "$validation_failed" -eq 1 ]; then
             echo "FAIL - Formatting validation failed (${validation_msg})"
           else
             echo "FAIL - Outputs differ"
@@ -988,7 +1041,9 @@ for idx in "${!test_case_names[@]}"; do
           echo "  Side-by-side comparison:"
           print_side_by_side
         else
-          if [ "$validation_failed" -eq 1 ]; then
+          if [ "$status_failed" -eq 1 ]; then
+            echo "FAIL - Non-zero exit status (${status_msg})"
+          elif [ "$validation_failed" -eq 1 ]; then
             echo "FAIL - Formatting validation failed (${validation_msg})"
           else
             echo "FAIL - Outputs differ"
@@ -999,7 +1054,9 @@ for idx in "${!test_case_names[@]}"; do
       else
         echo "Test #$test_num: $test_name"
         echo "----------------------------------"
-        if [ "$validation_failed" -eq 1 ]; then
+        if [ "$status_failed" -eq 1 ]; then
+          echo "FAIL - Non-zero exit status (${status_msg})"
+        elif [ "$validation_failed" -eq 1 ]; then
           echo "FAIL - Formatting validation failed (${validation_msg})"
         else
           echo "FAIL - Outputs differ"
