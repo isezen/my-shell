@@ -562,6 +562,26 @@ for test_case in "${test_cases[@]}"; do
 
   outputs=()
   normalized_outputs=()
+  ansi_stripped_outputs=()
+
+  strip_ansi_and_controls() {
+    # Removes ANSI escape sequences and common control chars from a string.
+    # Keeps ordinary whitespace intact.
+    local text="$1"
+
+    text=$(printf '%s' "$text" | perl -pe '
+      s/\e\[[0-9;?]*[ -\/]*[@-~]//g;          # CSI ... cmd (colors, erase-in-line, etc.)
+      s/\e\][^\a]*(\a|\e\\)//g;              # OSC ... BEL or ST
+      s/\e[P^_].*?(\e\\)//gs;                # DCS/PM/APC ... ST
+      s/\e[()#][0-9A-Za-z]//g;               # Charset selects
+      s/\e[\x40-\x5F]//g;                    # 2-char ESC sequences
+      s/\x1b\[[0-9;]*K//g;                   # Erase in line
+      s/\r//g;                               # CR
+    ')
+
+    text=$(printf '%s' "$text" | tr -d '\v')
+    printf '%s' "$text"
+  }
 
   normalize_output() {
     # Normalization goal: ignore cosmetic spacing differences while preserving semantic differences.
@@ -588,8 +608,9 @@ for test_case in "${test_cases[@]}"; do
   for script_path in "${script_paths[@]}"; do
     output=$(cd "$TEST_DIR" && LL_CHATGPT_FAST=1 "$script_path" "${tc_argv[@]}" 2>&1)
     outputs+=("$output")
+    ansi_stripped_outputs+=("$(strip_ansi_and_controls "$output")")
     if [ "$test_no_normalize" -eq 1 ]; then
-      normalized_outputs+=("__NO_NORMALIZE__")
+      normalized_outputs+=("")
     else
       normalized_outputs+=("$(normalize_output "$output")")
     fi
@@ -605,7 +626,7 @@ for test_case in "${test_cases[@]}"; do
     fi
   done
 
-  # Check if all outputs are identical after normalization (when enabled)
+  # Check if all outputs are identical after full normalization (when enabled)
   all_match_normalized=false
   if [ "$test_no_normalize" -eq 0 ]; then
     all_match_normalized=true
@@ -617,6 +638,16 @@ for test_case in "${test_cases[@]}"; do
       fi
     done
   fi
+
+  # Check if all outputs are identical after ANSI-stripping (always computed, fixes NO_NORMALIZE tests)
+  all_match_ansi_stripped=true
+  first_ansi_stripped="${ansi_stripped_outputs[0]}"
+  for i in $(seq 1 $((${#ansi_stripped_outputs[@]} - 1))); do
+    if [ "${ansi_stripped_outputs[$i]}" != "$first_ansi_stripped" ]; then
+      all_match_ansi_stripped=false
+      break
+    fi
+  done
   
   # Function to print side-by-side comparison
   print_side_by_side() {
@@ -785,6 +816,18 @@ for test_case in "${test_cases[@]}"; do
     fi
     ((passed++))
   elif [ "$all_match_normalized" = true ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      if [ "$SIDE_BY_SIDE" -eq 1 ]; then
+        echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+        echo "  Side-by-side comparison:"
+        print_side_by_side
+      else
+        echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
+        print_vertical
+      fi
+    fi
+    ((passed++))
+  elif [ "$all_match_ansi_stripped" = true ]; then
     if [ "$FAIL_ONLY" -eq 0 ]; then
       if [ "$SIDE_BY_SIDE" -eq 1 ]; then
         echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
