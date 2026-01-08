@@ -203,20 +203,37 @@ my-shell/
 │       ├── aliases.fish # Fish aliases and functions
 │       ├── prompt.fish  # Fish prompt configuration
 │       └── env.fish     # Fish environment settings
-├── scripts/bin/          # Utility scripts (executables)
-│   ├── ll              # Colorful long listing
-│   ├── dus             # Disk usage script
-│   ├── dusf            # File-based disk usage
-│   └── dusf.            # Alternative disk usage
+├── scripts/
+│   ├── bin/             # Utility scripts (executables)
+│   │   ├── ll           # Platform dispatcher wrapper
+│   │   ├── ll_linux     # GNU/Linux implementation
+│   │   ├── ll_macos     # BSD/macOS implementation
+│   │   ├── dus          # Disk usage script
+│   │   ├── dusf         # File-based disk usage
+│   │   └── dusf.        # Alternative disk usage
+│   └── dev/             # Development tools (added to PATH when activated)
+│       ├── ll-compare   # Compare ll implementations
+│       ├── ls-compare   # Compare against ls -l
+│       └── run-shellcheck  # Project-wide ShellCheck runner
 ├── env/                 # Environment activation scripts
-│   ├── activate.bash   # Bash activation
-│   ├── activate.zsh    # Zsh activation
-│   └── activate.fish   # Fish activation
+│   ├── activate         # Global shell switcher
+│   ├── activate.bash    # Bash activation
+│   ├── activate.zsh     # Zsh activation
+│   └── activate.fish    # Fish activation
 ├── install.sh           # Unified installation script
-├── tests/                # BATS test suite
+├── tests/               # BATS test suite (55 tests)
 │   ├── alias.bats       # Tests for aliases.bash
 │   ├── bash.bats        # Tests for prompt.bash and env.bash
-│   ├── scripts_ll.bats  # Tests for ll script
+│   ├── alias-sync.bats  # Alias synchronization tests
+│   ├── ll/              # Platform-independent wrapper tests
+│   │   └── 10_wrapper_stub.bats
+│   ├── ll_linux/        # GNU/Linux-specific tests
+│   │   ├── 00_harness.bash
+│   │   └── 10_core.bats
+│   ├── ll_macos/        # BSD/macOS-specific tests
+│   │   ├── 00_harness.bash
+│   │   └── 10_core.bats
+│   ├── scripts_ll.bats  # Legacy ll tests
 │   └── scripts_dus.bats # Tests for dus script
 ├── Makefile             # Development commands
 ├── .pre-commit-config.yaml  # Pre-commit hooks
@@ -243,13 +260,22 @@ make help
 make lint          # Run all linting checks
 make lint-bash     # Check bash/sh scripts
 make lint-fish     # Check fish scripts
+make alias-sync    # Verify alias synchronization
+make check         # Run all checks (lint + alias-sync)
 
 # Testing
 make test          # Run all tests (BATS + linting)
 make test-bats     # Run only BATS tests
+make test-ll       # Platform-aware ll test suite (auto-detects OS)
+make test-ll-common   # Platform-independent wrapper tests
+make test-ll-linux    # GNU/Linux-specific tests
+make test-ll-macos    # BSD/macOS-specific tests
+make test-ll-all      # All test suites (unsuitable ones will soft-skip)
+make test-act         # Run GitHub Actions locally (requires Docker)
 
 # Formatting
 make format        # Format fish scripts
+make format-fish   # Format fish scripts with fish_indent
 
 # Pre-commit hooks
 make install-hooks # Install pre-commit hooks
@@ -264,11 +290,23 @@ make clean         # Remove temporary files
 # Run all tests
 make test-bats
 
+# Run platform-aware ll test suite
+make test-ll              # Auto-detects platform (macOS or Linux)
+make test-ll-common       # Platform-independent wrapper tests
+make test-ll-macos        # macOS-specific BSD tests
+make test-ll-linux        # Linux-specific GNU tests
+
 # Run specific test file
 bats tests/alias.bats
+bats tests/ll/10_wrapper_stub.bats
+bats tests/ll_macos/10_core.bats
 
 # Verbose output
 bats -v tests/alias.bats
+
+# Development tools for ll implementations
+scripts/dev/ll-compare ll_linux ll_macos  # Compare implementations
+scripts/dev/ls-compare ll_macos           # Compare against ls -l
 ```
 
 ### Code Quality
@@ -310,10 +348,13 @@ Key points:
 ## CI/CD
 
 The project uses GitHub Actions for continuous integration:
-- Automated testing on Linux and macOS
-- ShellCheck validation
-- Fish syntax checking
-- Test coverage reports
+- **Automated testing** on Linux (Ubuntu) and macOS
+- **Platform-specific test suites**: `make test-ll` auto-detects OS and runs appropriate tests
+- **ShellCheck validation** with severity=warning threshold
+- **Fish syntax checking** with `fish -n`
+- **Alias synchronization** verification across bash/zsh/fish
+- **Test coverage reports** with formatted output in GitHub summary
+- **Pre-commit hooks** for code quality enforcement
 
 See [.github/workflows/ci.yml](.github/workflows/ci.yml) for details.
 
