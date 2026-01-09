@@ -477,6 +477,18 @@ print_comparison() {
   return 1
 }
 
+print_header() {
+  local color_magenta=$'\033[35m'
+  local color_yellow=$'\033[33m'
+  local color_reset=$'\033[0m'
+
+  local test_num_colored="${color_magenta}Test #${actual_test_num}${color_reset}"
+  local display_test_name="${color_yellow}${test_name}${color_reset}"
+
+  echo "${test_num_colored}: ${display_test_name}"
+  echo "----------------------------------"
+}
+
 # ============================================================================
 # RUN TESTS
 # ============================================================================
@@ -534,29 +546,39 @@ for idx in "${!test_case_names[@]}"; do
     tc_argv_clean+=("$arg")
   done
 
-  if [ "$FAIL_ONLY" -eq 0 ]; then
-    color_magenta=$'\033[35m'
-    color_yellow=$'\033[33m'
-    color_reset=$'\033[0m'
-    
-    test_num_colored="${color_magenta}Test #$actual_test_num${color_reset}"
-    display_test_name="${color_yellow}${test_name}${color_reset}"
-    
-    echo "$test_num_colored: $display_test_name"
-    echo "----------------------------------"
-  fi
-
-  # Build ls command and run it
-  ls_cmd=("$LS_BIN" "${LS_FLAGS[@]}")
-  
   # Separate options from operands (ls needs options before operands)
   ls_opts=()
   ls_operands=()
+  skip_test=0
+  outcome=""
+  skip_reason=""
+  
   if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
     for a in "${tc_argv_clean[@]}"; do
       case "$a" in
         -d|--directory|-g|-G|-o|--no-group|-s|--size|-h|--human-readable|--si|-n|--numeric-uid-gid)
-          ls_opts+=("$a")
+          # For ll_macos mode, map GNU flags to BSD equivalents or skip
+          if [ "$SCRIPT_NAME" = "ll_macos" ]; then
+            case "$a" in
+              --directory) ls_opts+=("-d") ;;
+              --no-group) ls_opts+=("-o") ;;
+              --human-readable) ls_opts+=("-h") ;;
+              --numeric-uid-gid) ls_opts+=("-n") ;;
+              --size) ls_opts+=("-s") ;;
+              --si)
+                # Policy B1: skip ll_macos tests with --si (unsupported on BSD ls)
+                skip_test=1
+                skip_reason="--si unsupported on BSD ls"
+                ;;
+              *)
+                # Short flags pass through unchanged
+                ls_opts+=("$a")
+                ;;
+            esac
+          else
+            # Linux: pass flags unchanged
+            ls_opts+=("$a")
+          fi
           ;;
         *)
           ls_operands+=("$a")
@@ -564,27 +586,51 @@ for idx in "${!test_case_names[@]}"; do
       esac
     done
   fi
-  # Build ls_argv by concatenating opts and operands without adding empty elements
-  ls_argv=()
+
+  # Skip test if unsupported on this platform
+  if [ "$skip_test" -eq 1 ]; then
+    outcome="SKIP"
+    if [ -z "$skip_reason" ]; then
+      skip_reason="--si unsupported on BSD ls"
+    fi
+
+    should_print=0
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      should_print=1
+    elif [ "$outcome" = "FAIL" ] || [ "$outcome" = "SKIP" ]; then
+      should_print=1
+    fi
+
+    if [ "$should_print" -eq 1 ]; then
+      print_header
+      echo "SKIP ($skip_reason)"
+      echo ""
+    fi
+    continue
+  fi
+
+  # Build final command arrays for execution (exactly as will be run)
+  # Initialize arrays if empty to avoid unbound variable errors
+  ls_cmd_array=("$LS_BIN" "${LS_FLAGS[@]}")
   if [ "${#ls_opts[@]}" -gt 0 ]; then
-    ls_argv+=("${ls_opts[@]}")
+    ls_cmd_array+=("${ls_opts[@]}")
   fi
   if [ "${#ls_operands[@]}" -gt 0 ]; then
-    ls_argv+=("${ls_operands[@]}")
+    ls_cmd_array+=("${ls_operands[@]}")
+  fi
+  script_cmd_array=("$SCRIPT_NAME")
+  if [ "${#tc_argv[@]}" -gt 0 ]; then
+    script_cmd_array+=("${tc_argv[@]}")
   fi
   
-  # Build command display strings
-  ls_cmd_display="${LS_BIN} ${LS_FLAGS[*]} ${ls_argv[*]:-}"
-  script_cmd_display="$SCRIPT_NAME ${tc_argv[*]:-}"
+  # Build command display strings (exact arrays joined by single space)
+  ls_cmd_display="${ls_cmd_array[*]}"
+  script_cmd_display="${script_cmd_array[*]}"
 
-  # Run ls
+  # Run ls with exact command array
   ls_stdout_file=$(mktemp)
   ls_stderr_file=$(mktemp)
-  if [ "${#ls_argv[@]}" -gt 0 ]; then
-    (cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file" || true)
-  else
-    (cd "$TEST_DIR" && "${ls_cmd[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file" || true)
-  fi
+  (cd "$TEST_DIR" && "${ls_cmd_array[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file" || true)
   ls_stdout="$(cat "$ls_stdout_file")"
   ls_stderr="$(cat "$ls_stderr_file")"
   rm -f "$ls_stdout_file" "$ls_stderr_file"
@@ -619,23 +665,22 @@ for idx in "${!test_case_names[@]}"; do
 
   # Compare outputs
   if print_comparison "$ls_stdout" "$script_stdout"; then
-    result="PASS"
+    outcome="PASS"
   else
-    result="FAIL"
+    outcome="FAIL"
   fi
 
   # Determine if we should print this test's output
   should_print=0
   if [ "$FAIL_ONLY" -eq 0 ]; then
-    # Normal mode: always print
     should_print=1
-  elif [ "$result" = "FAIL" ]; then
-    # Fail-only mode: print only failures
+  elif [ "$outcome" = "FAIL" ] || [ "$outcome" = "SKIP" ]; then
     should_print=1
   fi
 
   if [ "$should_print" -eq 1 ]; then
-    echo "$result"
+    print_header
+    echo "$outcome"
     echo "  ls command: $ls_cmd_display"
     echo "  ls output ($(echo -n "$ls_stdout" | wc -c) bytes):"
     if [ -z "$ls_stdout" ]; then
@@ -654,13 +699,13 @@ for idx in "${!test_case_names[@]}"; do
     fi
   fi
 
-  if [ "$result" = "PASS" ]; then
+  if [ "$outcome" = "PASS" ]; then
     ((passed++))
-  else
+  elif [ "$outcome" = "FAIL" ]; then
     ((errors++))
   fi
 
-  if [ "$FAIL_ONLY" -eq 0 ]; then
+  if [ "$should_print" -eq 1 ]; then
     echo ""
   fi
 done

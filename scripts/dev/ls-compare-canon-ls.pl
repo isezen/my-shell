@@ -100,6 +100,11 @@ for my $line (@lines) {
     next;
   }
 
+  # Normalize permission field: strip trailing @ or + (BSD extended attributes)
+  if ($perms_re && $toks[0] =~ $perms_re) {
+    $toks[0] =~ s/[@+]$//;
+  }
+
   if ($has_human && $toks[-1] =~ /^\d+$/) { $toks[-1] = $toks[-1] . "B"; }
 
   my ($tprefix, $tnum, $tunit) = rel_parts($m->{epoch});

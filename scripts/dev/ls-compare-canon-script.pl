@@ -77,6 +77,9 @@ while (my $line = <STDIN>) {
     next if $toks[$perm_idx] !~ $perms_re;
     next if !defined $toks[$perm_idx + 1] || $toks[$perm_idx + 1] !~ /^\d+$/;
 
+    # Normalize permission field: strip trailing @ or + (BSD extended attributes)
+    $toks[$perm_idx] =~ s/[@+]$//;
+
     if ($has_human && $perm_idx == 1 && $toks[0] =~ /^([0-9]+)B$/) {
       $toks[0] = $1;
     }
@@ -111,6 +114,9 @@ while (my $line = <STDIN>) {
           $perm_idx = 1;
         }
         if ($toks[$perm_idx] =~ $perms_re && defined $toks[$perm_idx + 1] && $toks[$perm_idx + 1] =~ /^\d+$/) {
+          # Normalize permission field: strip trailing @ or + (BSD extended attributes)
+          $toks[$perm_idx] =~ s/[@+]$//;
+
           if ($has_human && $perm_idx == 1 && $toks[0] =~ /^([0-9]+)B$/) {
             $toks[0] = $1;
           }
