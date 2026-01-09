@@ -444,6 +444,58 @@ color_reltime() {
   esac
 }
 
+batch_push_rows() {
+  # Batch stat call for multiple paths
+  local paths=("$@")
+  [ "${#paths[@]}" -eq 0 ] && return 0
+  
+  # Prepare paths for stat (escape leading dashes)
+  local stat_paths=()
+  for p in "${paths[@]}"; do
+    if [[ "$p" == -* ]]; then
+      stat_paths+=("./$p")
+    else
+      stat_paths+=("$p")
+    fi
+  done
+  
+  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
+  local idx=0
+  while IFS= read -r st; do
+    [ "$idx" -ge "${#paths[@]}" ] && break
+    if [ -z "$st" ]; then
+      ((idx++))
+      continue
+    fi
+    
+    local b512 perms links su sg uid gid size epoch name
+    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
+    
+    # BSD stat %N may include "name -> target" for symlinks; keep only the name part
+    if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+      name="${name%% -> *}"
+    fi
+    if [[ "$name" == ./* ]]; then
+      name="${name#./}"
+    fi
+    
+    local blocks1k=$(( (b512 + 1) / 2 ))
+    
+    local owner group
+    if [ "$NUMERICUIDGID" -eq 1 ]; then
+      owner="$uid"
+      group="$gid"
+    else
+      owner="$su"
+      group="$sg"
+    fi
+    
+    local path="${paths[$idx]}"
+    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${path}${DELIM}0")
+    ((idx++)) || true
+  done < <(/usr/bin/stat -f "$stat_fmt" -- "${stat_paths[@]}" 2>/dev/null)
+}
+
 # ------------------------------
 # Collect operands (respect `--`)
 # ------------------------------
@@ -562,12 +614,59 @@ list_dir_contents() {
   if [[ "$ls_dir" == -* ]]; then
     ls_dir="./$ls_dir"
   fi
+  
+  # Collect entries first, then batch stat
+  local entries=()
   local entry
   while IFS= read -r entry; do
-    # entry is a bare name, may include spaces/tabs; preserve as-is.
-    # Pass the full path for stat/readlink, but use bare entry name for display.
-    a_push_row "${d%/}/$entry" "$entry" 1
+    entries+=("$entry")
   done < <(/bin/ls -1A "$ls_dir" 2>/dev/null | sed -E '/^\./d')
+  
+  [ "${#entries[@]}" -eq 0 ] && return 0
+  
+  # Batch stat all entries
+  local paths=()
+  local display_names=()
+  for entry in "${entries[@]}"; do
+    paths+=("${d%/}/$entry")
+    display_names+=("$entry")
+  done
+  
+  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
+  local idx=0
+  while IFS= read -r st; do
+    [ "$idx" -ge "${#paths[@]}" ] && break
+    if [ -z "$st" ]; then
+      ((idx++))
+      continue
+    fi
+    
+    local b512 perms links su sg uid gid size epoch name
+    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
+    
+    if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+      name="${name%% -> *}"
+    fi
+    if [[ "$name" == ./* ]]; then
+      name="${name#./}"
+    fi
+    
+    local blocks1k=$(( (b512 + 1) / 2 ))
+    
+    local owner group
+    if [ "$NUMERICUIDGID" -eq 1 ]; then
+      owner="$uid"
+      group="$gid"
+    else
+      owner="$su"
+      group="$sg"
+    fi
+    
+    local display_name="${display_names[$idx]}"
+    local path="${paths[$idx]}"
+    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${display_name}${DELIM}${path}${DELIM}1")
+    ((idx++)) || true
+  done < <(/usr/bin/stat -f "$stat_fmt" -- "${paths[@]}" 2>/dev/null)
 }
 
 # Grouped output order: files first, then directories (like many ls builds). Keep simple: keep operand order.
@@ -595,13 +694,26 @@ done
 
 dir_markers=() # each marker: "<dir><US><start_index><US><end_index>"
 
+# Batch stat calls for ROW operands
+row_paths=()
+for g in "${groups[@]}"; do
+  kind="${g%%"${DELIM}"*}"
+  val="${g#*"${DELIM}"}"
+  if [ "$kind" = "ROW" ]; then
+    row_paths+=("$val")
+  fi
+done
+
+if [ "${#row_paths[@]}" -gt 0 ]; then
+  batch_push_rows "${row_paths[@]}"
+fi
+
+# Process directory groups
 for g in "${groups[@]}"; do
   kind="${g%%"${DELIM}"*}"
   val="${g#*"${DELIM}"}"
 
-  if [ "$kind" = "ROW" ]; then
-    a_push_row "$val"
-  else
+  if [ "$kind" = "HDR" ]; then
     # Directory expansion
     start_idx=${#rows[@]}
     list_dir_contents "$val"
