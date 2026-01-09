@@ -499,11 +499,13 @@ batch_push_rows() {
       continue
     fi
     
-    local b512 perms links su sg uid gid size epoch name
+    local b512 perms links su sg uid gid size epoch name target
     IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
     
-    # BSD stat %N may include "name -> target" for symlinks; keep only the name part
+    # BSD stat %N may include "name -> target" for symlinks; capture target without spawning readlink.
+    target=""
     if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+      target="${name#* -> }"
       name="${name%% -> *}"
     fi
     if [[ "$name" == ./* ]]; then
@@ -523,7 +525,8 @@ batch_push_rows() {
     
     local path="${paths[$idx]}"
     local row_idx=${#rows[@]}
-    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${path}${DELIM}0")
+    # Fields: blocks perms links owner group size epoch name target path is_child
+    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${target}${DELIM}${path}${DELIM}0")
     # Store mapping from path to row index for O(1) lookup
     row_index_map["$path"]=$row_idx
     ((idx++)) || true
@@ -582,7 +585,7 @@ fi
 # Build listing: expand directories (unless -d)
 # ------------------------------
 # Rows stored as US-separated fields to preserve names safely.
-# Fields: blocks perms links owner group size epoch name path is_child
+# Fields: blocks perms links owner group size epoch name target path is_child
 rows=()
 # Map from path to row index for O(1) lookup when printing ROW operands
 declare -A row_index_map
@@ -606,11 +609,13 @@ a_push_row() {
     return 0
   fi
 
-  local b512 perms links su sg uid gid size epoch name
+  local b512 perms links su sg uid gid size epoch name target
   IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
 
-  # BSD stat %N may include "name -> target" for symlinks; keep only the name part for display.
+  # BSD stat %N may include "name -> target" for symlinks; capture target without spawning readlink.
+  target=""
   if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+    target="${name#* -> }"
     name="${name%% -> *}"
   fi
   if [[ "$name" == ./* ]]; then
@@ -637,8 +642,8 @@ a_push_row() {
     group="$sg"
   fi
 
-  # Store raw name (for display), path (for stat/readlink), and is_child flag.
-  rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${final_name}${DELIM}${path}${DELIM}${is_child}")
+  # Store raw name (for display), target (from stat %N), path, and is_child flag.
+  rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${final_name}${DELIM}${target}${DELIM}${path}${DELIM}${is_child}")
 }
 
 list_dir_contents() {
@@ -656,7 +661,7 @@ list_dir_contents() {
   local entry
   while IFS= read -r entry; do
     entries+=("$entry")
-  done < <(/bin/ls -1A "$ls_dir" 2>/dev/null | sed -E '/^\./d')
+  done < <(/bin/ls -1 "$ls_dir" 2>/dev/null)
   
   [ "${#entries[@]}" -eq 0 ] && return 0
   
@@ -677,10 +682,12 @@ list_dir_contents() {
       continue
     fi
     
-    local b512 perms links su sg uid gid size epoch name
+    local b512 perms links su sg uid gid size epoch name target
     IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
     
+    target=""
     if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+      target="${name#* -> }"
       name="${name%% -> *}"
     fi
     if [[ "$name" == ./* ]]; then
@@ -700,7 +707,7 @@ list_dir_contents() {
     
     local display_name="${display_names[$idx]}"
     local path="${paths[$idx]}"
-    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${display_name}${DELIM}${path}${DELIM}1")
+    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${display_name}${DELIM}${target}${DELIM}${path}${DELIM}1")
     ((idx++)) || true
   done < <(/usr/bin/stat -f "$stat_fmt" -- "${paths[@]}" 2>/dev/null)
 }
@@ -823,8 +830,7 @@ widths="$(
 
       # time widths: prefix may be "in"
       # We keep conservative widths based on computed buckets.
-      now = NOW_EPOCH
-      if (now !~ /^[0-9]+$/) now = systime()
+      now = NOW_EPOCH + 0
       dt = now - epoch
       abs=dt
       if (dt<0){abs=-dt; any_fut=1}
@@ -844,6 +850,7 @@ widths="$(
 
 IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE ANY_FUT W_TNUM W_TUNIT <<<"$widths"
 
+# Keep lpad/rpad for backward compatibility (may be used elsewhere)
 lpad() {
   local s="$1" w="$2" len pad
   len="$(visible_len "$s")"
@@ -867,105 +874,260 @@ rpad() {
 }
 
 # ------------------------------
-# Print groups in requested order
+# Print groups in requested order (OPTIMIZED: single awk render pass)
 # ------------------------------
-print_row_by_index() {
-  local idx="$1"
-
-  local rec="${rows[$idx]}"
-  local blocks perms links owner group size epoch name path is_child
-  IFS="$DELIM" read -r blocks perms links owner group size epoch name path is_child <<<"$rec"
-
-  # Owner substitution
-  if [ "$NUMERICUIDGID" -eq 0 ] && [ -n "$USERNAME" ] && [ "$owner" = "$USERNAME" ]; then
-    owner="you"
-  fi
-
-  # Colorize owner
-  local owner_colored="$owner"
-  if [ "$owner" = "you" ]; then
-    owner_colored="${cusr}${owner}${creset}"
-  elif [ "$owner" = "root" ]; then
-    owner_colored="${croot}${owner}${creset}"
-  fi
-
-  # Size formatting/coloring
-  local size_disp="$size"
-  local size_colored
-  if [ "$HUMANREADABLE" -eq 1 ]; then
-    size_disp="$(human_size "$size")"
-    size_colored="$(color_size_human "$size_disp")"
-  else
-    local c
-    c="$(size_color_numeric "$size")"
-    size_colored="${c}${size}${creset}"
-  fi
-
-  # Blocks formatting/coloring
-  local blocks_colored=""
-  if [ "$ASIZE" -eq 1 ]; then
-    if [ "$HUMANREADABLE" -eq 1 ]; then
-      local b_label b_colored
-      b_label="$(blocks_human_label "$blocks" "$SI")"
-      b_colored="$(color_size_human "$b_label")"
-      blocks_colored="$(lpad "$b_colored" "$W_BLOCKS") "
-    else
-      blocks_colored="${cb}$(lpad "$blocks" "$W_BLOCKS")${creset} "
-    fi
-  fi
-
-  # Time
-  time_parts "$epoch"
-  local num_s unit_s t_raw t_col value_width value_core value_field
-  num_s="$TNUM"
-  unit_s="$(rpad "$TUNIT" "$W_TUNIT")"
-  if [ "$ANY_FUT" -eq 1 ]; then
-    value_width=$((W_TNUM + 3))
-  else
-    value_width=$W_TNUM
-  fi
-  if [ "$TFUT" -eq 1 ]; then
-    value_core="in $num_s"
-  else
-    value_core="$num_s"
-  fi
-  value_field="$(lpad "$value_core" "$value_width")"
-  t_raw="${value_field} ${unit_s}"
-  t_col="$(color_reltime "$t_raw" "$TUNIT" "$TFUT")"
-
-  # Permissions
-  local perms_col
-  perms_col="$(color_perm "$perms")"
-
-  # Name
-  local name_out
-  local name_suffix
-  name_out="$(format_name "$name" "$perms" "$path")"
-  name_suffix=""
-  if [ "$(visible_len "$name_out")" -ge 200 ]; then
-    name_suffix=$'\033[K'
-  fi
-
-  # Emit
-  out=""
-  if [ "$ASIZE" -eq 1 ]; then
-    out+="$blocks_colored"
-  fi
-  out+="$(rpad "$perms_col" "$W_PERMS") "
-  out+="$(lpad "$links" "$W_LINKS") "
-
-  if [ "$OWNER" -eq 1 ]; then
-    out+="$(rpad "$owner_colored" "$W_OWNER") "
-  fi
-  if [ "$GROUPNAME" -eq 1 ]; then
-    out+="$(rpad "$group" "$W_GROUP") "
-  fi
-
-  out+="$(lpad "$size_colored" "$W_SIZE") "
-  out+="${t_col} "
-  out+="$name_out${name_suffix}"
-
-  printf '%s\n' "$out"
+# Render rows using single awk pass (OPTIMIZED - stream processing)
+render_rows_awk() {
+  local start_idx="$1"
+  local end_idx="$2"
+  local slice_len=$((end_idx - start_idx))
+  
+  # Render using awk (stream processing - no need to store all rows)
+  printf '%s\n' "${rows[@]:start_idx:slice_len}" | /usr/bin/awk \
+    -v FS="$DELIM" \
+    -v DELIM="$DELIM" \
+    -v ASIZE="$ASIZE" \
+    -v OWNER="$OWNER" \
+    -v GROUPNAME="$GROUPNAME" \
+    -v HUMAN="$HUMANREADABLE" \
+    -v SI="$SI" \
+    -v USERNAME="$USERNAME" \
+    -v NUMERIC="$NUMERICUIDGID" \
+    -v NOW_EPOCH="$NOW_EPOCH" \
+    -v DEC_SEP="$DEC_SEP" \
+    -v W_BLOCKS="$W_BLOCKS" \
+    -v W_PERMS="$W_PERMS" \
+    -v W_LINKS="$W_LINKS" \
+    -v W_OWNER="$W_OWNER" \
+    -v W_GROUP="$W_GROUP" \
+    -v W_SIZE="$W_SIZE" \
+    -v ANY_FUT="$ANY_FUT" \
+    -v W_TNUM="$W_TNUM" \
+    -v W_TUNIT="$W_TUNIT" \
+    -v cd="${cd}" -v cl="${cl}" -v cr="${cr}" -v cw="${cw}" -v cx="${cx}" -v cplus="${cplus}" \
+    -v cusr="${cusr}" -v croot="${croot}" \
+    -v cb="${cb}" -v ck="${ck}" -v cm="${cm}" -v cg="${cg}" -v ct="${ct}" \
+    -v clT="${clT}" -v clG="${clG}" -v clM="${clM}" -v clK="${clK}" -v clB="${clB}" \
+    -v csec="${csec}" -v cmin="${cmin}" -v chrs="${chrs}" -v cday="${cday}" -v cmon="${cmon}" -v cyr="${cyr}" -v cfut="${cfut}" \
+    -v creset="${creset}" '
+    # STREAM RENDER: each input row is already in the right slice
+    {
+      # Fields: blocks perms links owner group size epoch name target path is_child
+      blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7; name=$8; target=$9; path=$10;
+      
+      # Owner substitution
+      if (!NUMERIC && USERNAME != "" && owner == USERNAME) owner = "you"
+      
+      # Colorize owner
+      if (owner == "you") owner_colored = cusr owner creset
+      else if (owner == "root") owner_colored = croot owner creset
+      else owner_colored = owner
+      
+      # Size formatting/coloring
+      if (HUMAN && size ~ /^[0-9]+$/) {
+        size_disp = human_size(size)
+        size_colored = color_size_human(size_disp)
+      } else {
+        c = size_color_numeric(size + 0)
+        size_colored = c size creset
+      }
+      
+      # Blocks formatting/coloring
+      blocks_colored = ""
+      if (ASIZE) {
+        if (HUMAN && blocks ~ /^[0-9]+$/) {
+          b_label = blocks_human_label(blocks, SI)
+          b_colored = color_size_human(b_label)
+          blocks_colored = lpad(b_colored, W_BLOCKS) " "
+        } else {
+          blocks_colored = cb lpad(blocks, W_BLOCKS) creset " "
+        }
+      }
+      
+      # Time formatting
+      time_calc(epoch + 0)
+      num_s = sprintf("%d", time_num)
+      unit_s = rpad(time_unit, W_TUNIT)
+      value_width = ANY_FUT ? (W_TNUM + 3) : W_TNUM
+      value_core = time_future ? ("in " num_s) : num_s
+      value_field = lpad(value_core, value_width)
+      t_raw = value_field " " unit_s
+      t_colored = color_reltime(t_raw, time_unit, time_future)
+      
+      # Permissions coloring
+      perms_colored = color_perm(perms)
+      
+      # Name formatting (symlink target comes from stat %N; no readlink spawns)
+      name_out = format_name(name, perms, target)
+      name_suffix = ""
+      name_len = length(strip_colors(name_out))
+      if (name_len >= 200) name_suffix = sprintf("%c[K", 27)
+      
+      out = ""
+      if (ASIZE) out = out blocks_colored
+      out = out rpad(perms_colored, W_PERMS) " "
+      out = out lpad(links, W_LINKS) " "
+      if (OWNER) out = out rpad(owner_colored, W_OWNER) " "
+      if (GROUPNAME) out = out rpad(group, W_GROUP) " "
+      out = out lpad(size_colored, W_SIZE) " "
+      out = out t_colored " "
+      out = out name_out name_suffix
+      print out
+    }
+    
+    # Helper functions (matching bash implementations)
+    function strip_colors(s) {
+      gsub(/\033\[[0-9;]*[mK]/, "", s)
+      return s
+    }
+    
+    function lpad(s, w,   raw_len, n, out) {
+      raw_len = length(strip_colors(s))
+      n = w - raw_len
+      if (n <= 0) return s
+      out = ""
+      while (n-- > 0) out = out " "
+      return out s
+    }
+    
+    function rpad(s, w,   raw_len, n, out) {
+      raw_len = length(strip_colors(s))
+      n = w - raw_len
+      if (n <= 0) return s
+      out = ""
+      while (n-- > 0) out = out " "
+      return s out
+    }
+    
+    function quote_if_needed(s) {
+      if (index(s, " ") > 0 || index(s, "\t") > 0) return "\"" s "\""
+      return s
+    }
+    
+    function format_name(name, perms, target) {
+      if (perms ~ /^l/ && target != "") {
+        return quote_if_needed(name) " -> " quote_if_needed(target)
+      }
+      return quote_if_needed(name)
+    }
+    
+    function color_perm(p,   i, ch, out) {
+      out = ""
+      for (i=1; i<=length(p); i++) {
+        ch = substr(p, i, 1)
+        if (ch == "d") out = out cd ch creset
+        else if (ch == "l") out = out cl ch creset
+        else if (ch == "r") out = out cr ch creset
+        else if (ch == "w") out = out cw ch creset
+        else if (ch == "x") out = out cx ch creset
+        else if (ch == "+") out = out cplus ch creset
+        else out = out ch
+      }
+      return out
+    }
+    
+    function size_color_numeric(x) {
+      if (x < 1024) return cb
+      if (x < 1048576) return ck
+      if (x < 1073741824) return cm
+      if (x < 1099511627776) return cg
+      return ct
+    }
+    
+    function color_size_human(s,   num, suf, pos, len) {
+      if (s ~ /^[0-9]+$/) s = s "B"
+      # BSD awk compatible: extract number and suffix manually
+      if (s ~ /^[0-9]+(\.[0-9]+)?[kKMGTTB]$/) {
+        # Find the suffix (last character)
+        len = length(s)
+        suf = substr(s, len, 1)
+        # Extract number part (everything except suffix)
+        num = substr(s, 1, len - 1)
+        if (suf == "T") return ct num creset clT suf creset
+        if (suf == "G") return cg num creset clG suf creset
+        if (suf == "M") return cm num creset clM suf creset
+        if (suf == "K" || suf == "k") return ck num creset clK suf creset
+        if (suf == "B") return cb num creset clB suf creset
+      }
+      return cb s creset
+    }
+    
+    function human_size(bytes,   unit, scaled) {
+      if (bytes !~ /^[0-9]+$/) return bytes
+      if (bytes < 1024) return bytes "B"
+      if (bytes < 1048576) {
+        scaled = sprintf("%.1f", bytes / 1024.0)
+        gsub(/\.0$/, "", scaled)
+        return scaled "K"
+      }
+      if (bytes < 1073741824) {
+        scaled = sprintf("%.1f", bytes / 1048576.0)
+        gsub(/\.0$/, "", scaled)
+        return scaled "M"
+      }
+      if (bytes < 1099511627776) {
+        scaled = sprintf("%.1f", bytes / 1073741824.0)
+        gsub(/\.0$/, "", scaled)
+        return scaled "G"
+      }
+      scaled = sprintf("%.1f", bytes / 1099511627776.0)
+      gsub(/\.0$/, "", scaled)
+      return scaled "T"
+    }
+    
+    function blocks_human_label(blocks, si_mode,   bytes, base, unit, val, out) {
+      if (blocks !~ /^[0-9]+$/) return blocks
+      bytes = blocks * 1024
+      base = si_mode ? 1000 : 1024
+      if (bytes < base) return "0B"
+      if (bytes < base*base) {
+        unit = si_mode ? "k" : "K"
+        val = sprintf("%.1f", bytes / base)
+        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
+        return val unit
+      }
+      if (bytes < base*base*base) {
+        val = sprintf("%.1f", bytes / (base*base))
+        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
+        return val "M"
+      }
+      if (bytes < base*base*base*base) {
+        val = sprintf("%.1f", bytes / (base*base*base))
+        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
+        return val "G"
+      }
+      val = sprintf("%.1f", bytes / (base*base*base*base))
+      if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
+      return val "T"
+    }
+    
+    function time_calc(epoch,   dt, now, prefix, abs, v, lbl) {
+      now = NOW_EPOCH + 0
+      dt = int(now - epoch)
+      if (dt < 0) { prefix = "in"; abs = -dt } else { prefix = ""; abs = dt }
+      if (abs < 120) { v = abs; lbl = "sec" }
+      else if (abs < 3600) { v = int(abs/60); lbl = "min" }
+      else if (abs < 172800) { v = int(abs/3600); lbl = "hrs" }
+      else if (abs < 3888000) { v = int(abs/86400); lbl = "day" }
+      else if (abs < 31536000) { v = int(abs/2592000); lbl = "mon" }
+      else { v = int(abs/31536000); lbl = "yr" }
+      time_prefix = prefix
+      time_num = v
+      time_unit = lbl
+      time_future = (prefix != "")
+    }
+    
+    function color_reltime(s, unit, is_future) {
+      if (is_future) return cfut s creset
+      if (unit == "sec") return csec s creset
+      if (unit == "min") return cmin s creset
+      if (unit == "hrs") return chrs s creset
+      if (unit == "day") return cday s creset
+      if (unit == "mon") return cmon s creset
+      if (unit == "yr") return cyr s creset
+      return s
+    }
+    '
 }
 
 # If multiple operands and we have directory groups, print headers like ls.
@@ -984,7 +1146,8 @@ for g in "${groups[@]}"; do
   if [ "$kind" = "ROW" ]; then
     # Use stored index mapping for O(1) lookup instead of O(n) scan
     if [ -n "${row_index_map["$val"]:-}" ]; then
-      print_row_by_index "${row_index_map["$val"]}"
+      idx="${row_index_map["$val"]}"
+      render_rows_awk "$idx" "$((idx + 1))"
       printed_any=1
     fi
   fi
@@ -1000,9 +1163,7 @@ for m in "${dir_markers[@]}"; do
     printf '%s:\n' "$d"
   fi
 
-  for ((i=start; i<end; i++)); do
-    print_row_by_index "$i"
-  done
+  render_rows_awk "$start" "$end"
 
   if [ "$total_applicable" -eq 1 ]; then
     total_blocks=0
