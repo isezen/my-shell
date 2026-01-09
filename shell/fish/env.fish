@@ -26,3 +26,12 @@ function set_dircolors
 	end
 end
 
+# LSCOLORS: GNU-like approximate (dirs bold blue, symlinks bold cyan, exec bold green)
+set -xU LSCOLORS "ExGxFxDxCxegedabagacad"
+
+# Alternative LSCOLORS palettes (uncomment to use):
+# Default macOS palette:
+# set -xU LSCOLORS "ExFxBxDxCxegedabagacad"
+# High-contrast variant:
+# set -xU LSCOLORS "HxGxFxDxCxegedabagacad"
+

@@ -23,3 +23,12 @@ if command ls --version >/dev/null 2>&1; then
   fi
 fi
 
+# LSCOLORS: GNU-like approximate (dirs bold blue, symlinks bold cyan, exec bold green)
+export LSCOLORS="ExGxFxDxCxegedabagacad"
+
+# Alternative LSCOLORS palettes (uncomment to use):
+# Default macOS palette:
+# export LSCOLORS="ExFxBxDxCxegedabagacad"
+# High-contrast variant:
+# export LSCOLORS="HxGxFxDxCxegedabagacad"
+
