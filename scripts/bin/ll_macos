@@ -95,7 +95,7 @@ batch_push_rows() {
     fi
   done
   
-  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
+  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
   local idx=0
   while IFS= read -r st; do
     [ "$idx" -ge "${#paths[@]}" ] && break
@@ -104,12 +104,14 @@ batch_push_rows() {
       continue
     fi
     
-    local b512 perms links su sg uid gid size epoch name target
-    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
+    local b512 perms links su sg uid gid size epoch name linktgt target
+    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name linktgt <<<"$st"
     
-    # BSD stat %N may include "name -> target" for symlinks; capture target without spawning readlink.
-    target=""
-    if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+    # Prefer %Y as link target (works for broken symlinks too).
+    target="${linktgt:-}"
+
+    # Backward-compat: if %Y is empty but %N contains "name -> target", split it.
+    if [[ -z "$target" ]] && [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
       target="${name#* -> }"
       name="${name%% -> *}"
     fi
@@ -194,7 +196,7 @@ try_fastpath_single_dir() {
       exit 0
     fi
 
-    local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
+    local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
 
     # One stat + one awk (awk holds rows in arrays, computes widths, renders in END)
     # Force C locale for speed (stat+awk string handling is noticeably faster on macOS).
@@ -336,7 +338,7 @@ try_fastpath_single_dir() {
 
     {
       # stat fields
-      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10
+      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10; ltarget=$11
 
       # blocks in 1K
       blocks1k = int((b512 + 1) / 2)
@@ -347,16 +349,11 @@ try_fastpath_single_dir() {
 
       if (!NUMERIC && USERNAME!="" && owner==USERNAME) owner="you"
 
-      # Display name + optional symlink target from stat %N.
-      # macOS stat %N often yields "name -> target" for symlinks.
+      # Display name + optional symlink target.
       n_rows++
       display = nraw
       if (substr(display,1,2)=="./") display = substr(display,3)
-      target = ""
-      if (perms ~ /^l/ && index(display, " -> ") > 0) {
-        target = substr(display, index(display, " -> ") + 4)
-        display = substr(display, 1, index(display, " -> ") - 1)
-      }
+      target = ltarget
       rows_blocks[n_rows]=blocks1k
       rows_perms[n_rows]=perms
       rows_links[n_rows]=links
@@ -624,7 +621,7 @@ list_dir_contents() {
     display_names+=("$entry")
   done
   
-  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
+  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
   local idx=0
   while IFS= read -r st; do
     [ "$idx" -ge "${#paths[@]}" ] && break
@@ -633,11 +630,13 @@ list_dir_contents() {
       continue
     fi
     
-    local b512 perms links su sg uid gid size epoch name target
-    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name <<<"$st"
+    local b512 perms links su sg uid gid size epoch name linktgt target
+    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name linktgt <<<"$st"
     
-    target=""
-    if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+    target="${linktgt:-}"
+
+    # Backward-compat fallback if %Y is empty but %N contains arrow.
+    if [[ -z "$target" ]] && [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
       target="${name#* -> }"
       name="${name%% -> *}"
     fi
