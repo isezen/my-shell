@@ -309,6 +309,11 @@ ll_macos_ref_line() {
   if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
     name="${name%% -> *}"
   fi
+  
+  # Strip ./ prefix to match ll_macos behavior
+  if [[ "$name" == ./* ]]; then
+    name="${name#./}"
+  fi
 
   if [[ "$perms" == l* ]]; then
     target="$(/usr/bin/readlink "$stat_path" 2>/dev/null || true)"

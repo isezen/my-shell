@@ -7,6 +7,8 @@ my $now = $ENV{LS_COMPARE_NOW_EPOCH};
 $now = time() if !defined($now) || $now !~ /^-?\d+$/;
 my $u = $ENV{LS_COMPARE_USER};
 my $has_human = $ENV{LS_COMPARE_HAS_HUMAN} // 0;
+my $has_blocks = $ENV{LS_COMPARE_HAS_BLOCKS} // 0;
+my $has_si = $ENV{LS_COMPARE_HAS_SI} // 0;
 my $perms_re = qr/^(?:[bcdlps-])[rwxstST-]{9}[+.@]?$/;
 my $blocks_re = qr/^[0-9]+(?:[.,][0-9]+)?[KMGTPBkmgptb]?$/;
 
@@ -62,6 +64,34 @@ sub quote_if_needed {
   my ($s) = @_;
   return $s if !defined($s);
   return (index($s, " ") >= 0 || index($s, "\t") >= 0) ? "\"$s\"" : $s;
+}
+
+# Normalize block-size token to match ll_linux canonicalization
+# Input: blocks column token (e.g. "0B", "12K", "4.0K", "4,0K")
+# Returns: normalized token
+sub normalize_blocks_token {
+  my ($tok) = @_;
+  return $tok unless defined($tok);
+
+  # Special case: "0B" or "0.0B" -> "0" (match GNU ls -s -h)
+  return "0" if $tok =~ /^0(?:\.0)?B$/;
+
+  # Unify decimal separator: comma to dot
+  $tok =~ s/,/./g;
+
+  # Trim trailing ".0" before unit (e.g. "4.0K" -> "4K")
+  $tok =~ s/\.0([KMGTPBkmgptb])$/$1/;
+
+  # Normalize unit letter based on has_si flag
+  if ($has_si) {
+    # --si style: use lowercase 'k' for kilo
+    $tok =~ s/K$/k/;
+  } else {
+    # -h style: use uppercase 'K' for kilo
+    $tok =~ s/k$/K/;
+  }
+
+  return $tok;
 }
 
 sub lpad {
@@ -162,6 +192,15 @@ for my $line (@lines) {
         $prefix_toks[-1] = $prefix_toks[-1] . "B";
       }
       
+      # Normalize blocks column when present
+      my $bsd_perm_idx = 0;
+      if (@prefix_toks >= 2 && $prefix_toks[0] !~ $perms_re && $prefix_toks[0] =~ $blocks_re) {
+        $bsd_perm_idx = 1;
+      }
+      if ($has_blocks && $bsd_perm_idx == 1) {
+        $prefix_toks[0] = normalize_blocks_token($prefix_toks[0]);
+      }
+      
       my ($tprefix, $tnum, $tunit) = rel_parts($epoch_from_bsd);
       $any_future = 1 if $tprefix eq "in";
       $w_tnum = length("$tnum") if length("$tnum") > $w_tnum;
@@ -212,6 +251,12 @@ for my $line (@lines) {
   if (@toks >= 2 && $toks[0] !~ $perms_re && $toks[0] =~ $blocks_re) {
     $perm_idx = 1;
   }
+  
+  # Normalize blocks column when present (perm_idx==1 means toks[0] is blocks)
+  if ($has_blocks && $perm_idx == 1) {
+    $toks[0] = normalize_blocks_token($toks[0]);
+  }
+  
   my $perms = $toks[$perm_idx] // "";
 
   push @rows, {

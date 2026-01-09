@@ -72,6 +72,7 @@
 │   └── TEST_COVERAGE.md
 ├── wip
 │   ├── ll_current_state_report.md
+│   ├── test_fixes_git_diff.txt
 │   └── todo.md
 ├── ~
 ├── CHANGELOG.md
@@ -83,5 +84,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-20 directories, 62 files
+20 directories, 63 files
 ```
