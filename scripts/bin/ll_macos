@@ -116,22 +116,53 @@ format_name() {
   quote_if_needed "$name"
 }
 
-strip_ansi() {
-  /usr/bin/perl -pe '
-    s/\e\[[0-9;?]*[ -\/]*[@-~]//g;
-    s/\e\][^\a]*(\a|\e\\)//g;
-    s/\e[P^_].*?(\e\\)//gs;
-    s/\e[()#][0-9A-Za-z]//g;
-    s/\e[\x40-\x5F]//g;
-    s/\x1b\[[0-9;]*K//g;
-    s/\r//g;
-  '
+# Pure bash ANSI stripping for this script's specific sequences:
+# - SGR sequences: ESC[...m (colors)
+# - Line clear: ESC[...K (used as name_suffix)
+# This avoids spawning perl for every visible_len() call.
+strip_ansi_bash() {
+  local s="$1"
+  local result=""
+  local i=0
+  local len=${#s}
+  
+  while [ "$i" -lt "$len" ]; do
+    if [ "${s:$i:2}" = $'\033[' ]; then
+      # Found ESC[, skip until we find 'm' or 'K'
+      local j=$((i + 2))
+      local found=0
+      while [ "$j" -lt "$len" ]; do
+        local ch="${s:$j:1}"
+        if [ "$ch" = "m" ] || [ "$ch" = "K" ]; then
+          i=$((j + 1))
+          found=1
+          break
+        fi
+        # Skip valid SGR characters: digits, semicolons, spaces, question marks, hyphens, slashes
+        case "$ch" in
+          [0-9]|';'|' '|'?'|'-'|'/') ;;
+          *) break ;;  # Invalid character in sequence
+        esac
+        ((j++))
+      done
+      if [ "$found" -eq 0 ]; then
+        # Sequence not properly terminated, include ESC[ as literal
+        result+="${s:$i:1}"
+        ((i++))
+      fi
+    else
+      result+="${s:$i:1}"
+      ((i++))
+    fi
+  done
+  
+  printf '%s' "$result"
 }
 
 visible_len() {
-  local raw
-  raw="$(printf '%s' "$1" | strip_ansi)"
-  printf '%s' "${#raw}"
+  local stripped
+  stripped="$(strip_ansi_bash "$1")"
+  printf '%s' "${#stripped}"
 }
 
 # Convert bytes to human label (base-2), close to GNU ls -h.
@@ -491,7 +522,10 @@ batch_push_rows() {
     fi
     
     local path="${paths[$idx]}"
+    local row_idx=${#rows[@]}
     rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${path}${DELIM}0")
+    # Store mapping from path to row index for O(1) lookup
+    row_index_map["$path"]=$row_idx
     ((idx++)) || true
   done < <(/usr/bin/stat -f "$stat_fmt" -- "${stat_paths[@]}" 2>/dev/null)
 }
@@ -550,6 +584,8 @@ fi
 # Rows stored as US-separated fields to preserve names safely.
 # Fields: blocks perms links owner group size epoch name path is_child
 rows=()
+# Map from path to row index for O(1) lookup when printing ROW operands
+declare -A row_index_map
 
 a_push_row() {
   local path="$1"
@@ -946,19 +982,11 @@ for g in "${groups[@]}"; do
   val="${g#*"${DELIM}"}"
 
   if [ "$kind" = "ROW" ]; then
-    # Find matching row indices by path (we appended in the same order, so linear scan is ok).
-    # Row format: blocks perms links owner group size epoch name path is_child
-    for i in "${!rows[@]}"; do
-      rec="${rows[$i]}"
-      # Extract path (9th field, before is_child)
-      row_path=""
-      IFS="$DELIM" read -r _ _ _ _ _ _ _ _ row_path _ <<<"$rec" || true
-      if [ "$row_path" = "$val" ]; then
-        print_row_by_index "$i"
-        printed_any=1
-        break
-      fi
-    done
+    # Use stored index mapping for O(1) lookup instead of O(n) scan
+    if [ -n "${row_index_map["$val"]:-}" ]; then
+      print_row_by_index "${row_index_map["$val"]}"
+      printed_any=1
+    fi
   fi
 done
 
