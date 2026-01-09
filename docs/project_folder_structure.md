@@ -134,6 +134,13 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
+│   ├── improve-ll
+│   │   ├── FINAL_POLICY_VERIFICATION.md
+│   │   ├── IMPLEMENTATION_DETAILS.md
+│   │   ├── IMPLEMENTATION_SUMMARY.md
+│   │   ├── REFACTORING_COMPLETE.md
+│   │   ├── REFACTORING_SUMMARY.md
+│   │   └── SCRIPT_FIXES_SUMMARY.md
 │   ├── IMPROVEMENTS.md
 │   ├── ll-before.md
 │   ├── ll-decision.md
@@ -143,18 +150,12 @@
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
-├── FINAL_POLICY_VERIFICATION.md
-├── IMPLEMENTATION_DETAILS.md
-├── IMPLEMENTATION_SUMMARY.md
 ├── install.sh
 ├── LICENSE
 ├── Makefile
 ├── plan-ll-control.md
 ├── README.md
-├── REFACTORING_COMPLETE.md
-├── REFACTORING_SUMMARY.md
-├── REQUIREMENTS.md
-└── SCRIPT_FIXES_SUMMARY.md
+└── REQUIREMENTS.md
 
-31 directories, 124 files
+32 directories, 124 files
 ```

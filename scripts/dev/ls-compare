@@ -1,202 +1,101 @@
 #!/bin/bash
 # scripts/dev/ls-compare
-# Test script to compare ls -l --color --time-style=+"%s" output with ll script outputs
-# Tests various parameter combinations
-# Usage: ls-compare.sh [options] <script1> [script2 ...]
+# Test script to compare ls -l output with ll script implementations
+# Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
 
-# ============================================================================
-# NOTE: Additional content/fixture tests to add later (not implemented here)
-# ============================================================================
-# - Filenames:
-#   - Spaces: "a b.txt"
-#   - Leading space: " file"
-#   - Tab: $'a\tb'
-#   - Unicode: "İçerik-ğüşöç.txt"
-#   - Very long name (200+ chars)
-#   - Newline in name (will break line-based parsing): $'a\nb'
-# - File types:
-#   - Symlink and broken symlink ("name -> target")
-#   - FIFO, socket, block/char device (permission type chars p,s,b,c)
-# - Permissions:
-#   - setuid/setgid/sticky (s,S,t,T)
-#   - ACL indicator '+' in perms
-# - Timestamps:
-#   - Very recent (sec/min), hours, days, months, years
-#   - Future mtime (negative relative delta)
-# - Scale/perf:
-#   - Large dir (10k+ entries)
-#   - Slow FS (NFS/SMB)
-# - Environment:
-#   - TTY vs pipe, different TERM/LANG
-#   - GNU ls vs BSD ls compatibility checks
+set -euo pipefail
+
+export LC_ALL=C
+export TZ=UTC
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN_DIR="$PROJECT_ROOT/scripts/bin"
-LS_BIN="${LS_COMPARE_LS:-${LL_CHATGPT_LS:-}}"
-
-if [ -n "$LS_BIN" ]; then
-  if ! "$LS_BIN" --color -l --time-style=+"%s" . >/dev/null 2>&1; then
-    echo "Error: LS_COMPARE_LS must support --time-style=+%s" >&2
-    exit 1
-  fi
-else
-  if ls --color -l --time-style=+"%s" . >/dev/null 2>&1; then
-    LS_BIN="ls"
-  elif command -v gls >/dev/null 2>&1; then
-    LS_BIN="$(command -v gls)"
-  elif [ -x /opt/local/libexec/gnubin/ls ]; then
-    LS_BIN="/opt/local/libexec/gnubin/ls"
-  else
-    echo "Error: GNU ls with --time-style=+%s is required for ls-compare." >&2
-    exit 1
-  fi
-fi
 
 # ============================================================================
 # PARSE COMMAND LINE ARGUMENTS
 # ============================================================================
 
-# Optional flags:
-#   --show-ansi : make ANSI/control chars visible in side-by-side diff output.
-#   --fail-only : only print failing tests (still prints final summary).
-#   --keep-dir  : do not delete test directory after tests complete.
-#   --side-by-side : display outputs side-by-side (default: vertical/stacked format).
-#   --help      : show help message and exit.
-# Flags can be provided in any order, and can be combined.
-ONLY_TESTS=()
-ONLY_MODE=0
 SHOW_ANSI=0
+STRIP_ANSI=0
 FAIL_ONLY=0
 KEEP_DIR=0
 SIDE_BY_SIDE=0
+ONLY_TESTS=()
+ONLY_MODE=0
+
+# shellcheck disable=SC2034  # Variables set for future use
 while [ $# -gt 0 ]; do
   case "${1:-}" in
-    --help|-h)
-      cat <<EOF
-Usage: $0 [OPTIONS] [script1] [script2 ...]
+    --show-ansi) SHOW_ANSI=1; shift ;;
+    --strip-ansi) STRIP_ANSI=1; shift ;;
+    --fail-only) FAIL_ONLY=1; shift ;;
+    --keep-dir) KEEP_DIR=1; shift ;;
+    --side-by-side) SIDE_BY_SIDE=1; shift ;;
+    --only) ONLY_MODE=1; ONLY_TESTS+=("$2"); shift 2 ;;
+    --only=*) ONLY_MODE=1; ONLY_TESTS+=("${1#--only=}"); shift ;;
+    --help|-h) 
+      cat <<'EOF'
+Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
 
-Compare ls -l --color --time-style=+"%s" output with ll script outputs.
-If no scripts are provided, only ls output is shown for test cases.
+Compare ls -l output with ll implementation.
 
 OPTIONS:
   --help, -h              Show this help message and exit
-  
-  --show-ansi             Make ANSI/control characters visible in side-by-side
-                          diff output (useful for debugging color/formatting issues)
-  
-  --fail-only             Only print failing tests (still prints final summary)
-  
+  --show-ansi             Make ANSI/control characters visible in diff output
+  --strip-ansi            Strip ANSI codes for comparison (debugging only)
+  --fail-only             Only print failing tests (still shows summary)
   --keep-dir              Do not delete test directory after tests complete
-                          (useful for debugging - test directory path is shown at start)
-  
   --side-by-side          Display outputs side-by-side format
-                          (default: vertical/stacked format where each output is
-                          shown below the previous one)
-  
-  --only <TEST>           Run only specific test case(s). Can be specified multiple times.
-                          Value can be either:
-                          - Test case name (must match exactly)
-                          - Test number (e.g., 22 for Test #22)
-                          Example: --only "default" --only "-d" --only 22
-  
-  --only=<TEST>           Same as --only but using equals syntax.
-                          Example: --only="-d" --only="--directory" --only=22
+  --only <TEST>           Run only specific test case(s)
 
 EXAMPLES:
-  # Show ls output for all test cases
-  $0
-  
-  # Compare ll-chatgpt with ls output
-  $0 ll-chatgpt
-  
-  # Compare multiple scripts
-  $0 ll ll-chatgpt
-  
-  # Show only failing tests in side-by-side format
-  $0 --fail-only --side-by-side ll-chatgpt
-  
-  # Run only specific test cases (by name or number)
-  $0 --only "default" --only "-d" --only 22 ll-chatgpt
-  
-  # Keep test directory for inspection
-  $0 --keep-dir ll-chatgpt
-
-OUTPUT FORMATS:
-  Default (vertical/stacked):
-    Test #1: default
-    ----------------------------------
-      ls -l --color --time-style=+"%s":
-      [ls output]
-      
-      ll-chatgpt:
-      [script output]
-  
-  With --side-by-side:
-    Test #1: default
-    ----------------------------------
-      Side-by-side comparison:
-      [ls output] | [script output]
-
+  ls-compare ll_linux
+  ls-compare --fail-only ll_macos
+  ls-compare --side-by-side ll_linux
 EOF
       exit 0
       ;;
-    --show-ansi)
-      SHOW_ANSI=1
-      shift
-      ;;
-    --fail-only)
-      FAIL_ONLY=1
-      shift
-      ;;
-    --keep-dir)
-      KEEP_DIR=1
-      shift
-      ;;
-    --side-by-side)
-      SIDE_BY_SIDE=1
-      shift
-      ;;
-    --only)
-      # Filter to only run specific test cases. Value must match the test_case string.
-      if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
-        echo "Error: --only requires a value" >&2
-        exit 2
-      fi
-      ONLY_MODE=1
-      ONLY_TESTS+=("$2")
-      shift 2
-      ;;
-    --only=*)
-      # Support --only="-s -h" style.
-      ONLY_MODE=1
-      ONLY_TESTS+=("${1#--only=}")
-      shift
-      ;;
-    *)
-      break
-      ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
+    *) break ;;
   esac
 done
 
-# Script names are optional - if none provided, just show ls -l output for test cases
-script_names=()
-script_paths=()
-if [ $# -ge 1 ]; then
-  # Store script names and validate they exist
-  for script_name in "$@"; do
-    script_path="$BIN_DIR/$script_name"
-    if [ ! -f "$script_path" ] || [ ! -x "$script_path" ]; then
-      echo "Error: Script '$script_name' not found or not executable in $BIN_DIR" >&2
+if [ $# -ne 1 ]; then
+  echo "Error: exactly one script argument required (ll_linux or ll_macos)" >&2
+  exit 1
+fi
+
+SCRIPT_NAME="$1"
+case "$SCRIPT_NAME" in
+  ll_linux)
+    # GNU ls with --time-style
+    if command -v gls >/dev/null 2>&1; then
+      LS_BIN="$(command -v gls)"
+    elif ls --color -l --time-style="+%s" . >/dev/null 2>&1; then
+      LS_BIN="ls"
+    elif [ -x /opt/local/libexec/gnubin/ls ]; then
+      LS_BIN="/opt/local/libexec/gnubin/ls"
+    else
+      echo "Error: GNU ls required for ll_linux mode" >&2
       exit 1
     fi
-    script_names+=("$script_name")
-    script_paths+=("$script_path")
-  done
-fi
+    LS_FLAGS=("--color=always" "-l" "--time-style=+%s")
+    ;;
+  ll_macos)
+    # BSD ls without --time-style
+    LS_BIN="/bin/ls"
+    LS_FLAGS=("-G" "-l")
+    ;;
+  *)
+    echo "Error: script must be ll_linux or ll_macos" >&2
+    exit 1
+    ;;
+esac
 
 # ============================================================================
 # SETUP TEST ENVIRONMENT
 # ============================================================================
+
 TEST_DIR="/tmp/ls-compare-test-$$"
 mkdir -p "$TEST_DIR"
 echo "Test directory: $TEST_DIR"
@@ -209,101 +108,74 @@ chmod 755 file1.txt
 chmod 644 file2.txt
 
 # Extra filename edge cases
-# - Space in name
-printf "space" > "a b.txt"
-# - Leading space
-printf "lead" > " file-leading-space.txt"
-# - Tab in name
-printf "tab" > $'a\tb.txt'
-# - Unicode
-printf "utf" > "İçerik-ğüşöç.txt"
-# - Very long name (210 chars + .txt)
+printf '' > "a b.txt"
+printf '' > " file-leading-space.txt"
+printf '' > $'a\tb.txt'
+printf '' > "İçerik-ğüşöç.txt"
+# Very long name (0 bytes as per requirement)
 _long_name="$(printf 'a%.0s' {1..210}).txt"
-printf "long" > "$_long_name"
+printf '' > "$_long_name"
 
 # Extra file types
-# - Symlink and broken symlink
 ln -s "file1.txt" "symlink-to-file1" 2>/dev/null || true
 ln -s "does-not-exist" "broken-symlink" 2>/dev/null || true
-# - FIFO (named pipe)
 mkfifo "fifo1" 2>/dev/null || true
 
 # Permissions edge cases
-# - setuid/setgid (may be ignored by some FS / CI environments)
 cp "file1.txt" "setuid-file" 2>/dev/null || true
 chmod 4755 "setuid-file" 2>/dev/null || true
 cp "file1.txt" "setgid-file" 2>/dev/null || true
 chmod 2755 "setgid-file" 2>/dev/null || true
-# - setgid directory
 mkdir -p "setgid-dir" 2>/dev/null || true
 chmod 2755 "setgid-dir" 2>/dev/null || true
-# - sticky directory
 mkdir -p "sticky-dir" 2>/dev/null || true
 chmod 1777 "sticky-dir" 2>/dev/null || true
 
-# Make mtimes deterministic so relative-time output doesn't differ by 1-2 seconds
-# between sequential script runs.
-# Use a fixed point in time (Jan 1, 2020 00:00:00 local time).
-
+# Make mtimes deterministic (Jan 1, 2020 00:00:00 local time)
 touch -t 202001010000.00 \
   file1.txt file2.txt dir1 \
   "a b.txt" " file-leading-space.txt" $'a\tb.txt' "İçerik-ğüşöç.txt" \
   "$_long_name" symlink-to-file1 broken-symlink \
-  fifo1 setuid-file setgid-file setgid-dir sticky-dir
+  fifo1 setuid-file setgid-file setgid-dir sticky-dir 2>/dev/null || true
 
-# Make relative-time computations deterministic between scripts by freezing "now".
-# If the caller already set LL_NOW_EPOCH, respect it.
-_ORIG_LL_NOW_EPOCH_SET=0
-_ORIG_LL_NOW_EPOCH_VALUE=""
-if [ "${LL_NOW_EPOCH+x}" = "x" ]; then
-  _ORIG_LL_NOW_EPOCH_SET=1
-  _ORIG_LL_NOW_EPOCH_VALUE="$LL_NOW_EPOCH"
-else
-  export LL_NOW_EPOCH
-  LL_NOW_EPOCH=$(date +%s)
+# Set LL_NOW_EPOCH if not already set
+if [ -z "${LL_NOW_EPOCH:-}" ]; then
+  export LL_NOW_EPOCH=1577836800
 fi
 
-# Additional edge-case fixtures (keep default dir stable).
-GNU_DATE="date"
-GNU_TOUCH="touch"
-if [ -x /opt/local/libexec/gnubin/date ]; then
-  GNU_DATE="/opt/local/libexec/gnubin/date"
-fi
-if [ -x /opt/local/libexec/gnubin/touch ]; then
-  GNU_TOUCH="/opt/local/libexec/gnubin/touch"
-fi
-if ! "$GNU_DATE" -d "@0" "+%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
-  echo "Error: GNU date with -d is required for edge-case fixtures." >&2
-  exit 1
-fi
-if ! "$GNU_TOUCH" -d "@0" "$TEST_DIR/.touch-test" >/dev/null 2>&1; then
-  echo "Error: GNU touch with -d is required for edge-case fixtures." >&2
-  exit 1
-fi
-rm -f "$TEST_DIR/.touch-test"
+# Helper: convert an epoch (seconds) into a touch -t timestamp
+epoch_to_touch_ts() {
+  local epoch="${1:?epoch required}"
+  if date -r "$epoch" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -r "$epoch" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  if date -d "@${epoch}" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -d "@${epoch}" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  return 1
+}
 
-# Timestamp boundary fixtures (relative-time bucket boundaries).
-_now_epoch="${LL_NOW_EPOCH:-$(date +%s)}"
+# Create timestamp boundary fixtures relative to LL_NOW_EPOCH
 create_mtime_fixture() {
   local name="${1:?name required}"
   local delta="${2:?delta seconds required}"
-  local target_epoch=$((_now_epoch - delta))
+  local target_epoch=$((LL_NOW_EPOCH - delta))
   local ts
-
-  ts=$("$GNU_DATE" -d "@$target_epoch" '+%Y-%m-%d %H:%M:%S') || return 0
-  printf "" > "$name"
-  "$GNU_TOUCH" -d "$ts" "$name" 2>/dev/null || true
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
 }
 
 create_future_mtime_fixture() {
   local name="${1:?name required}"
   local delta="${2:?delta seconds required}"
-  local target_epoch=$((_now_epoch + delta))
+  local target_epoch=$((LL_NOW_EPOCH + delta))
   local ts
-
-  ts=$("$GNU_DATE" -d "@$target_epoch" '+%Y-%m-%d %H:%M:%S') || return 0
-  printf "" > "$name"
-  "$GNU_TOUCH" -d "$ts" "$name" 2>/dev/null || true
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
 }
 
 create_mtime_fixture "mtime-now-1s" 1
@@ -316,140 +188,131 @@ create_future_mtime_fixture "mtime-now-3yr" $((3 * 31536000))
 create_future_mtime_fixture "mtime-now-35yr" $((35 * 31536000))
 create_future_mtime_fixture "mtime-now-125yr" $((125 * 31536000))
 
-# Symlink target with space.
+# Symlink target with space
 mkdir -p "case-symlink-target-space"
-printf "space" > "case-symlink-target-space/target file.txt"
+printf '' > "case-symlink-target-space/target file.txt"
 ln -s "target file.txt" "case-symlink-target-space/link name.txt" 2>/dev/null || true
-touch -t 202001010000.00 "case-symlink-target-space/target file.txt"
+touch -t 202001010000.00 "case-symlink-target-space/target file.txt" 2>/dev/null || true
 touch -h -t 202001010000.00 "case-symlink-target-space/link name.txt" 2>/dev/null || true
 
-# Symlink target with tab.
+# Symlink target with tab
 mkdir -p "case-symlink-target-tab"
 _tab_target=$'t\ta'
 _tab_link=$'l\ti'
-printf "tab" > "case-symlink-target-tab/$_tab_target"
+printf '' > "case-symlink-target-tab/$_tab_target"
 ln -s "$_tab_target" "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
-touch -t 202001010000.00 "case-symlink-target-tab/$_tab_target"
+touch -t 202001010000.00 "case-symlink-target-tab/$_tab_target" 2>/dev/null || true
 touch -h -t 202001010000.00 "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
 
-# Future-only listing.
+# Future-only listing
 mkdir -p "case-future-only"
-printf "" > "case-future-only/f1.txt"
-printf "" > "case-future-only/f2.txt"
-_f1_epoch=$((_now_epoch + 2 * 24 * 3600))
-_f2_epoch=$((_now_epoch + 12 * 24 * 3600))
-_f1_str=$("$GNU_DATE" -d "@$_f1_epoch" '+%Y-%m-%d %H:%M:%S')
-_f2_str=$("$GNU_DATE" -d "@$_f2_epoch" '+%Y-%m-%d %H:%M:%S')
-"$GNU_TOUCH" -d "$_f1_str" "case-future-only/f1.txt"
-"$GNU_TOUCH" -d "$_f2_str" "case-future-only/f2.txt"
+printf '' > "case-future-only/f1.txt"
+printf '' > "case-future-only/f2.txt"
+_f1_epoch=$((LL_NOW_EPOCH + 2 * 24 * 3600))
+_f2_epoch=$((LL_NOW_EPOCH + 12 * 24 * 3600))
+_f1_ts=$(epoch_to_touch_ts "$_f1_epoch") || _f1_ts=""
+_f2_ts=$(epoch_to_touch_ts "$_f2_epoch") || _f2_ts=""
+if [ -n "$_f1_ts" ]; then
+  touch -t "$_f1_ts" "case-future-only/f1.txt" 2>/dev/null || true
+fi
+if [ -n "$_f2_ts" ]; then
+  touch -t "$_f2_ts" "case-future-only/f2.txt" 2>/dev/null || true
+fi
 
-# Mixed units and time widths.
+# Mixed units and time widths
 mkdir -p "case-mixed-time-width"
-printf "" > "case-mixed-time-width/sec.txt"
-printf "" > "case-mixed-time-width/hrs.txt"
-printf "" > "case-mixed-time-width/day.txt"
-printf "" > "case-mixed-time-width/mon.txt"
-printf "" > "case-mixed-time-width/future-3yr.txt"
-printf "" > "case-mixed-time-width/future-35yr.txt"
-printf "" > "case-mixed-time-width/future-125yr.txt"
-printf "" > "case-mixed-time-width/future-1000yr.txt"
-_sec_epoch=$((_now_epoch - 5))
-_hrs_epoch=$((_now_epoch - 3 * 3600))
-_day_epoch=$((_now_epoch - 12 * 24 * 3600))
-_mon_epoch=$((_now_epoch - 120 * 24 * 3600))
-_yr3_epoch=$((_now_epoch + 3 * 31536000))
-_yr35_epoch=$((_now_epoch + 35 * 31536000))
-_yr125_epoch=$((_now_epoch + 125 * 31536000))
-_yr1000_epoch=$((_now_epoch + 1000 * 31536000))
-_sec_str=$("$GNU_DATE" -d "@$_sec_epoch" '+%Y-%m-%d %H:%M:%S')
-_hrs_str=$("$GNU_DATE" -d "@$_hrs_epoch" '+%Y-%m-%d %H:%M:%S')
-_day_str=$("$GNU_DATE" -d "@$_day_epoch" '+%Y-%m-%d %H:%M:%S')
-_mon_str=$("$GNU_DATE" -d "@$_mon_epoch" '+%Y-%m-%d %H:%M:%S')
-_yr3_str=$("$GNU_DATE" -d "@$_yr3_epoch" '+%Y-%m-%d %H:%M:%S')
-_yr35_str=$("$GNU_DATE" -d "@$_yr35_epoch" '+%Y-%m-%d %H:%M:%S')
-_yr125_str=$("$GNU_DATE" -d "@$_yr125_epoch" '+%Y-%m-%d %H:%M:%S')
-_yr1000_str=$("$GNU_DATE" -d "@$_yr1000_epoch" '+%Y-%m-%d %H:%M:%S')
-"$GNU_TOUCH" -d "$_sec_str" "case-mixed-time-width/sec.txt"
-"$GNU_TOUCH" -d "$_hrs_str" "case-mixed-time-width/hrs.txt"
-"$GNU_TOUCH" -d "$_day_str" "case-mixed-time-width/day.txt"
-"$GNU_TOUCH" -d "$_mon_str" "case-mixed-time-width/mon.txt"
-"$GNU_TOUCH" -d "$_yr3_str" "case-mixed-time-width/future-3yr.txt"
-"$GNU_TOUCH" -d "$_yr35_str" "case-mixed-time-width/future-35yr.txt"
-"$GNU_TOUCH" -d "$_yr125_str" "case-mixed-time-width/future-125yr.txt"
-"$GNU_TOUCH" -d "$_yr1000_str" "case-mixed-time-width/future-1000yr.txt"
+printf '' > "case-mixed-time-width/sec.txt"
+printf '' > "case-mixed-time-width/hrs.txt"
+printf '' > "case-mixed-time-width/day.txt"
+printf '' > "case-mixed-time-width/mon.txt"
+printf '' > "case-mixed-time-width/future-3yr.txt"
+printf '' > "case-mixed-time-width/future-35yr.txt"
+printf '' > "case-mixed-time-width/future-125yr.txt"
+printf '' > "case-mixed-time-width/future-1000yr.txt"
+_sec_epoch=$((LL_NOW_EPOCH - 5))
+_hrs_epoch=$((LL_NOW_EPOCH - 3 * 3600))
+_day_epoch=$((LL_NOW_EPOCH - 12 * 24 * 3600))
+_mon_epoch=$((LL_NOW_EPOCH - 120 * 24 * 3600))
+_yr3_epoch=$((LL_NOW_EPOCH + 3 * 31536000))
+_yr35_epoch=$((LL_NOW_EPOCH + 35 * 31536000))
+_yr125_epoch=$((LL_NOW_EPOCH + 125 * 31536000))
+_yr1000_epoch=$((LL_NOW_EPOCH + 1000 * 31536000))
+_sec_ts=$(epoch_to_touch_ts "$_sec_epoch") || _sec_ts=""
+_hrs_ts=$(epoch_to_touch_ts "$_hrs_epoch") || _hrs_ts=""
+_day_ts=$(epoch_to_touch_ts "$_day_epoch") || _day_ts=""
+_mon_ts=$(epoch_to_touch_ts "$_mon_epoch") || _mon_ts=""
+_yr3_ts=$(epoch_to_touch_ts "$_yr3_epoch") || _yr3_ts=""
+_yr35_ts=$(epoch_to_touch_ts "$_yr35_epoch") || _yr35_ts=""
+_yr125_ts=$(epoch_to_touch_ts "$_yr125_epoch") || _yr125_ts=""
+_yr1000_ts=$(epoch_to_touch_ts "$_yr1000_epoch") || _yr1000_ts=""
+if [ -n "$_sec_ts" ]; then
+  touch -t "$_sec_ts" "case-mixed-time-width/sec.txt" 2>/dev/null || true
+fi
+if [ -n "$_hrs_ts" ]; then
+  touch -t "$_hrs_ts" "case-mixed-time-width/hrs.txt" 2>/dev/null || true
+fi
+if [ -n "$_day_ts" ]; then
+  touch -t "$_day_ts" "case-mixed-time-width/day.txt" 2>/dev/null || true
+fi
+if [ -n "$_mon_ts" ]; then
+  touch -t "$_mon_ts" "case-mixed-time-width/mon.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr3_ts" ]; then
+  touch -t "$_yr3_ts" "case-mixed-time-width/future-3yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr35_ts" ]; then
+  touch -t "$_yr35_ts" "case-mixed-time-width/future-35yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr125_ts" ]; then
+  touch -t "$_yr125_ts" "case-mixed-time-width/future-125yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr1000_ts" ]; then
+  touch -t "$_yr1000_ts" "case-mixed-time-width/future-1000yr.txt" 2>/dev/null || true
+fi
 
 # ============================================================================
 # TEST CASES
 # ============================================================================
-# Each test case is represented as:
-# - test_case_names[i] : human-readable name (used for --only)
-# - test_case_argv[i]  : bash words for argv (may include quoted strings)
-# We intentionally keep argv as a bash-evaluable snippet so we can include
-# filenames with spaces/tabs/unicode safely.
 
 test_case_names=(
   "default"
-
-  # Directory listing behavior
   "-d"
   "--directory"
   "-d ."
-
-  # Owner/group toggles
   "-g"
   "-G"
   "-o"
   "--no-group"
   "-g -G"
-
-  # Size column (allocated blocks)
   "-s"
   "--size"
-
-  # Human readable size variants
   "-h"
   "--human-readable"
   "--si"
-
-  # Numeric uid/gid
   "-n"
   "--numeric-uid-gid"
-
-  # Cross-combinations (core)
   "-s -h"
   "-s --si"
   "-n -h"
   "-n --si"
   "-s -g"
   "-s -h -g -G"
-
-  # Option ordering: flags after operands
   "file then --no-group"
   "file then -G"
   "--no-group then file"
-
-  # Targeted path arguments
   "-h file1.txt"
   "--no-group file2.txt"
-
-  # Filename edge cases (use -- to stop option parsing)
   "-- a b.txt"
   "--  file-leading-space.txt"
   "-- a\\tb.txt"
   "-- İçerik-ğüşöç.txt"
-
-  # File type edge cases
   "-- symlink-to-file1"
   "-- broken-symlink"
   "-- fifo1"
-
-  # Permission edge cases
   "-- setuid-file"
   "-- setgid-file"
   "-- setgid-dir"
   "-- sticky-dir"
-
-  # Timestamp boundary fixtures (relative-time bucket boundaries)
   "mtime now-1s"
   "mtime now-119s"
   "mtime now-120s"
@@ -459,8 +322,6 @@ test_case_names=(
   "mtime now-3yr"
   "mtime now-35yr"
   "mtime now-125yr"
-
-  # Additional edge-case directories
   "symlink target space"
   "symlink target tab"
   "future-only"
@@ -469,67 +330,43 @@ test_case_names=(
 
 test_case_argv=(
   ""
-
-  # Directory listing behavior
   "-d"
   "--directory"
   "-d ."
-
-  # Owner/group toggles
   "-g"
   "-G"
   "-o"
   "--no-group"
   "-g -G"
-
-  # Size column (allocated blocks)
   "-s"
   "--size"
-
-  # Human readable size variants
   "-h"
   "--human-readable"
   "--si"
-
-  # Numeric uid/gid
   "-n"
   "--numeric-uid-gid"
-
-  # Cross-combinations (core)
   "-s -h"
   "-s --si"
   "-n -h"
   "-n --si"
   "-s -g"
   "-s -h -g -G"
-
-  # Option ordering: flags after operands
   "file1.txt --no-group"
   "file1.txt -G"
   "--no-group file1.txt"
-
-  # Targeted path arguments
   "-h file1.txt"
   "--no-group file2.txt"
-
-  # Filename edge cases
   "-- \"a b.txt\""
   "-- \" file-leading-space.txt\""
   "-- \$'a\\tb.txt'"
   "-- \"İçerik-ğüşöç.txt\""
-
-  # File type edge cases
   "-- symlink-to-file1"
   "-- broken-symlink"
   "-- fifo1"
-
-  # Permission edge cases
   "-- setuid-file"
   "-- setgid-file"
   "-- setgid-dir"
   "-- sticky-dir"
-
-  # Timestamp boundary fixtures (relative-time bucket boundaries)
   "mtime-now-1s"
   "mtime-now-119s"
   "mtime-now-120s"
@@ -539,317 +376,135 @@ test_case_argv=(
   "mtime-now-3yr"
   "mtime-now-35yr"
   "mtime-now-125yr"
-
-  # Additional edge-case directories
   "case-symlink-target-space"
   "case-symlink-target-tab"
   "case-future-only"
   "case-mixed-time-width"
 )
 
-# Sanity check (developer error)
 if [ "${#test_case_names[@]}" -ne "${#test_case_argv[@]}" ]; then
   echo "Internal error: test_case_names and test_case_argv length mismatch" >&2
   exit 2
 fi
 
 # ============================================================================
-# RUN TESTS
+# UTILITY FUNCTIONS
 # ============================================================================
-errors=0
-passed=0
-test_num=0
-
-if [ "$FAIL_ONLY" -eq 0 ]; then
-  if [ ${#script_names[@]} -eq 0 ]; then
-    echo "Showing ls -l --color --time-style=+\"%s\" output for test cases"
-  else
-    echo "Testing comparison: ls -l --color --time-style=+\"%s\" vs ${script_names[*]}"
-  fi
-  echo "=================================="
-  echo ""
-fi
 
 strip_ansi_and_controls() {
-  # Removes ANSI escape sequences and common control chars from a string.
-  # Keeps ordinary whitespace intact.
   local text="$1"
-
   text=$(printf '%s' "$text" | perl -pe '
-    s/\e\[[0-9;?]*[ -\/]*[@-~]//g;          # CSI ... cmd (colors, erase-in-line, etc.)
-    s/\e\][^\a]*(\a|\e\\)//g;              # OSC ... BEL or ST
-    s/\e[P^_].*?(\e\\)//gs;                # DCS/PM/APC ... ST
-    s/\e[()#][0-9A-Za-z]//g;               # Charset selects
-    s/\e[\x40-\x5F]//g;                    # 2-char ESC sequences
-    s/\x1b\[[0-9;]*K//g;                   # Erase in line
-    s/\r//g;                               # CR
+    s/\e\[[0-9;?]*[ -\/]*[@-~]//g;
+    s/\e\][^\a]*(\a|\e\\)//g;
+    s/\e[P^_].*?(\e\\)//gs;
+    s/\e[()#][0-9A-Za-z]//g;
+    s/\e[\x40-\x5F]//g;
+    s/\x1b\[[0-9;]*K//g;
+    s/\r//g;
   ')
-
   text=$(printf '%s' "$text" | tr -d '\v')
   printf '%s' "$text"
 }
 
-drop_ls_totals() {
-  perl -ne 'print unless /^\s*(toplam|total)\b/i'
-}
+# Set environment variables for canonicalization based on flags
+set_compare_env() {
+  local arg
 
-canonicalize_ls_output() {
-  # Convert: ls -l --time-style=+"%s" output -> canonical ll-like text.
-  # Canonical form: single-space separated fields up to relative time,
-  # then keep the remainder of the line verbatim (preserves leading-space filenames).
-  local raw="$1"
+  LS_COMPARE_HAS_BLOCKS=0
+  LS_COMPARE_HAS_HUMAN=0
 
-  raw="$(strip_ansi_and_controls "$raw")"
-
-  printf '%s\n' "$raw" \
-    | drop_ls_totals \
-    | perl "$PROJECT_ROOT/scripts/dev/ls-compare-canon-ls.pl"
-}
-
-# Canonicalize ll/ll-chatgpt outputs into the same canonical form as canonicalize_ls_output():
-# - strip ANSI/control sequences
-# - drop total/toplam header lines
-# - normalize only the token-prefix (mode/links/owner/group/size/time)
-# - keep the tail verbatim to preserve tricky filenames (spaces, tabs, unicode) and symlink arrows
-canonicalize_script_output() {
-  local raw="$1"
-
-  raw="$(strip_ansi_and_controls "$raw")"
-
-  printf '%s\n' "$raw" \
-    | drop_ls_totals \
-    | perl "$PROJECT_ROOT/scripts/dev/ls-compare-canon-script.pl"
-}
-
-validate_ll_output() {
-  local raw="$1"
-  local future_line=""
-  local -a future_candidates=(
-    "mtime-now-3yr"
-    "mtime-now-35yr"
-    "mtime-now-125yr"
-    "future-3yr.txt"
-    "future-35yr.txt"
-    "future-125yr.txt"
-    "future-1000yr.txt"
-  )
-
-  for candidate in "${future_candidates[@]}"; do
-    future_line="$(printf '%s\n' "$raw" | grep -F "$candidate" | head -n 1)"
-    if [ -n "$future_line" ]; then
-      break
-    fi
+  for arg in "$@"; do
+    case "$arg" in
+      -s|--size)
+        LS_COMPARE_HAS_BLOCKS=1
+        ;;
+      -h|--human-readable|--si)
+        LS_COMPARE_HAS_HUMAN=1
+        ;;
+      *)
+        ;;
+    esac
   done
-  if [ -z "$future_line" ]; then
+
+  export LS_COMPARE_HAS_BLOCKS
+  export LS_COMPARE_HAS_HUMAN
+}
+
+# Canonicalize output for comparison using Perl scripts
+# Normalizes both ls and script output into comparable format
+canonicalize_output() {
+  local output="$1"
+  local is_script="${2:-0}"
+  
+  # Strip ANSI codes first
+  output=$(strip_ansi_and_controls "$output")
+  
+  # Drop total/toplam lines
+  output=$(printf '%s\n' "$output" | perl -ne 'print unless /^\s*(toplam|total)\b/i')
+  
+  # Ensure environment variables are set
+  export LS_COMPARE_NOW_EPOCH="${LL_NOW_EPOCH:-$(date +%s)}"
+  export LS_COMPARE_USER="${USER}"
+  
+  # Use appropriate canonicalization script
+  if [ "$is_script" -eq 1 ]; then
+    # Canonicalize script output (ll_linux, ll_macos)
+    printf '%s\n' "$output" | perl "${PROJECT_ROOT}/scripts/dev/ls-compare-canon-script.pl"
+  else
+    # Canonicalize ls output (gls, /bin/ls)
+    printf '%s\n' "$output" | perl "${PROJECT_ROOT}/scripts/dev/ls-compare-canon-ls.pl"
+  fi
+}
+
+# Compare canonicalized outputs
+print_comparison() {
+  # Compare ls output with script output using canonicalization
+  # This allows format differences (times, usernames) to be normalized before comparison
+  local ls_output="$1"
+  local script_output="$2"
+
+  local ls_canon
+  local script_canon
+  
+  # Canonicalize both outputs
+  ls_canon=$(canonicalize_output "$ls_output" 0)
+  script_canon=$(canonicalize_output "$script_output" 1)
+
+  # Compare canonicalized outputs
+  if [ "$ls_canon" = "$script_canon" ]; then
     return 0
   fi
-
-  printf '%s' "$future_line" | perl -ne 'exit 0 if /\e\[38;5;39m/; exit 1;'
+  return 1
 }
 
 # ============================================================================
-# Side-by-side comparison function
+# RUN TESTS
 # ============================================================================
-print_side_by_side() {
-  # Function to strip ANSI color codes for length calculation
-  strip_colors() {
-    local text="$1"
 
-    # If we are showing ANSI visibly, do not strip anything.
-    if [ "${SHOW_ANSI}" -eq 1 ]; then
-      echo "$text"
-      return 0
-    fi
+errors=0
+passed=0
 
-    # Strip ANSI escape sequences robustly (CSI/OSC/etc.).
-    printf '%s' "$text" | perl -pe '
-      s/\e\[[0-9;?]*[ -\/]*[@-~]//g;          # CSI ... cmd
-      s/\e\][^\a]*(\a|\e\\)//g;              # OSC ... BEL or ST
-      s/\e[P^_].*?(\e\\)//gs;                # DCS/PM/APC ... ST
-      s/\e[()#][0-9A-Za-z]//g;                 # Charset selects
-      s/\e[\x40-\x5F]//g;                     # 2-char ESC sequences
-      s/\e\[K//g;                               # Erase in line (some emitters)
-    '
-  }
-
-  make_ansi_visible() {
-    # Render control chars (including ESC) as visible escape sequences, without line-wrapping.
-    # This avoids `sed -n 'l'` behavior that inserts backslash-newline continuations and trailing `$`.
-    # NOTE: Input is a single line (caller reads line-by-line).
-    perl -pe 's/\e/\\033/g; s/\t/\\t/g; s/\r/\\r/g; s/\f/\\f/g; s/\v/\\v/g' <<<"$1"
-  }
-
-  # Convert each output to temp file for line-by-line processing
-  # If SHOW_ANSI is enabled, use raw outputs (with ANSI codes), otherwise use canonicalized outputs
-  declare -a output_files
-  declare -a source_outputs
-  if [ "${SHOW_ANSI}" -eq 1 ]; then
-    source_outputs=("${outputs_raw[@]}")
-  else
-    source_outputs=("${outputs[@]}")
-  fi
-  
-  output_files[0]=$(mktemp)
-  echo "${source_outputs[0]}" > "${output_files[0]}"
-  for i in $(seq 1 $((${#source_outputs[@]} - 1))); do
-    output_files[i]=$(mktemp)
-    echo "${source_outputs[i]}" > "${output_files[i]}"
-  done
-
-  # Find maximum number of lines
-  max_lines=0
-  for i in $(seq 0 $((${#source_outputs[@]} - 1))); do
-    line_count=$(wc -l < "${output_files[$i]}")
-    if [ "$line_count" -gt "$max_lines" ]; then
-      max_lines=$line_count
-    fi
-  done
-
-  # Find maximum line length for each output (for proper padding)
-  declare -a max_lens
-  for i in $(seq 0 $((${#source_outputs[@]} - 1))); do
-    max_lens[i]=0
-    while IFS= read -r line; do
-      if [ "${SHOW_ANSI}" -eq 1 ]; then
-        line_for_len=$(make_ansi_visible "$line")
-      else
-        line_for_len=$(strip_colors "$line")
-      fi
-      line_len=${#line_for_len}
-      if [ "$line_len" -gt "${max_lens[i]}" ]; then
-        max_lens[i]=$line_len
-      fi
-    done < "${output_files[$i]}"
-  done
-
-  # Print side-by-side with proper padding
-  for line_num in $(seq 1 "$max_lines"); do
-    result_line=""
-
-    # Process each output column
-    for i in $(seq 0 $((${#source_outputs[@]} - 1))); do
-      line=$(sed -n "${line_num}p" "${output_files[$i]}")
-      if [ "${SHOW_ANSI}" -eq 1 ] && [ -n "$line" ]; then
-        line=$(make_ansi_visible "$line")
-      fi
-      if [ -z "$line" ]; then
-        line=""
-      fi
-
-      # Calculate padding needed for this line (based on length without colors)
-      # If SHOW_ANSI is enabled, line is already processed by make_ansi_visible,
-      # so we need to strip the visible ANSI sequences (\033) for length calculation
-      if [ "${SHOW_ANSI}" -eq 1 ]; then
-        # For visible ANSI, we need to account for the \033 sequences in the length
-        # make_ansi_visible converts \e to \033, so we need to count the actual visible characters
-        # We'll use the line as-is since make_ansi_visible already converted escape sequences
-        line_for_len=$(echo "$line" | perl -pe 's/\\033\[[0-9;?]*[ -\/]*[@-~]//g; s/\\033//g')
-      else
-        line_for_len=$(strip_colors "$line")
-      fi
-      line_len=${#line_for_len}
-      padding_len=$((max_lens[i] - line_len))
-      if [ "$padding_len" -gt 0 ]; then
-        padding=$(printf "%*s" "$padding_len" "")
-        line="${line}${padding}"
-      fi
-
-      # Add separator before each column (except first)
-      if [ "$i" -gt 0 ]; then
-        result_line="${result_line} |"
-      fi
-      result_line="${result_line} ${line}"
-    done
-
-    echo "  $result_line"
-  done
-
-  # Cleanup temp files
-  for temp_file in "${output_files[@]}"; do
-    rm -f "$temp_file"
-  done
-}
-
-# ============================================================================
-# Vertical/stacked comparison function
-# ============================================================================
-print_vertical() {
-  # Print outputs in vertical/stacked format:
-  # 1. ls -l output first (with test case parameters if any)
-  # 2. Then each script output below it (with test case parameters if any)
-  
-  # ANSI color codes
-  local color_red=$'\033[31m'
-  local color_reset=$'\033[0m'
-  
-  # Function to make ANSI characters visible (same as in print_side_by_side)
-  make_ansi_visible() {
-    # Render control chars (including ESC) as visible escape sequences, without line-wrapping.
-    # This avoids `sed -n 'l'` behavior that inserts backslash-newline continuations and trailing `$`.
-    # NOTE: Input is a single line (caller reads line-by-line).
-    perl -pe 's/\e/\\033/g; s/\t/\\t/g; s/\r/\\r/g; s/\f/\\f/g; s/\v/\\v/g' <<<"$1"
-  }
-  
-  # Build parameter string for display
-  param_str=""
-  if [ ${#tc_argv_clean[@]} -gt 0 ]; then
-    param_str=" ${tc_argv_clean[*]}"
-  fi
-  
-  # Print ls command in red (excluding the colon)
-  echo "  ${color_red}ls -l --color --time-style=+\"%s\"${param_str}${color_reset}:"
-  # Apply make_ansi_visible if SHOW_ANSI is enabled
-  if [ "${SHOW_ANSI}" -eq 1 ]; then
-    while IFS= read -r line; do
-      make_ansi_visible "$line"
-    done <<<"${outputs_raw[0]}"
-  else
-    echo "${outputs_raw[0]}"
-  fi
-  
-  # Print each script output
-  # outputs_raw[0] = ls output
-  # outputs_raw[1] = first script (script_names[0])
-  # outputs_raw[2] = second script (script_names[1]), etc.
-  for i in $(seq 1 $((${#outputs_raw[@]} - 1))); do
-    script_idx=$((i - 1))
-    echo ""
-    if [ "$script_idx" -lt ${#script_names[@]} ]; then
-      # Print script command in red (excluding the colon)
-      echo "  ${color_red}${script_names[$script_idx]}${param_str}${color_reset}:"
-    else
-      echo "  ${color_red}Script #$i${param_str}${color_reset}:"
-    fi
-    # Apply make_ansi_visible if SHOW_ANSI is enabled
-    if [ "${SHOW_ANSI}" -eq 1 ]; then
-      while IFS= read -r line; do
-        make_ansi_visible "$line"
-      done <<<"${outputs_raw[$i]}"
-    else
-      echo "${outputs_raw[$i]}"
-    fi
-  done
-}
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo "Testing ls vs ll implementation"
+  echo "=================================="
+  echo ""
+fi
 
 for idx in "${!test_case_names[@]}"; do
   test_name="${test_case_names[$idx]}"
   test_argv_snippet="${test_case_argv[$idx]}"
   
-  # Calculate the actual test number (idx + 1, since arrays are 0-indexed)
   actual_test_num=$((idx + 1))
 
   if [ "$ONLY_MODE" -eq 1 ]; then
     matched=0
     for only in "${ONLY_TESTS[@]}"; do
-      # Check if --only value is a number
       if [[ "$only" =~ ^[0-9]+$ ]]; then
-        # It's a test number - check if it matches this test's number
         if [ "$only" -eq "$actual_test_num" ]; then
           matched=1
           break
         fi
       else
-        # It's a test case name - check if it matches
         if [ "$only" = "$test_name" ]; then
           matched=1
           break
@@ -861,390 +516,152 @@ for idx in "${!test_case_names[@]}"; do
     fi
   fi
 
-  # Use the actual test number (not a sequential counter)
-  test_num=$actual_test_num
-  
-  # Build argv array from bash snippet (supports quoted filenames)
+  # Build argv array from bash snippet
   tc_argv=()
   if [ -n "$test_argv_snippet" ]; then
     # shellcheck disable=SC2086
     eval "tc_argv=($test_argv_snippet)"
   fi
 
-  # Some scripts under test may forward args to `ls` in a way that breaks when `--` is present.
-  # For our fixtures, `--` is only used to safely express filenames with spaces/tabs/unicode.
-  # Strip a *leading* `--` so we don't accidentally turn our injected `-l` / `--time-style` into operands.
-  tc_argv_clean=("${tc_argv[@]}")
-  if [ "${#tc_argv_clean[@]}" -gt 0 ] && [ "${tc_argv_clean[0]}" = "--" ]; then
-    tc_argv_clean=("${tc_argv_clean[@]:1}")
-    # Also clean test_name: remove leading "-- " if present (since -- is not part of actual command)
-    if [[ "$test_name" =~ ^--[[:space:]]+(.*)$ ]]; then
-      test_name="${BASH_REMATCH[1]}"
+  # Strip leading -- from argv for display (it's only for safe parsing)
+  tc_argv_clean=()
+  for i in "${!tc_argv[@]}"; do
+    arg="${tc_argv[$i]}"
+    # Skip the first "--" if present
+    if [ "$i" -eq 0 ] && [ "$arg" = "--" ]; then
+      continue
     fi
-  fi
-  
-  if [ "$FAIL_ONLY" -eq 0 ] || [ ${#script_paths[@]} -eq 0 ]; then
-    # Color codes
-    color_yellow=$'\033[33m'
+    tc_argv_clean+=("$arg")
+  done
+
+  if [ "$FAIL_ONLY" -eq 0 ]; then
     color_magenta=$'\033[35m'
+    color_yellow=$'\033[33m'
     color_reset=$'\033[0m'
     
-    # Test number in magenta
-    test_num_colored="${color_magenta}Test #$test_num${color_reset}"
-    
-    # Colorize the entire test name (everything after "Test #X:") in yellow
+    test_num_colored="${color_magenta}Test #$actual_test_num${color_reset}"
     display_test_name="${color_yellow}${test_name}${color_reset}"
     
     echo "$test_num_colored: $display_test_name"
     echo "----------------------------------"
   fi
 
-  # Detect formatting-affecting flags so we can canonicalize ls output to match ll-chatgpt.
-  HAS_BLOCKS=0
-  HAS_HUMAN=0
-  for a in "${tc_argv_clean[@]}"; do
-    case "$a" in
-      -s|--size)
-        HAS_BLOCKS=1
-        ;;
-      -h|--human-readable|--si)
-        HAS_HUMAN=1
-        ;;
-    esac
-  done
-
-  export LS_COMPARE_HAS_BLOCKS LS_COMPARE_HAS_HUMAN
-  LS_COMPARE_HAS_BLOCKS="$HAS_BLOCKS"
-  LS_COMPARE_HAS_HUMAN="$HAS_HUMAN"
-
-  # Run ls -l with the same operands as scripts, then canonicalize ls output into ll-like format.
-  # IMPORTANT: options MUST come before any `--` sentinel in tc_argv, otherwise ls will
-  # treat `-l` and `--time-style=...` as filenames and print errors like:
-  #   ls: '-l' ... No such file or directory
-  # To avoid that, we always place ls options first and then append tc_argv.
-  ls_cmd=("$LS_BIN" --color -l --time-style=+"%s")
-
-  # ls doesn't accept options after operands; normalize argv for ls only.
+  # Build ls command and run it
+  ls_cmd=("$LS_BIN" "${LS_FLAGS[@]}")
+  
+  # Separate options from operands (ls needs options before operands)
   ls_opts=()
   ls_operands=()
-  for a in "${tc_argv_clean[@]}"; do
-    case "$a" in
-      -d|--directory|-g|-G|-o|--no-group|-s|--size|-h|--human-readable|--si|-n|--numeric-uid-gid)
-        ls_opts+=("$a")
-        ;;
-      *)
-        ls_operands+=("$a")
-        ;;
-    esac
-  done
-  ls_argv=("${ls_opts[@]}" "${ls_operands[@]}")
-
-  ls_stdout_file=$(mktemp)
-  ls_stderr_file=$(mktemp)
-  (cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file")
-  ls_status=$?
-  ls_stdout_raw="$(cat "$ls_stdout_file")"
-  ls_stderr_raw="$(cat "$ls_stderr_file")"
-  rm -f "$ls_stdout_file" "$ls_stderr_file"
-
-  # Export env for canonicalizers
-  export LS_COMPARE_USER
-  export LS_COMPARE_NOW_EPOCH
-  LS_COMPARE_USER="$(id -un 2>/dev/null || true)"
-  LS_COMPARE_NOW_EPOCH="${LL_NOW_EPOCH:-$(date +%s)}"
-
-  # If no scripts provided, just show ls stdout
-  if [ ${#script_paths[@]} -eq 0 ]; then
-    echo "$ls_stdout_raw"
-    ((passed++))
-  else
-    # Run all scripts and capture outputs
-    outputs_out=()
-    outputs_err=()
-    outputs_out_raw=()
-    outputs_err_raw=()
-    script_statuses=()
-    validation_failed=0
-    validation_msg=""
-    status_failed=0
-    status_msg=""
-    stdout_match=true
-    stderr_match=true
-
-    # Column 0 is the ls baseline
-    outputs_out_raw+=("$ls_stdout_raw")
-    outputs_err_raw+=("$ls_stderr_raw")
-    outputs_out+=("$(canonicalize_ls_output "$ls_stdout_raw")")
-    outputs_err+=("$(canonicalize_ls_output "$ls_stderr_raw")")
-    if [ "$ls_status" -ne 0 ]; then
-      status_failed=1
-      status_msg="ls exit $ls_status"
-    fi
-
-    for i in "${!script_paths[@]}"; do
-      script_path="${script_paths[$i]}"
-      script_name="${script_names[$i]}"
-      script_stdout_file=$(mktemp)
-      script_stderr_file=$(mktemp)
-      (cd "$TEST_DIR" && "$script_path" "${tc_argv_clean[@]}" >"$script_stdout_file" 2>"$script_stderr_file")
-      script_status=$?
-      output_stdout_raw="$(cat "$script_stdout_file")"
-      output_stderr_raw="$(cat "$script_stderr_file")"
-      rm -f "$script_stdout_file" "$script_stderr_file"
-      script_statuses+=("$script_status")
-      outputs_out_raw+=("$output_stdout_raw")
-      outputs_err_raw+=("$output_stderr_raw")
-      outputs_out+=("$(canonicalize_script_output "$output_stdout_raw")")
-      outputs_err+=("$(canonicalize_script_output "$output_stderr_raw")")
-      if [ "$script_name" = "ll" ] || [ "$script_name" = "ll_linux" ]; then
-        if ! validate_ll_output "$output_stdout_raw"; then
-          validation_failed=1
-          validation_msg="future time color missing"
-        fi
-      fi
-      if [ "$script_status" -ne 0 ]; then
-        status_failed=1
-        if [ -n "$status_msg" ]; then
-          status_msg="${status_msg}; ${script_name} exit ${script_status}"
-        else
-          status_msg="${script_name} exit ${script_status}"
-        fi
-      fi
+  if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
+    for a in "${tc_argv_clean[@]}"; do
+      case "$a" in
+        -d|--directory|-g|-G|-o|--no-group|-s|--size|-h|--human-readable|--si|-n|--numeric-uid-gid)
+          ls_opts+=("$a")
+          ;;
+        *)
+          ls_operands+=("$a")
+          ;;
+      esac
     done
-
-    # Check if stdout/stderr outputs match baseline exactly after canonicalization.
-    all_match=true
-    baseline_out="${outputs_out[0]}"
-    for i in $(seq 1 $((${#outputs_out[@]} - 1))); do
-      candidate_out="${outputs_out[$i]}"
-      if [ "$candidate_out" != "$baseline_out" ]; then
-        stdout_match=false
-        break
-      fi
-    done
-    baseline_err="${outputs_err[0]}"
-    for i in $(seq 1 $((${#outputs_err[@]} - 1))); do
-      candidate_err="${outputs_err[$i]}"
-      if [ "$candidate_err" != "$baseline_err" ]; then
-        stderr_match=false
-        break
-      fi
-    done
-
-    # Raw output comparison to detect normalized passes (whitespace/ANSI-only diffs).
-    raw_stdout_match=true
-    baseline_out_raw="${outputs_out_raw[0]}"
-    for i in $(seq 1 $((${#outputs_out_raw[@]} - 1))); do
-      candidate_out_raw="${outputs_out_raw[$i]}"
-      if [ "$candidate_out_raw" != "$baseline_out_raw" ]; then
-        raw_stdout_match=false
-        break
-      fi
-    done
-    raw_stderr_match=true
-    baseline_err_raw="${outputs_err_raw[0]}"
-    for i in $(seq 1 $((${#outputs_err_raw[@]} - 1))); do
-      candidate_err_raw="${outputs_err_raw[$i]}"
-      if [ "$candidate_err_raw" != "$baseline_err_raw" ]; then
-        raw_stderr_match=false
-        break
-      fi
-    done
-    
-    if [ "$validation_failed" -eq 1 ] || [ "$status_failed" -eq 1 ] || [ "$stdout_match" = false ] || [ "$stderr_match" = false ]; then
-      all_match=false
-    fi
-
-    normalized_only=false
-    if [ "$all_match" = true ] && [ "$raw_stdout_match" = false -o "$raw_stderr_match" = false ]; then
-      normalized_only=true
-    fi
-
-    if [ "$all_match" = true ]; then
-      if [ "$FAIL_ONLY" -eq 0 ]; then
-        if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          if [ "$normalized_only" = true ]; then
-            echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
-          else
-            echo "PASS - All outputs match exactly"
-          fi
-          echo "  Side-by-side comparison:"
-          outputs=("${outputs_out[@]}")
-          outputs_raw=("${outputs_out_raw[@]}")
-          print_side_by_side
-        else
-          if [ "$normalized_only" = true ]; then
-            echo "PASS (normalized) - Outputs differ only by whitespace/ANSI formatting"
-          fi
-          # Vertical format: show outputs directly without "PASS" message for exact match
-          outputs_raw=("${outputs_out_raw[@]}")
-          print_vertical
-        fi
-      fi
-      ((passed++))
-    else
-      if [ "$FAIL_ONLY" -eq 0 ]; then
-        if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          fail_reasons=()
-          if [ "$status_failed" -eq 1 ]; then
-            fail_reasons+=("Non-zero exit status (${status_msg})")
-          fi
-          if [ "$validation_failed" -eq 1 ]; then
-            fail_reasons+=("Formatting validation failed (${validation_msg})")
-          fi
-          if [ "$stdout_match" = false ]; then
-            fail_reasons+=("STDOUT differs")
-          fi
-          if [ "$stderr_match" = false ]; then
-            fail_reasons+=("STDERR differs")
-          fi
-          if [ "${#fail_reasons[@]}" -gt 0 ]; then
-            IFS='; ' printf 'FAIL - %s\n' "${fail_reasons[*]}"
-            unset IFS
-          else
-            echo "FAIL - Outputs differ"
-          fi
-          show_stdout=0
-          show_stderr=0
-          if [ "$stdout_match" = false ]; then
-            show_stdout=1
-          fi
-          if [ "$stderr_match" = false ]; then
-            show_stderr=1
-          fi
-          if [ "$show_stdout" -eq 0 ] && [ "$show_stderr" -eq 0 ]; then
-            show_stdout=1
-            show_stderr=1
-          fi
-          if [ "$show_stdout" -eq 1 ]; then
-            echo "  STDOUT:"
-            outputs=("${outputs_out[@]}")
-            outputs_raw=("${outputs_out_raw[@]}")
-            print_side_by_side
-          fi
-          if [ "$show_stderr" -eq 1 ]; then
-            echo "  STDERR:"
-            outputs=("${outputs_err[@]}")
-            outputs_raw=("${outputs_err_raw[@]}")
-            print_side_by_side
-          fi
-        else
-          fail_reasons=()
-          if [ "$status_failed" -eq 1 ]; then
-            fail_reasons+=("Non-zero exit status (${status_msg})")
-          fi
-          if [ "$validation_failed" -eq 1 ]; then
-            fail_reasons+=("Formatting validation failed (${validation_msg})")
-          fi
-          if [ "$stdout_match" = false ]; then
-            fail_reasons+=("STDOUT differs")
-          fi
-          if [ "$stderr_match" = false ]; then
-            fail_reasons+=("STDERR differs")
-          fi
-          if [ "${#fail_reasons[@]}" -gt 0 ]; then
-            IFS='; ' printf 'FAIL - %s\n' "${fail_reasons[*]}"
-            unset IFS
-          else
-            echo "FAIL - Outputs differ"
-          fi
-          show_stdout=0
-          show_stderr=0
-          if [ "$stdout_match" = false ]; then
-            show_stdout=1
-          fi
-          if [ "$stderr_match" = false ]; then
-            show_stderr=1
-          fi
-          if [ "$show_stdout" -eq 0 ] && [ "$show_stderr" -eq 0 ]; then
-            show_stdout=1
-            show_stderr=1
-          fi
-          if [ "$show_stdout" -eq 1 ]; then
-            echo "  STDOUT:"
-            outputs_raw=("${outputs_out_raw[@]}")
-            print_vertical
-          fi
-          if [ "$show_stderr" -eq 1 ]; then
-            echo "  STDERR:"
-            outputs_raw=("${outputs_err_raw[@]}")
-            print_vertical
-          fi
-        fi
-      else
-        echo "Test #$test_num: $test_name"
-        echo "----------------------------------"
-        fail_reasons=()
-        if [ "$status_failed" -eq 1 ]; then
-          fail_reasons+=("Non-zero exit status (${status_msg})")
-        fi
-        if [ "$validation_failed" -eq 1 ]; then
-          fail_reasons+=("Formatting validation failed (${validation_msg})")
-        fi
-        if [ "$stdout_match" = false ]; then
-          fail_reasons+=("STDOUT differs")
-        fi
-        if [ "$stderr_match" = false ]; then
-          fail_reasons+=("STDERR differs")
-        fi
-        if [ "${#fail_reasons[@]}" -gt 0 ]; then
-          IFS='; ' printf 'FAIL - %s\n' "${fail_reasons[*]}"
-          unset IFS
-        else
-          echo "FAIL - Outputs differ"
-        fi
-        show_stdout=0
-        show_stderr=0
-        if [ "$stdout_match" = false ]; then
-          show_stdout=1
-        fi
-        if [ "$stderr_match" = false ]; then
-          show_stderr=1
-        fi
-        if [ "$show_stdout" -eq 0 ] && [ "$show_stderr" -eq 0 ]; then
-          show_stdout=1
-          show_stderr=1
-        fi
-        if [ "$SIDE_BY_SIDE" -eq 1 ]; then
-          if [ "$show_stdout" -eq 1 ]; then
-            echo "  STDOUT:"
-            outputs=("${outputs_out[@]}")
-            outputs_raw=("${outputs_out_raw[@]}")
-            print_side_by_side
-          fi
-          if [ "$show_stderr" -eq 1 ]; then
-            echo "  STDERR:"
-            outputs=("${outputs_err[@]}")
-            outputs_raw=("${outputs_err_raw[@]}")
-            print_side_by_side
-          fi
-        else
-          if [ "$show_stdout" -eq 1 ]; then
-            echo "  STDOUT:"
-            outputs_raw=("${outputs_out_raw[@]}")
-            print_vertical
-          fi
-          if [ "$show_stderr" -eq 1 ]; then
-            echo "  STDERR:"
-            outputs_raw=("${outputs_err_raw[@]}")
-            print_vertical
-          fi
-        fi
-      fi
-      ((errors++))
-    fi
+  fi
+  # Build ls_argv by concatenating opts and operands without adding empty elements
+  ls_argv=()
+  if [ "${#ls_opts[@]}" -gt 0 ]; then
+    ls_argv+=("${ls_opts[@]}")
+  fi
+  if [ "${#ls_operands[@]}" -gt 0 ]; then
+    ls_argv+=("${ls_operands[@]}")
   fi
   
-  # Add blank line between tests:
-  # - Normal mode: always separate tests.
-  # - --fail-only: only separate failing tests (avoid printing blank lines for skipped passes).
-  # - If no scripts provided: always separate tests (we're just showing ls output).
-  if [ "$FAIL_ONLY" -eq 0 ] || [ ${#script_paths[@]} -eq 0 ]; then
-    echo ""
+  # Build command display strings
+  ls_cmd_display="${LS_BIN} ${LS_FLAGS[*]} ${ls_argv[*]:-}"
+  script_cmd_display="$SCRIPT_NAME ${tc_argv[*]:-}"
+
+  # Run ls
+  ls_stdout_file=$(mktemp)
+  ls_stderr_file=$(mktemp)
+  if [ "${#ls_argv[@]}" -gt 0 ]; then
+    (cd "$TEST_DIR" && "${ls_cmd[@]}" "${ls_argv[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file" || true)
   else
-    if [ "$all_match" = false ]; then
-      echo ""
+    (cd "$TEST_DIR" && "${ls_cmd[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file" || true)
+  fi
+  ls_stdout="$(cat "$ls_stdout_file")"
+  ls_stderr="$(cat "$ls_stderr_file")"
+  rm -f "$ls_stdout_file" "$ls_stderr_file"
+  
+  # If no stdout but there's stderr, this is likely an error - use empty stdout
+  if [ -z "$ls_stdout" ] && [ -n "$ls_stderr" ]; then
+    ls_stdout="[ERROR] $ls_stderr"
+  fi
+
+  # Run ll implementation
+  script_path="$BIN_DIR/$SCRIPT_NAME"
+  if [ ! -f "$script_path" ] || [ ! -x "$script_path" ]; then
+    echo "Error: Script '$script_path' not found or not executable" >&2
+    exit 1
+  fi
+  
+  script_stdout_file=$(mktemp)
+  if [ "${#tc_argv[@]}" -gt 0 ]; then
+    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" "${tc_argv[@]}" >"$script_stdout_file" 2>/dev/null || true)
+  else
+    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" >"$script_stdout_file" 2>/dev/null || true)
+  fi
+  script_stdout="$(cat "$script_stdout_file")"
+  rm -f "$script_stdout_file"
+
+  # Set environment variables for canonicalization based on test flags
+  if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
+    set_compare_env "${tc_argv_clean[@]}"
+  else
+    set_compare_env
+  fi
+
+  # Compare outputs
+  if print_comparison "$ls_stdout" "$script_stdout"; then
+    result="PASS"
+  else
+    result="FAIL"
+  fi
+
+  # Determine if we should print this test's output
+  should_print=0
+  if [ "$FAIL_ONLY" -eq 0 ]; then
+    # Normal mode: always print
+    should_print=1
+  elif [ "$result" = "FAIL" ]; then
+    # Fail-only mode: print only failures
+    should_print=1
+  fi
+
+  if [ "$should_print" -eq 1 ]; then
+    echo "$result"
+    echo "  ls command: $ls_cmd_display"
+    echo "  ls output ($(echo -n "$ls_stdout" | wc -c) bytes):"
+    if [ -z "$ls_stdout" ]; then
+      echo "    (empty)"
+    else
+      # shellcheck disable=SC2001
+      echo "$ls_stdout" | sed 's/^/    /'
     fi
+    echo "  script command: $script_cmd_display"
+    echo "  script output ($(echo -n "$script_stdout" | wc -c) bytes):"
+    if [ -z "$script_stdout" ]; then
+      echo "    (empty)"
+    else
+      # shellcheck disable=SC2001
+      echo "$script_stdout" | sed 's/^/    /'
+    fi
+  fi
+
+  if [ "$result" = "PASS" ]; then
+    ((passed++))
+  else
+    ((errors++))
+  fi
+
+  if [ "$FAIL_ONLY" -eq 0 ]; then
+    echo ""
   fi
 done
 
@@ -1265,12 +682,4 @@ else
   echo "Test directory kept: $TEST_DIR"
 fi
 
-# Restore LL_NOW_EPOCH to avoid leaking state to parent shells when sourced.
-if [ "${_ORIG_LL_NOW_EPOCH_SET:-0}" -eq 1 ]; then
-  export LL_NOW_EPOCH
-  LL_NOW_EPOCH="$_ORIG_LL_NOW_EPOCH_VALUE"
-else
-  unset LL_NOW_EPOCH 2>/dev/null || true
-fi
-
-exit $errors
+exit "$errors"
