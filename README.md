@@ -33,6 +33,15 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 - **CI/CD**: Automated testing on Linux and macOS
 - **Pre-commit hooks**: Code quality checks before commit
 
+## Behavior Contract
+
+The `ll` family (`ll`, `ll_linux`, `ll_macos`) follows a **test-locked behavior contract**:
+- Behavior is documented and locked by existing tests as a current-state specification
+- Untested behaviors are explicitly marked as **UNSPECIFIED** and not guaranteed
+- The specification documents what is tested and required, not what should be or could be
+
+For complete behavior documentation, see [`docs/LL_SPECIFICATIONS.md`](docs/LL_SPECIFICATIONS.md).
+
 ## Installation
 
 ### Quick Install (One-liner)

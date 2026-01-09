@@ -71,8 +71,8 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
+│   ├── git.diff
 │   ├── ll_current_state_report.md
-│   ├── spec_normalization_git_diff.txt
 │   └── todo.md
 ├── ~
 ├── CHANGELOG.md
