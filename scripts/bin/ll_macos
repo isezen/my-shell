@@ -197,8 +197,9 @@ try_fastpath_single_dir() {
     local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N"
 
     # One stat + one awk (awk holds rows in arrays, computes widths, renders in END)
-    /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null \
-    | /usr/bin/awk \
+    # Force C locale for speed (stat+awk string handling is noticeably faster on macOS).
+    LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null \
+    | LC_ALL=C /usr/bin/awk \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
     -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" \
