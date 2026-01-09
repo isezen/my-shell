@@ -7,6 +7,8 @@ my $unit_re = qr/(?:sec|min|hrs|hr|day|mon|mo|yr)/;
 my $perms_re = qr/^(?:[bcdlps-])[rwxstST-]{9}[+.@]?$/;
 my $blocks_re = qr/^[0-9]+(?:[.,][0-9]+)?[KMGTPBkmgptb]?$/;
 my $has_human  = $ENV{LS_COMPARE_HAS_HUMAN}  // 0;
+my $has_blocks = $ENV{LS_COMPARE_HAS_BLOCKS} // 0;
+my $has_si     = $ENV{LS_COMPARE_HAS_SI}     // 0;
 
 my $now = $ENV{LS_COMPARE_NOW_EPOCH};
 $now = time() if !defined($now) || $now !~ /^-?\d+$/;
@@ -31,6 +33,34 @@ sub fmt_rel {
   $unit = "mon" if defined($unit) && $unit eq "mo";
   return "in $num $unit" if defined($prefix) && $prefix eq "in";
   return "$num $unit";
+}
+
+# Normalize block-size token to match ll_linux canonicalization
+# Input: blocks column token (e.g. "0B", "12K", "4.0K", "4,0K")
+# Returns: normalized token
+sub normalize_blocks_token {
+  my ($tok) = @_;
+  return $tok unless defined($tok);
+
+  # Special case: "0B" or "0.0B" -> "0" (match GNU ls -s -h)
+  return "0" if $tok =~ /^0(?:\.0)?B$/;
+
+  # Unify decimal separator: comma to dot
+  $tok =~ s/,/./g;
+
+  # Trim trailing ".0" before unit (e.g. "4.0K" -> "4K")
+  $tok =~ s/\.0([KMGTPBkmgptb])$/$1/;
+
+  # Normalize unit letter based on has_si flag
+  if ($has_si) {
+    # --si style: use lowercase 'k' for kilo
+    $tok =~ s/K$/k/;
+  } else {
+    # -h style: use uppercase 'K' for kilo
+    $tok =~ s/k$/K/;
+  }
+
+  return $tok;
 }
 
 while (my $line = <STDIN>) {
@@ -81,8 +111,9 @@ while (my $line = <STDIN>) {
     # Normalize permission field: strip trailing @ or + (BSD extended attributes)
     $toks[$perm_idx] =~ s/[@+]$//;
 
-    if ($has_human && $perm_idx == 1 && $toks[0] =~ /^([0-9]+)B$/) {
-      $toks[0] = $1;
+    # Normalize blocks column when present (perm_idx==1 means toks[0] is blocks)
+    if ($has_blocks && $perm_idx == 1) {
+      $toks[0] = normalize_blocks_token($toks[0]);
     }
 
     if (@toks >= 2 && $toks[-1] =~ /^[0-9]{9,}$/ && $toks[-2] !~ /^[0-9]{9,}$/) {
@@ -118,8 +149,9 @@ while (my $line = <STDIN>) {
           # Normalize permission field: strip trailing @ or + (BSD extended attributes)
           $toks[$perm_idx] =~ s/[@+]$//;
 
-          if ($has_human && $perm_idx == 1 && $toks[0] =~ /^([0-9]+)B$/) {
-            $toks[0] = $1;
+          # Normalize blocks column when present (perm_idx==1 means toks[0] is blocks)
+          if ($has_blocks && $perm_idx == 1) {
+            $toks[0] = normalize_blocks_token($toks[0]);
           }
           if ($has_human && $toks[-1] =~ /^\d+$/) { $toks[-1] = $toks[-1] . "B"; }
           my $rt = rel($m->{epoch});

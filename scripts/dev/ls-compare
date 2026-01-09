@@ -412,14 +412,19 @@ set_compare_env() {
 
   LS_COMPARE_HAS_BLOCKS=0
   LS_COMPARE_HAS_HUMAN=0
+  LS_COMPARE_HAS_SI=0
 
   for arg in "$@"; do
     case "$arg" in
       -s|--size)
         LS_COMPARE_HAS_BLOCKS=1
         ;;
-      -h|--human-readable|--si)
+      -h|--human-readable)
         LS_COMPARE_HAS_HUMAN=1
+        ;;
+      --si)
+        LS_COMPARE_HAS_HUMAN=1
+        LS_COMPARE_HAS_SI=1
         ;;
       *)
         ;;
@@ -428,6 +433,7 @@ set_compare_env() {
 
   export LS_COMPARE_HAS_BLOCKS
   export LS_COMPARE_HAS_HUMAN
+  export LS_COMPARE_HAS_SI
 }
 
 # Canonicalize output for comparison using Perl scripts
