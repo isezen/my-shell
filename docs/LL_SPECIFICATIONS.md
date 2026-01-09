@@ -223,6 +223,7 @@ Tests verify output format via canonicalization comparison (not direct assertion
 - Blocks column alignment
 - Block size calculation method (implementation detail)
 - Human-readable formatting of blocks when combined with `-h/--si` (not directly tested)
+- **Exact decimal precision in blocks formatting** (e.g., `4.0K` vs `4K`) - normalized away by test tooling (see section 3.9.1)
 - Behavior when blocks cannot be determined
 
 **Implementation Detail (Non-Normative):**
@@ -334,6 +335,44 @@ When `-A` is specified:
 **Implementation Detail (Non-Normative):**
 - `ll_linux` implements a fast path for single file listings at `scripts/bin/ll_linux` lines 130-206
 - However, no tests directly assert the output format for single file listings
+
+### 3.9 Tooling Normalization (Non-Normative)
+
+Test comparison tooling applies normalization to ensure deterministic comparisons. These normalizations are **not part of the user-visible contract** and are applied only during test comparisons.
+
+#### 3.9.1 Blocks Token Normalization
+
+When `LS_COMPARE_HAS_BLOCKS=1` (set when `-s` or `--size` flags are used), canonicalization scripts normalize blocks column tokens:
+
+- **Trailing `.0` removal**: `4.0K` → `4K`, `12.0M` → `12M`
+- **Decimal separator unification**: Comma separators (locale-dependent) are converted to dots: `4,0K` → `4.0K` → `4K`
+- **Zero blocks normalization**: `0B` or `0.0B` → `0`
+- **Unit letter normalization**: 
+  - With `--si` flag (`LS_COMPARE_HAS_SI=1`): `K` → `k` (lowercase kilo)
+  - With `-h` flag (default): `k` → `K` (uppercase kilo)
+
+**UNSPECIFIED:**
+- Exact decimal precision in blocks column output (e.g., whether `4.0K` vs `4K` is emitted)
+- Locale-dependent decimal separator handling in raw output
+- These details are normalized away by tooling and not part of the tested contract
+
+**Implementation Detail (Non-Normative):**
+- Normalization implemented in `scripts/dev/ls-compare-canon-ls.pl` lines 69-95 (`normalize_blocks_token` function)
+- Normalization implemented in `scripts/dev/ls-compare-canon-script.pl` lines 38-64 (`normalize_blocks_token` function)
+- Applied when `LS_COMPARE_HAS_BLOCKS=1` is set by test harness (`tests/ll_linux/00_harness.bash` lines 304-326)
+
+#### 3.9.2 macOS Path Prefix Normalization
+
+In macOS test comparisons, the reference implementation strips leading `./` prefixes from filenames to match `ll_macos` behavior.
+
+**UNSPECIFIED:**
+- Whether leading `./` prefixes are preserved in filename output when listing current directory entries
+- This detail is normalized away by test harness and not part of the tested contract
+
+**Implementation Detail (Non-Normative):**
+- Reference implementation strips `./` prefix at `tests/ll_macos/00_harness.bash` lines 313-316 (`ll_macos_ref_line` function)
+- `ll_macos` implementation strips `./` prefix at `scripts/bin/ll_macos` lines 478-480, 580-581, 650-651
+- Normalization ensures parity comparison succeeds regardless of whether `stat -f %N` includes the prefix
 
 ---
 
@@ -749,6 +788,7 @@ The following file types are **tested and MUST be handled**:
 | 3.6 Hidden Files | `tests/ll_linux/20_paths.bats` | | `scripts/bin/ll_linux` (delegates to ls) |
 | 3.7 Total Line | Canonicalization scripts | `scripts/dev/ls-compare-canon-*.pl` | `scripts/bin/ll_linux` lines 114-122 |
 | 3.8 Single File Fast Path | | | `scripts/bin/ll_linux` lines 130-206 |
+| 3.9 Tooling Normalization | `tests/ll_linux/10_core.bats`, `tests/ll_macos/10_core.bats` | `scripts/dev/ls-compare-canon-ls.pl` lines 69-95, `scripts/dev/ls-compare-canon-script.pl` lines 38-64 | `tests/ll_linux/00_harness.bash` lines 304-326, `tests/ll_macos/00_harness.bash` lines 313-316 |
 | 4.1 Time Buckets | `tests/ll_linux/30_edge.bats`, `tests/ll_macos/10_core.bats` | | `scripts/bin/ll_linux` lines 375-391 |
 | 4.2 Future Time Prefix | `tests/ll_linux/30_edge.bats`, `tests/ll_linux/40_color.bats` | | `scripts/bin/ll_linux` lines 380 |
 | 4.3 Time Field Alignment | | `scripts/dev/ls-compare-canon-script.pl` | `scripts/bin/ll_linux` lines 568-571 |
