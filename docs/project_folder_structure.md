@@ -18,8 +18,7 @@
 │   │   ├── dusf.
 │   │   ├── ll
 │   │   ├── ll_linux
-│   │   ├── ll_macos
-│   │   └── llmacos.backup
+│   │   └── ll_macos
 │   └── dev
 │       ├── ll-compare
 │       ├── ll-perf
@@ -72,6 +71,9 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
+│   ├── bench_awk_from_stat.sh
+│   ├── bench_stat.sh
+│   ├── bench_stat_glob.sh
 │   ├── benchmark.sh
 │   ├── git.diff
 │   ├── ll_current_state_report.md
@@ -89,5 +91,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 69 files
+19 directories, 71 files
 ```
