@@ -80,46 +80,6 @@ USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
 DELIM=$'\037'
 # NOTE: Filenames with literal newlines are out-of-scope (line-based records).
 
-# ------------------------------
-# Helpers
-# ------------------------------
-
-# ANSI colors (match ll_linux palette)
-esc=$'\033'
-creset="${esc}[0m"
-
-cd="${esc}[38;5;122m"
-cl="${esc}[38;5;190m"
-cr="${esc}[38;5;119m"
-cw="${esc}[38;5;216m"
-cx="${esc}[38;5;124m"
-cplus="${esc}[38;5;129m"
-
-cusr="${esc}[38;5;66m"
-croot="${esc}[38;5;160m"
-
-cb="${esc}[38;5;240m"
-ck="${esc}[38;5;250m"
-cm="${esc}[38;5;117m"
-cg="${esc}[38;5;208m"
-ct="${esc}[38;5;160m"
-
-clT="${esc}[1;38;5;167m"
-clG="${esc}[1;38;5;220m"
-clM="${esc}[1;38;5;123m"
-clK="${esc}[1;38;5;107m"
-clB="${esc}[1;38;5;248m"
-
-csec="${esc}[38;5;124m"
-cmin="${esc}[38;5;215m"
-chrs="${esc}[38;5;196m"
-cday="${esc}[38;5;230m"
-cmon="${esc}[38;5;151m"
-  # Apply color formatting
-cyr="${esc}[38;5;241m"
-cfut="${esc}[38;5;39m"
-
-
 batch_push_rows() {
   # Batch stat call for multiple paths
   local paths=("$@")
@@ -205,15 +165,15 @@ try_fastpath_single_dir() {
   fi
 
   # Locale knobs for labels/decimal
-  local total_label="total"
   local locale_hint="${LC_ALL:-${LANG:-}}"
-  if printf '%s' "$locale_hint" | grep -qi '^tr'; then
-    total_label="toplam"
-  fi
+  local total_label="total"
   local DEC_SEP="."
-  if printf '%s' "$locale_hint" | grep -qi '^tr'; then
-    DEC_SEP=","  # Turkish uses comma decimal
-  fi
+  case "$locale_hint" in
+    tr*|TR*)
+      total_label="toplam"
+      DEC_SEP=","  # Turkish uses comma decimal
+      ;;
+  esac
   local total_applicable=1
 
   local d="${ops[0]}"
@@ -241,24 +201,44 @@ try_fastpath_single_dir() {
     | /usr/bin/awk \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
-    -v ASIZE="$ASIZE" \
-    -v OWNER="$OWNER" \
-    -v GROUPNAME="$GROUPNAME" \
-    -v HUMAN="$HUMANREADABLE" \
-    -v SI="$SI" \
-    -v USERNAME="$USERNAME" \
-    -v NUMERIC="$NUMERICUIDGID" \
-    -v NOW_EPOCH="$NOW_EPOCH" \
-    -v DEC_SEP="$DEC_SEP" \
-    -v TOTAL_LABEL="$total_label" \
-    -v TOTAL_APPLICABLE="$total_applicable" \
-    -v cd="${cd}" -v cl="${cl}" -v cr="${cr}" -v cw="${cw}" -v cx="${cx}" -v cplus="${cplus}" \
-    -v cusr="${cusr}" -v croot="${croot}" \
-    -v cb="${cb}" -v ck="${ck}" -v cm="${cm}" -v cg="${cg}" -v ct="${ct}" \
-    -v clT="${clT}" -v clG="${clG}" -v clM="${clM}" -v clK="${clK}" -v clB="${clB}" \
-    -v csec="${csec}" -v cmin="${cmin}" -v chrs="${chrs}" -v cday="${cday}" -v cmon="${cmon}" -v cyr="${cyr}" -v cfut="${cfut}" \
-    -v creset="${creset}" \
+    -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" \
+    -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" -v DEC_SEP="$DEC_SEP" \
+    -v TOTAL_LABEL="$total_label" -v TOTAL_APPLICABLE="$total_applicable" \
     '
+    BEGIN {
+      esc = sprintf("%c", 27)
+      creset = esc "[0m"
+
+      cd    = esc "[38;5;122m"
+      cl    = esc "[38;5;190m"
+      cr    = esc "[38;5;119m"
+      cw    = esc "[38;5;216m"
+      cx    = esc "[38;5;124m"
+      cplus = esc "[38;5;129m"
+
+      cusr  = esc "[38;5;66m"
+      croot = esc "[38;5;160m"
+
+      cb = esc "[38;5;240m"
+      ck = esc "[38;5;250m"
+      cm = esc "[38;5;117m"
+      cg = esc "[38;5;208m"
+      ct = esc "[38;5;160m"
+
+      clT = esc "[1;38;5;167m"
+      clG = esc "[1;38;5;220m"
+      clM = esc "[1;38;5;123m"
+      clK = esc "[1;38;5;107m"
+      clB = esc "[1;38;5;248m"
+
+      csec = esc "[38;5;124m"
+      cmin = esc "[38;5;215m"
+      chrs = esc "[38;5;196m"
+      cday = esc "[38;5;230m"
+      cmon = esc "[38;5;151m"
+      cyr  = esc "[38;5;241m"
+      cfut = esc "[38;5;39m"
+    }
     function max(a,b){return (a>b)?a:b}
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
 
@@ -581,15 +561,13 @@ fi
 
 total_label="total"
 locale_hint="${LC_ALL:-${LANG:-}}"
-if printf '%s' "$locale_hint" | grep -qi '^tr'; then
-  total_label="toplam"
-fi
-
-# Decimal separator (locale-aware best-effort)
 DEC_SEP="."
-if printf '%s' "$locale_hint" | grep -qi '^tr'; then
-  DEC_SEP=","  # Turkish uses comma decimal
-fi
+case "$locale_hint" in
+  tr*|TR*)
+    total_label="toplam"
+    DEC_SEP=","  # Turkish uses comma decimal
+    ;;
+esac
 
 total_applicable=0
 if [ "$LISTDIRECTORY" -eq 0 ] && [ "$multiple" -eq 0 ] && [ "${#ops[@]}" -eq 1 ]; then
@@ -843,13 +821,42 @@ render_rows_awk() {
     -v ANY_FUT="$ANY_FUT" \
     -v W_TNUM="$W_TNUM" \
     -v W_TUNIT="$W_TUNIT" \
-    -v cd="${cd}" -v cl="${cl}" -v cr="${cr}" -v cw="${cw}" -v cx="${cx}" -v cplus="${cplus}" \
-    -v cusr="${cusr}" -v croot="${croot}" \
-    -v cb="${cb}" -v ck="${ck}" -v cm="${cm}" -v cg="${cg}" -v ct="${ct}" \
-    -v clT="${clT}" -v clG="${clG}" -v clM="${clM}" -v clK="${clK}" -v clB="${clB}" \
-    -v csec="${csec}" -v cmin="${cmin}" -v chrs="${chrs}" -v cday="${cday}" -v cmon="${cmon}" -v cyr="${cyr}" -v cfut="${cfut}" \
-    -v creset="${creset}" '
+    '
     function sp(n,   s) { if (n <= 0) return ""; return sprintf("%*s", n, "") }
+    BEGIN {
+      esc = sprintf("%c", 27)
+      creset = esc "[0m"
+
+      cd    = esc "[38;5;122m"
+      cl    = esc "[38;5;190m"
+      cr    = esc "[38;5;119m"
+      cw    = esc "[38;5;216m"
+      cx    = esc "[38;5;124m"
+      cplus = esc "[38;5;129m"
+
+      cusr  = esc "[38;5;66m"
+      croot = esc "[38;5;160m"
+
+      cb = esc "[38;5;240m"
+      ck = esc "[38;5;250m"
+      cm = esc "[38;5;117m"
+      cg = esc "[38;5;208m"
+      ct = esc "[38;5;160m"
+
+      clT = esc "[1;38;5;167m"
+      clG = esc "[1;38;5;220m"
+      clM = esc "[1;38;5;123m"
+      clK = esc "[1;38;5;107m"
+      clB = esc "[1;38;5;248m"
+
+      csec = esc "[38;5;124m"
+      cmin = esc "[38;5;215m"
+      chrs = esc "[38;5;196m"
+      cday = esc "[38;5;230m"
+      cmon = esc "[38;5;151m"
+      cyr  = esc "[38;5;241m"
+      cfut = esc "[38;5;39m"
+    }
     # STREAM RENDER: each input row is already in the right slice
     {
       # Fields: blocks perms links owner group size epoch name target path is_child
