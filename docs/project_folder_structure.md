@@ -18,7 +18,8 @@
 │   │   ├── dusf.
 │   │   ├── ll
 │   │   ├── ll_linux
-│   │   └── ll_macos
+│   │   ├── ll_macos
+│   │   └── llmacos.backup
 │   └── dev
 │       ├── ll-compare
 │       ├── ll-perf
@@ -71,10 +72,14 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
+│   ├── benchmark.sh
 │   ├── git.diff
 │   ├── ll_current_state_report.md
+│   ├── ll_macos_perf_after.md
+│   ├── ll_macos_perf_analysis.md
+│   ├── ll_macos_perf_baseline.md
+│   ├── ll_macos_perf_final_report.md
 │   └── todo.md
-├── ~
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
@@ -84,5 +89,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-20 directories, 63 files
+19 directories, 69 files
 ```

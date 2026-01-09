@@ -28,14 +28,14 @@ BIN_DIR="$PROJECT_ROOT/scripts/bin"
 # DISCOVER LL* SCRIPTS
 # ============================================================================
 ll_scripts=()
-for script in "$BIN_DIR"/ll*; do
+for script in "$BIN_DIR"/ll_*; do
   if [ -x "$script" ] && [ -f "$script" ]; then
     ll_scripts+=("$script")
   fi
 done
 
 if [ ${#ll_scripts[@]} -eq 0 ]; then
-  echo "Error: No ll* executables found in $BIN_DIR" >&2
+  echo "Error: No ll_* executables found in $BIN_DIR" >&2
   exit 1
 fi
 
