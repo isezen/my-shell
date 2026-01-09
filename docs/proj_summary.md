@@ -204,11 +204,11 @@ This section catalogs all source modules organized by directory structure.
 
 ##### `__my_shell_has()`
 
-- **Purpose**: !/usr/bin/env bash
+- **Purpose**: Check if a command exists in the system. Helper function for command availability checks.
 
 ##### `__get_os()`
 
-- **Purpose**: Get operating system type (Linux or macOS). Helper function for system detection.
+- **Purpose**: *[To be documented]*
 
 ##### `cdh()`
 
@@ -382,7 +382,7 @@ This section catalogs all source modules organized by directory structure.
 
 ##### `bash_prompt_command()`
 
-- **Purpose**: # bash_prompt_command function
+- **Purpose**: Update prompt path dynamically before each prompt display. Called by PROMPT_COMMAND.
 
 ##### `bash_prompt()`
 
@@ -490,7 +490,7 @@ This section catalogs all source modules organized by directory structure.
 
 ##### `fish_prompt()`
 
-- **Purpose**: !/usr/bin/env fish
+- **Purpose**: Fish shell prompt function. Provides colorful prompt with git integration and path display.
 
 ### 3.15 shell/zsh/
 
@@ -510,7 +510,7 @@ This section catalogs all source modules organized by directory structure.
 
 ##### `__get_os()`
 
-- **Purpose**: Get operating system type (Linux or macOS). Helper function for system detection.
+- **Purpose**: *[To be documented]*
 
 ##### `cdh()`
 
@@ -684,7 +684,7 @@ This section catalogs all source modules organized by directory structure.
 
 ##### `__my_shell_zsh_prompt_command()`
 
-- **Purpose**: Compute truncated path before each prompt (bash_prompt_command equivalent)
+- **Purpose**: Compute truncated path before each prompt (bash_prompt_command equivalent). Internal helper function for zsh prompt.
 
 ---
 

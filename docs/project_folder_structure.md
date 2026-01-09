@@ -1,72 +1,9 @@
 ```text
 .
 ├── codex
-│   ├── snapshots
-│   │   ├── env
-│   │   │   ├── activate
-│   │   │   ├── activate.bash
-│   │   │   ├── activate.fish
-│   │   │   └── activate.zsh
-│   │   ├── scripts
-│   │   │   └── bin
-│   │   │       ├── dus
-│   │   │       ├── dusf
-│   │   │       ├── dusf.
-│   │   │       ├── ll
-│   │   │       ├── ll_linux
-│   │   │       └── ll_macos
-│   │   ├── shell
-│   │   │   ├── bash
-│   │   │   │   ├── aliases.bash
-│   │   │   │   ├── env.bash
-│   │   │   │   ├── init.bash
-│   │   │   │   └── prompt.bash
-│   │   │   ├── fish
-│   │   │   │   ├── aliases.fish
-│   │   │   │   ├── env.fish
-│   │   │   │   ├── init.fish
-│   │   │   │   └── prompt.fish
-│   │   │   └── zsh
-│   │   │       ├── aliases.zsh
-│   │   │       ├── env.zsh
-│   │   │       ├── init.zsh
-│   │   │       └── prompt.zsh
-│   │   ├── tests
-│   │   │   ├── ll
-│   │   │   │   └── 10_wrapper_stub.bats
-│   │   │   ├── ll_linux
-│   │   │   │   ├── 00_harness.bash
-│   │   │   │   └── 10_core.bats
-│   │   │   └── ll_macos
-│   │   │       ├── 00_harness.bash
-│   │   │       └── 10_core.bats
-│   │   ├── install.sh
-│   │   ├── Makefile
-│   │   └── missing.txt
-│   ├── bats-ll-macos.txt
-│   ├── bats-ll-wrapper.txt
-│   ├── codex-control.md
-│   ├── file-tree.txt
-│   ├── ll-wrapper-evidence.md
-│   ├── make-test-after.txt
-│   ├── make-test-before.txt
-│   ├── make-tests.txt
-│   ├── repo-meta.txt
-│   ├── scripts-bin.txt
-│   ├── shellcheck-after.txt
-│   ├── shellcheck-before.txt
-│   ├── shellcheck-files.txt
-│   ├── shellcheck-fixed.txt
-│   ├── shellcheck-invocations.md
-│   ├── shellcheck-invocations.raw
-│   ├── shellcheck-root-cause.md
-│   ├── shellcheck.txt
-│   ├── test-count-by-file.txt
-│   ├── test-count.txt
-│   ├── test-entrypoints.txt
-│   └── tooling.txt
 ├── docs
 │   ├── ACTIVATION_SPECIFICATION.md
+│   ├── LL_SPECIFICATIONS.md
 │   ├── proj_summary.md
 │   └── project_folder_structure.md
 ├── env
@@ -134,28 +71,17 @@
 │   ├── scripts_ll.bats
 │   └── TEST_COVERAGE.md
 ├── wip
-│   ├── improve-ll
-│   │   ├── FINAL_POLICY_VERIFICATION.md
-│   │   ├── IMPLEMENTATION_DETAILS.md
-│   │   ├── IMPLEMENTATION_SUMMARY.md
-│   │   ├── REFACTORING_COMPLETE.md
-│   │   ├── REFACTORING_SUMMARY.md
-│   │   └── SCRIPT_FIXES_SUMMARY.md
-│   ├── IMPROVEMENTS.md
-│   ├── ll-before.md
-│   ├── ll-decision.md
-│   ├── ll-perf.md
-│   ├── ls-compare.md
+│   ├── ll_current_state_report.md
 │   └── todo.md
+├── ~
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
 ├── install.sh
 ├── LICENSE
 ├── Makefile
-├── plan-ll-control.md
 ├── README.md
 └── REQUIREMENTS.md
 
-32 directories, 124 files
+20 directories, 62 files
 ```
