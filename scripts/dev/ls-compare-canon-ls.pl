@@ -25,11 +25,12 @@ sub parse_bsd_date {
   my ($year, $hour, $min);
   if ($year_or_time =~ /^(\d{1,2}):(\d{2})$/) {
     # Format: HH:MM (recent file, year missing)
+    # Derive year from real system time, not from test's LS_COMPARE_NOW_EPOCH,
+    # because BSD ls uses current year for files modified within ~6 months.
     $hour = int($1);
     $min = int($2);
-    # Derive year from NOW_EPOCH (UTC)
-    my @now_parts = gmtime($now);
-    $year = $now_parts[5] + 1900;
+    my @sys_parts = gmtime(time());
+    $year = $sys_parts[5] + 1900;
   } elsif ($year_or_time =~ /^(\d{4})$/) {
     # Format: YYYY (old file, time is 00:00)
     $year = int($1);
