@@ -192,3 +192,23 @@ fi
 **Update README.md**: When core functionality changes (new features, aliases, or user-facing behavior), update [README.md](README.md) and badges
 
 **Update CHANGELOG.md**: After each important modification, add entry to [CHANGELOG.md](CHANGELOG.md) `[Unreleased]` section with description and affected areas
+
+
+### Script Execution Requirement
+
+**CRITICAL**: When writing and executing shell scripts via the terminal, ALWAYS spawn a bash or zsh subprocess. Do NOT execute scripts directly in the active fish shell, as fish has incompatible syntax for many common shell patterns. This prevents terminal lock-ups and ensures reliable script execution.
+
+**Correct approach**:
+```bash
+bash -c 'script_content_here'
+# or
+zsh -c 'script_content_here'
+```
+
+**Incorrect approach** (will cause issues):
+```bash
+# DON'T do this directly in fish shell
+script_content_here
+```
+
+**When using tools like `run_in_terminal`**: Always wrap multi-line or complex scripts in `bash -c '...'` or `zsh -c '...'` to ensure compatibility regardless of the active shell.

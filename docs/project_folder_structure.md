@@ -143,12 +143,18 @@
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
+├── FINAL_POLICY_VERIFICATION.md
+├── IMPLEMENTATION_DETAILS.md
+├── IMPLEMENTATION_SUMMARY.md
 ├── install.sh
 ├── LICENSE
 ├── Makefile
 ├── plan-ll-control.md
 ├── README.md
-└── REQUIREMENTS.md
+├── REFACTORING_COMPLETE.md
+├── REFACTORING_SUMMARY.md
+├── REQUIREMENTS.md
+└── SCRIPT_FIXES_SUMMARY.md
 
-31 directories, 118 files
+31 directories, 124 files
 ```
