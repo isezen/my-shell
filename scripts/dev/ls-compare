@@ -2,6 +2,7 @@
 # scripts/dev/ls-compare
 # Test script to compare ls -l output with ll script implementations
 # Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
+# Baseline is ALWAYS GNU ls (-l --time-style=+%s --color=always) for both ll_linux and ll_macos.
 
 set -euo pipefail
 
@@ -37,7 +38,7 @@ while [ $# -gt 0 ]; do
       cat <<'EOF'
 Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
 
-Compare ls -l output with ll implementation.
+Compare GNU ls -l output with ll implementation (baseline is GNU ls for both ll_linux and ll_macos).
 
 OPTIONS:
   --help, -h              Show this help message and exit
@@ -50,8 +51,8 @@ OPTIONS:
 
 EXAMPLES:
   ls-compare ll_linux
+  ls-compare ll_macos
   ls-compare --fail-only ll_macos
-  ls-compare --side-by-side ll_linux
 EOF
       exit 0
       ;;
@@ -67,30 +68,26 @@ fi
 
 SCRIPT_NAME="$1"
 case "$SCRIPT_NAME" in
-  ll_linux)
-    # GNU ls with --time-style
-    if command -v gls >/dev/null 2>&1; then
-      LS_BIN="$(command -v gls)"
-    elif ls --color -l --time-style="+%s" . >/dev/null 2>&1; then
-      LS_BIN="ls"
-    elif [ -x /opt/local/libexec/gnubin/ls ]; then
-      LS_BIN="/opt/local/libexec/gnubin/ls"
-    else
-      echo "Error: GNU ls required for ll_linux mode" >&2
-      exit 1
-    fi
-    LS_FLAGS=("--color=always" "-l" "--time-style=+%s")
-    ;;
-  ll_macos)
-    # BSD ls without --time-style
-    LS_BIN="/bin/ls"
-    LS_FLAGS=("-G" "-l")
-    ;;
-  *)
-    echo "Error: script must be ll_linux or ll_macos" >&2
-    exit 1
-    ;;
+  ll_linux|ll_macos) : ;;
+  *) echo "Error: script must be ll_linux or ll_macos" >&2; exit 1 ;;
 esac
+
+# --------------------------------------------------------------------------
+# BASELINE LS (ALWAYS GNU LS)
+# --------------------------------------------------------------------------
+# We intentionally use GNU ls for both ll_linux and ll_macos, because ll_macos
+# now matches ll_linux's output semantics and formatting.
+if command -v gls >/dev/null 2>&1; then
+  LS_BIN="$(command -v gls)"
+elif ls --color -l --time-style="+%s" . >/dev/null 2>&1; then
+  LS_BIN="ls"
+elif [ -x /opt/local/libexec/gnubin/ls ]; then
+  LS_BIN="/opt/local/libexec/gnubin/ls"
+else
+  echo "Error: GNU ls required (gls/coreutils). Baseline is GNU ls for both ll_linux and ll_macos." >&2
+  exit 1
+fi
+LS_FLAGS=("--color=always" "-l" "--time-style=+%s")
 
 # ============================================================================
 # SETUP TEST ENVIRONMENT
@@ -555,7 +552,6 @@ for idx in "${!test_case_names[@]}"; do
   # Separate options from operands (ls needs options before operands)
   ls_opts=()
   ls_operands=()
-  skip_test=0
   outcome=""
   skip_reason=""
   
@@ -563,56 +559,14 @@ for idx in "${!test_case_names[@]}"; do
     for a in "${tc_argv_clean[@]}"; do
       case "$a" in
         -d|--directory|-g|-G|-o|--no-group|-s|--size|-h|--human-readable|--si|-n|--numeric-uid-gid)
-          # For ll_macos mode, map GNU flags to BSD equivalents or skip
-          if [ "$SCRIPT_NAME" = "ll_macos" ]; then
-            case "$a" in
-              --directory) ls_opts+=("-d") ;;
-              --no-group) ls_opts+=("-o") ;;
-              --human-readable) ls_opts+=("-h") ;;
-              --numeric-uid-gid) ls_opts+=("-n") ;;
-              --size) ls_opts+=("-s") ;;
-              --si)
-                # Policy B1: skip ll_macos tests with --si (unsupported on BSD ls)
-                skip_test=1
-                skip_reason="--si unsupported on BSD ls"
-                ;;
-              *)
-                # Short flags pass through unchanged
-                ls_opts+=("$a")
-                ;;
-            esac
-          else
-            # Linux: pass flags unchanged
-            ls_opts+=("$a")
-          fi
+          # Baseline is GNU ls for both scripts: pass flags unchanged (no BSD mapping, no skips).
+          ls_opts+=("$a")
           ;;
         *)
           ls_operands+=("$a")
           ;;
       esac
     done
-  fi
-
-  # Skip test if unsupported on this platform
-  if [ "$skip_test" -eq 1 ]; then
-    outcome="SKIP"
-    if [ -z "$skip_reason" ]; then
-      skip_reason="--si unsupported on BSD ls"
-    fi
-
-    should_print=0
-    if [ "$FAIL_ONLY" -eq 0 ]; then
-      should_print=1
-    elif [ "$outcome" = "FAIL" ] || [ "$outcome" = "SKIP" ]; then
-      should_print=1
-    fi
-
-    if [ "$should_print" -eq 1 ]; then
-      print_header
-      echo "SKIP ($skip_reason)"
-      echo ""
-    fi
-    continue
   fi
 
   # Build final command arrays for execution (exactly as will be run)
