@@ -169,7 +169,7 @@ We use **feature branches** for all changes:
    LL_NOW_EPOCH=1234567890 scripts/dev/ll-compare ll_linux ll_macos
    
    # Skip slow tests during development
-   LL_CHATGPT_FAST=1 scripts/dev/ll-compare ll_linux ll_macos
+   LL_NO_COLOR=1 scripts/dev/ll-compare ll_linux ll_macos
    ```
    
    **Critical requirement**: `ll_linux` and `ll_macos` outputs must be identical for cross-platform compatibility.

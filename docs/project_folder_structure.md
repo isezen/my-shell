@@ -51,6 +51,7 @@
 │   │   └── 10_wrapper_stub.bats
 │   ├── ll_linux
 │   │   ├── 00_harness.bash
+│   │   ├── 00_harness.bash.bak
 │   │   ├── 10_core.bats
 │   │   ├── 20_paths.bats
 │   │   ├── 30_edge.bats
@@ -96,5 +97,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 76 files
+19 directories, 77 files
 ```

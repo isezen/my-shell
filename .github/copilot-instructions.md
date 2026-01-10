@@ -53,7 +53,7 @@ Platform implementations:
 - `scripts/dev/ls-compare` - Compare script output against canonical `ls -l`
 - `scripts/dev/ll-compare` - Compare two implementations (e.g., `ll_linux` vs `ll_macos`)
 - Set `LL_NOW_EPOCH` for deterministic timestamp comparisons
-- Use `LL_CHATGPT_FAST=1` to skip slow tests during development
+- Use `LL_NO_COLOR=1` to disable colors for testing
 
 ### Environment Activation System
 
