@@ -353,6 +353,9 @@ try_fastpath_single_dir() {
       else if (k == "ex") COL_EX = v
       else if (k == "fi") COL_FI = v
       else if (k == "or") COL_OR = v
+      else if (k == "ow") COL_OW = v
+      else if (k == "tw") COL_TW = v
+      else if (k == "st") COL_ST = v
       else if (k ~ /^\*/) {
         ext_pat[++n_ext] = substr(k, 2)   # suffix string (e.g. ".txt")
         ext_col[n_ext] = v
@@ -400,6 +403,9 @@ try_fastpath_single_dir() {
       COL_EX = "01;32"
       COL_FI = "0"
       COL_OR = ""
+      COL_OW = ""  # other-writable dir (no sticky)
+      COL_TW = ""  # sticky dir (no other-writable) OR fallback bucket (see below)
+      COL_ST = ""  # sticky + other-writable dir
       COL_OR_DEFAULT = "48;5;196;38;5;232;1"
       n_ext = 0
 
@@ -454,7 +460,7 @@ try_fastpath_single_dir() {
     # - type class first (di/ln/ex/fi)
     # - extension rules apply only to regular, non-executable files
     # - if multiple extension rules match, LAST match wins
-    function color_for_name(name, perms,   base, col, i) {
+    function color_for_name(name, perms,   base, col, i, ux, gx, owrite, sticky) {
       # setuid/setgid override (GNU ls behavior)
       # perms layout: 1(type) + 9(mode)
       # user x position: 4, group x position: 7
@@ -464,7 +470,16 @@ try_fastpath_single_dir() {
       if ((gx == "s" || gx == "S") && COL_SG != "") return esc "[" COL_SG "m"
 
       # type first
-      if (perms ~ /^d/)      base = COL_DI
+      if (perms ~ /^d/) {
+        # Match ll_linux/test-suite behavior:
+        # If directory is sticky (t/T), ALWAYS use "tw" (ignore "st"),
+        # even when other-writable is also set.
+        owrite = (substr(perms, 9, 1) == "w")
+        sticky = (substr(perms,10,1) == "t" || substr(perms,10,1) == "T")
+        if (sticky && COL_TW != "") return esc "[" COL_TW "m"
+        if (!sticky && owrite && COL_OW != "") return esc "[" COL_OW "m"
+        base = COL_DI
+      }
       else if (perms ~ /^l/) {
         if (LN_TARGET) base = "0"
         else base = COL_LN
@@ -795,7 +810,7 @@ try_fastpath_single_dir() {
         # name field
         name_out = format_name(name, perms, target, rows_target_type[i], rows_target_perms[i])
         name_suffix=""
-        if (length(name_out) >= 200) name_suffix = sprintf("%c[K", 27)
+        if (length(name_out) >= 200) name_suffix = sprintf("%c[K%s", 27, creset)
 
         out = ""
         if (ASIZE) out = out blocks_field
@@ -978,6 +993,59 @@ list_dir_contents() {
   done < <(/usr/bin/stat -f "$stat_fmt" -- "${paths[@]}" 2>/dev/null)
 }
 
+append_target_metadata_to_rows() {
+  # Append: <US><target_type><US><target_perms>
+  # rows fields become:
+  #   blocks perms links owner group size epoch name target path is_child target_type target_perms
+  local idx
+  for idx in "${!rows[@]}"; do
+    rows[$idx]="${rows[$idx]}${DELIM}${row_target_type[$idx]:-}${DELIM}${row_target_perms[$idx]:-}"
+  done
+}
+
+attach_symlink_target_metadata() {
+  # For GENERAL PATH rows:
+  # - detect which rows are symlinks (perms starts with 'l')
+  # - stat -L each symlink path to discover target perms
+  # - classify target type: D/X/F, or O for orphan/unknown
+  #
+  # Notes:
+  # - We intentionally do per-symlink stat for correctness: batched -L can drop lines for broken links.
+  # - Filenames with literal newlines are out-of-scope (line-based records).
+
+  # reset arrays
+  row_target_type=()
+  row_target_perms=()
+
+  local row idx perms path st ttype
+  idx=0
+  for row in "${rows[@]}"; do
+    IFS="$DELIM" read -r _blocks perms _links _owner _group _size _epoch _name _target path _child <<<"$row"
+
+    if [[ "${perms:0:1}" == "l" ]]; then
+      # If target missing/broken -> stat fails -> st empty
+      st="$(/usr/bin/stat -f "%Sp" -L -- "$path" 2>/dev/null || true)"
+
+      if [ -z "$st" ] || [[ "${st:0:1}" == "l" ]]; then
+        # unknown/orphan (also treat "still symlink" as unknown)
+        row_target_type[$idx]="O"
+        row_target_perms[$idx]=""
+      else
+        ttype="$(target_type_from_perms "$st")"
+        row_target_type[$idx]="$ttype"
+        row_target_perms[$idx]="$st"
+      fi
+    else
+      row_target_type[$idx]=""
+      row_target_perms[$idx]=""
+    fi
+
+    idx=$((idx + 1))
+  done
+
+  append_target_metadata_to_rows
+}
+
 # Grouped output order: keep operand order, but allow headers for directories when multiple.
 # Grouped output order: files first, then directories (like many ls builds). Keep simple: keep operand order.
 # If operand is a directory and not -d, list its contents.
@@ -1041,6 +1109,7 @@ if [ "${#rows[@]}" -eq 0 ]; then
 fi
 
 attach_symlink_target_metadata
+
 
 # ------------------------------
 # Directory slice lookup for render plan
@@ -1132,6 +1201,9 @@ render_all_awk() {
       else if (k == "ex") COL_EX = v
       else if (k == "fi") COL_FI = v
       else if (k == "or") COL_OR = v
+      else if (k == "ow") COL_OW = v
+      else if (k == "tw") COL_TW = v
+      else if (k == "st") COL_ST = v
       else if (k ~ /^\*/) { ext_pat[++n_ext] = substr(k,2); ext_col[n_ext] = v }
     }
     function parse_ls_colors(s,   i,c,tok) {
@@ -1155,6 +1227,7 @@ render_all_awk() {
       LN_TARGET=0
       COL_EX="01;32"; COL_FI="0"
       COL_OR=""; COL_OR_DEFAULT="48;5;196;38;5;232;1"
+      COL_OW=""; COL_TW=""; COL_ST=""
       n_ext=0
       if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
 
@@ -1269,13 +1342,22 @@ render_all_awk() {
       return s
     }
 
-    function color_for_name(name, perms,   base, col, i, ux, gx) {
+    function color_for_name(name, perms,   base, col, i, ux, gx, owrite, sticky) {
       ux = substr(perms,4,1)
       gx = substr(perms,7,1)
       if ((ux=="s" || ux=="S") && COL_SU!="") return esc "[" COL_SU "m"
       if ((gx=="s" || gx=="S") && COL_SG!="") return esc "[" COL_SG "m"
 
-      if (perms ~ /^d/) base = COL_DI
+      if (perms ~ /^d/) {
+        # Match ll_linux/test-suite behavior:
+        # If directory is sticky (t/T), ALWAYS use "tw" (ignore "st"),
+        # even when other-writable is also set.
+        owrite = (substr(perms, 9, 1) == "w")
+        sticky = (substr(perms,10,1) == "t" || substr(perms,10,1) == "T")
+        if (sticky && COL_TW != "") return esc "[" COL_TW "m"
+        if (!sticky && owrite && COL_OW != "") return esc "[" COL_OW "m"
+        base = COL_DI
+      }
       else if (perms ~ /^l/) base = COL_LN
       else if (perms ~ /^p/) base = COL_PI
       else if (perms ~ /^s/) base = COL_SO
@@ -1513,10 +1595,10 @@ render_all_awk() {
       t_raw = value_field " " unit_field
       t_col = color_reltime(t_raw, tunit, tfut)
 
-      # name
-      name_out = format_name(name, perms, target, ttype, tperms)
-      name_suffix=""
-      if (length(name_out) >= 200) name_suffix = sprintf("%c[K", 27)
+        # name
+        name_out = format_name(name, perms, target, ttype, tperms)
+        name_suffix=""
+        if (length(name_out) >= 200) name_suffix = sprintf("%c[K%s", 27, creset)
 
       out=""
       if (ASIZE) out = out blocks_field
