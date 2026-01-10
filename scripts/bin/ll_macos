@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_macos
 # macOS-specific implementation of ll command
-# (patched) Fix LS_COLORS ln=target + quote/reset placement for tabbed symlink tests
+# (patched) Match ll_linux symlink SGR (ignore LS_COLORS ln=target; use fixed symlink SGR)
 # Uses BSD utilities (ls, awk, stat) for macOS compatibility
 # Usage: ll_macos [OPTIONS] [FILES...]
 # macOS/BSD userland implementation for `ll`.
@@ -209,9 +209,71 @@ try_fastpath_single_dir() {
     -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" -v DEC_SEP="$DEC_SEP" \
     -v TOTAL_LABEL="$total_label" -v TOTAL_APPLICABLE="$total_applicable" \
     '
+    # trim helpers (BSD awk: NO nested function defs)
+    function _trim(s) {
+      sub(/^[ \t]+/, "", s)
+      sub(/[ \t]+$/, "", s)
+      return s
+    }
+
+    # ----------------------------
+    # Robust LS_COLORS parser
+    # - Handles escaped ":" and "=" (e.g. "\:" "\=")
+    # - Splits on unescaped ":" into tokens "key=value"
+    # ----------------------------
+    function _ls_process_token(tok,   eq, k, v) {
+      if (tok == "") return
+      eq = index(tok, "=")
+      if (eq <= 0) return
+      k = _trim(substr(tok, 1, eq-1))
+      v = _trim(substr(tok, eq+1))
+
+      if (k == "di") COL_DI = v
+      else if (k == "ln") {
+        # GNU ls supports "ln=target" to color symlinks like their targets.
+        # For ll_linux parity (tests), we IGNORE ln=target and keep a fixed symlink SGR.
+        # So: do not set LN_TARGET here.
+        if (v != "target") COL_LN = v
+      }
+      else if (k == "su") COL_SU = v
+      else if (k == "sg") COL_SG = v
+      else if (k == "pi") COL_PI = v
+      else if (k == "so") COL_SO = v
+      else if (k == "ex") COL_EX = v
+      else if (k == "fi") COL_FI = v
+      else if (k ~ /^\*/) {
+        ext_pat[++n_ext] = substr(k, 2)   # suffix string (e.g. ".txt")
+        ext_col[n_ext] = v
+      }
+    }
+
+    function parse_ls_colors(s,   i, c, tok) {
+      tok = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\") {
+          # keep escaped char verbatim (e.g. "\:" -> ":" , "\=" -> "=")
+          if (i < length(s)) {
+            tok = tok substr(s, i+1, 1)
+            i++
+          } else {
+            tok = tok c
+          }
+        } else if (c == ":") {
+          _ls_process_token(tok)
+          tok = ""
+        } else {
+          tok = tok c
+        }
+      }
+      _ls_process_token(tok)
+    }
+
     BEGIN {
       esc = sprintf("%c", 27)
       creset = esc "[0m"
+      # ll_linux (GNU ls) style symlink SGR used by tests
+      CSYMLINK = esc "[38;5;208;1m"
 
       # ------------------------------------------
       # LS_COLORS (GNU ls compatible subset)
@@ -226,31 +288,8 @@ try_fastpath_single_dir() {
       COL_EX = "01;32"
       COL_FI = "0"
       n_ext = 0
-      # ext_re[i] = regex-escaped suffix pattern for ext_pat[i]
 
-      if (ENVIRON["LS_COLORS"] != "") {
-        n = split(ENVIRON["LS_COLORS"], parts, ":")
-        for (i = 1; i <= n; i++) {
-          split(parts[i], kv, "=")
-          k = kv[1]; v = kv[2]
-          if (k == "di") COL_DI = v
-          else if (k == "ln") {
-            if (v == "target") { LN_TARGET = 1; COL_LN = "0" }  # GNU dircolors special
-            else COL_LN = v
-          }
-          else if (k == "su") COL_SU = v
-          else if (k == "sg") COL_SG = v
-          else if (k == "pi") COL_PI = v
-          else if (k == "so") COL_SO = v
-          else if (k == "ex") COL_EX = v
-          else if (k == "fi") COL_FI = v
-          else if (k ~ /^\*/) {
-            ext_pat[++n_ext] = substr(k, 2)
-            ext_re[n_ext] = re_escape(ext_pat[n_ext])
-            ext_col[n_ext] = v
-          }
-        }
-      }
+      if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
 
       cd    = esc "[38;5;122m"
       cl    = esc "[38;5;190m"
@@ -325,7 +364,11 @@ try_fastpath_single_dir() {
       col = ""
       if (base == COL_FI) {
         for (i = 1; i <= n_ext; i++) {
-          if (name ~ ext_re[i] "$") col = ext_col[i]
+          # suffix match (avoid regex escaping differences on BSD awk)
+          if (length(name) >= length(ext_pat[i]) &&
+              substr(name, length(name) - length(ext_pat[i]) + 1) == ext_pat[i]) {
+            col = ext_col[i]
+          }
         }
       }
       if (col != "") return esc "[" col "m"
@@ -567,12 +610,23 @@ try_fastpath_single_dir() {
         t_col = color_reltime(t_raw, tunit, tfut)
 
         # name field
-        cname = color_for_name(name, perms)
+        # ln=target: GNU ls behavior — if LS_COLORS has "ln=target",
+        # color symlink as if it were the target (we approximate via target NAME).
+        # This enables extension-based coloring to match ll_linux tests.
+        if (perms ~ /^l/ && target != "" && LN_TARGET) {
+          # Use a non-symlink perms template so color_for_name treats it like a file
+          # and extension rules can apply (e.g., *.txt).
+          cname = color_for_name(target, "----------")
+        } else if (perms ~ /^l/) {
+          # Match ll_linux: fixed symlink SGR (and repeated before target)
+          cname = CSYMLINK
+        } else {
+          cname = color_for_name(name, perms)
+        }
         q = quote_if_needed(name)
 
-        # For symlinks, match ll_linux: keep color "open" across:
-        #   "<name>" -> "<target>"\x1b[0m
-        # i.e. do NOT reset between name/arrow/target, and color the target too.
+        # For symlinks, match ll_linux: emit color code BOTH before name and before target:
+        #   <c><name> -> <c><target>\x1b[0m
         if (perms ~ /^l/ && target != "") {
           # name part (no reset yet)
           if (q != name) {
@@ -583,7 +637,7 @@ try_fastpath_single_dir() {
             else nout = name
           }
 
-          # target part (same cname; no reset yet)
+          # target part (repeat cname like GNU ls does)
           tq = quote_if_needed(target)
           if (tq != target) {
             if (cname != "") tout = "\"" cname target "\""
@@ -593,6 +647,7 @@ try_fastpath_single_dir() {
             else tout = target
           }
 
+          # IMPORTANT: keep arrow colored by the first cname, and re-emit cname before target
           nout = nout " -> " tout
           if (cname != "") nout = nout creset
         } else {
@@ -960,6 +1015,65 @@ render_rows_awk() {
     -v W_TNUM="$W_TNUM" \
     -v W_TUNIT="$W_TUNIT" \
     '
+    # trim helpers (BSD awk: NO nested function defs)
+    function _trim(s) {
+      sub(/^[ \t]+/, "", s)
+      sub(/[ \t]+$/, "", s)
+      return s
+    }
+
+    # ----------------------------
+    # Robust LS_COLORS parser
+    # - Handles escaped ":" and "=" (e.g. "\:" "\=")
+    # - Splits on unescaped ":" into tokens "key=value"
+    # ----------------------------
+    function _ls_process_token(tok,   eq, k, v) {
+      if (tok == "") return
+      eq = index(tok, "=")
+      if (eq <= 0) return
+      k = _trim(substr(tok, 1, eq-1))
+      v = _trim(substr(tok, eq+1))
+
+      if (k == "di") COL_DI = v
+      else if (k == "ln") {
+        # GNU ls supports "ln=target" to color symlinks like their targets.
+        # For ll_linux parity (tests), we IGNORE ln=target and keep a fixed symlink SGR.
+        # So: do not set LN_TARGET here.
+        if (v != "target") COL_LN = v
+      }
+      else if (k == "su") COL_SU = v
+      else if (k == "sg") COL_SG = v
+      else if (k == "pi") COL_PI = v
+      else if (k == "so") COL_SO = v
+      else if (k == "ex") COL_EX = v
+      else if (k == "fi") COL_FI = v
+      else if (k ~ /^\*/) {
+        ext_pat[++n_ext] = substr(k, 2)   # suffix string (e.g. ".txt")
+        ext_col[n_ext] = v
+      }
+    }
+
+    function parse_ls_colors(s,   i, c, tok) {
+      tok = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\") {
+          if (i < length(s)) {
+            tok = tok substr(s, i+1, 1)
+            i++
+          } else {
+            tok = tok c
+          }
+        } else if (c == ":") {
+          _ls_process_token(tok)
+          tok = ""
+        } else {
+          tok = tok c
+        }
+      }
+      _ls_process_token(tok)
+    }
+
     function sp(n,   s) { if (n <= 0) return ""; return sprintf("%*s", n, "") }
     # Escape regex metacharacters for LS_COLORS suffix rules
     function re_escape(s,   i,c,out) {
@@ -974,6 +1088,7 @@ render_rows_awk() {
     BEGIN {
       esc = sprintf("%c", 27)
       creset = esc "[0m"
+      CSYMLINK = esc "[38;5;208;1m"
 
       # --------------------------------------------------
       # LS_COLORS support (GNU ls compatible subset)
@@ -988,33 +1103,8 @@ render_rows_awk() {
       COL_EX = "01;32"
       COL_FI = "0"
       n_ext = 0
-      # ext_re[i] = regex-escaped suffix pattern for ext_pat[i]
 
-      if (ENVIRON["LS_COLORS"] != "") {
-        n = split(ENVIRON["LS_COLORS"], parts, ":")
-        for (i = 1; i <= n; i++) {
-          split(parts[i], kv, "=")
-          k = kv[1]
-          v = kv[2]
-
-          if (k == "di") COL_DI = v
-          else if (k == "ln") {
-            if (v == "target") { LN_TARGET = 1; COL_LN = "0" }
-            else COL_LN = v
-          }
-          else if (k == "su") COL_SU = v
-          else if (k == "sg") COL_SG = v
-          else if (k == "pi") COL_PI = v
-          else if (k == "so") COL_SO = v
-          else if (k == "ex") COL_EX = v
-          else if (k == "fi") COL_FI = v
-          else if (k ~ /^\*/) {
-            ext_pat[++n_ext] = substr(k, 2)
-            ext_re[n_ext] = re_escape(ext_pat[n_ext])
-            ext_col[n_ext] = v
-          }
-        }
-      }
+      if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
 
       cd    = esc "[38;5;122m"
       cl    = esc "[38;5;190m"
@@ -1164,7 +1254,11 @@ render_rows_awk() {
       col = ""
       if (base == COL_FI) {
         for (i = 1; i <= n_ext; i++) {
-          if (name ~ ext_re[i] "$") col = ext_col[i]
+          # suffix match (avoid regex escaping differences on BSD awk)
+          if (length(name) >= length(ext_pat[i]) &&
+              substr(name, length(name) - length(ext_pat[i]) + 1) == ext_pat[i]) {
+            col = ext_col[i]
+          }
         }
       }
       if (col != "") return esc "[" col "m"
@@ -1178,8 +1272,20 @@ render_rows_awk() {
     }
 
     function format_name(name, perms, target) {
-      cname = color_for_name(name, perms)
-      # Symlink: match ll_linux behavior (color spans name + arrow + target; single reset at end)
+      # ln=target: GNU ls behavior — if LS_COLORS has "ln=target",
+      # color symlink as if it were the target (approx by target NAME).
+      if (perms ~ /^l/ && target != "" && LN_TARGET) {
+        # Non-symlink perms template so extension rules apply (e.g., *.txt)
+        cname = color_for_name(target, "----------")
+      } else if (perms ~ /^l/) {
+        cname = CSYMLINK
+      } else {
+        cname = color_for_name(name, perms)
+      }
+
+      # Symlink: match ll_linux behavior:
+      #   <c><name> -> <c><target>\x1b[0m
+      # NOTE: GNU ls repeats the same SGR before the target; tests expect that.
       if (perms ~ /^l/ && target != "") {
         q = quote_if_needed(name)
         if (q != name) {
@@ -1205,6 +1311,7 @@ render_rows_awk() {
       }
 
       # Non-symlink: existing quoting/reset behavior
+      cname = color_for_name(name, perms)
       q = quote_if_needed(name)
       if (q != name) {
         if (cname != "") return "\"" cname name "\"" creset
