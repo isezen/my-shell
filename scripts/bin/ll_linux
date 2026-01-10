@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_linux
 # Linux-specific implementation of ll command
+# NOTE: ll_common.awk include is optional via LL_USE_COMMON_AWK=1 (safe mode uses -f <(…) to avoid awk concat issues)
+# Uses scripts/bin/ll_common.awk as shared awk library (included with -f)
 # (patched) Normalize ls reset placement for quoted names / symlink targets (tab case)
 # Uses GNU coreutils (ls, awk, date) for Linux compatibility
 # Usage: ll_linux [OPTIONS] [FILES...]
@@ -225,16 +227,23 @@ if ! "$AWK_BIN" 'BEGIN{ if (match("1", /[0-9]+/, a)) exit 0; exit 1 }' </dev/nul
   fi
 fi
 
+# ------------------------------
+# Common awk library include
+# ------------------------------
+_self_dir_linux="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+LL_COMMON_AWK="${LL_COMMON_AWK:-${_self_dir_linux}/ll_common.awk}"
+AWK_COMMON_ARGS=()
+if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
+  if [ ! -r "$LL_COMMON_AWK" ]; then
+    echo "ll_linux: missing common awk library: $LL_COMMON_AWK" >&2
+    exit 1
+  fi
+  AWK_COMMON_ARGS=(-f "$LL_COMMON_AWK")
+fi
+
 # Print using a single awk program (stores lines once; computes widths; prints).
 # shellcheck disable=SC2016
-"$AWK_BIN" -v ASIZE="$ASIZE" \
-    -v HUMANREADABLE="$HUMANREADABLE" \
-    -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
-    -v NUMERICUIDGID="$NUMERICUIDGID" \
-    -v OWNER="$OWNER" \
-    -v GROUPNAME="$GROUPNAME" \
-    -v LISTDIRECTORY="$LISTDIRECTORY" \
-    -v USERNAME="$USERNAME" '
+AWK_PROG='
 BEGIN {
   # ANSI reset
   creset = sprintf("%c[0m", 27)
@@ -685,7 +694,27 @@ END {
     print out
   }
 }
-' <<<"$ll_res"
+'
+
+if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
+  "$AWK_BIN" -f "$LL_COMMON_AWK" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+    -v HUMANREADABLE="$HUMANREADABLE" \
+    -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
+    -v NUMERICUIDGID="$NUMERICUIDGID" \
+    -v OWNER="$OWNER" \
+    -v GROUPNAME="$GROUPNAME" \
+    -v LISTDIRECTORY="$LISTDIRECTORY" \
+    -v USERNAME="$USERNAME" <<<"$ll_res"
+else
+  "$AWK_BIN" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+    -v HUMANREADABLE="$HUMANREADABLE" \
+    -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
+    -v NUMERICUIDGID="$NUMERICUIDGID" \
+    -v OWNER="$OWNER" \
+    -v GROUPNAME="$GROUPNAME" \
+    -v LISTDIRECTORY="$LISTDIRECTORY" \
+    -v USERNAME="$USERNAME" <<<"$ll_res"
+fi
 
 # Print total line if present (same as ll script)
 if [ -n "$ll_total" ]; then
