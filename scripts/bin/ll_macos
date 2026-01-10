@@ -181,6 +181,10 @@ target_type_from_perms() {
 # - one stat, one awk
 # - parse symlink target from stat %N ("name -> target") when available
 try_fastpath_single_dir() {
+  # PERF NOTE:
+  # This hot-path must stay *very* lean. Avoid per-entry bash loops.
+  # Do: 1 batched stat + tiny symlink-only stat(s) + 1 awk render.
+  # Don't: read entire stat output into bash arrays, mktemp churn, O(n) shell parsing.
   # Preconditions:
   # - not --directory / -d
   # - single operand
@@ -227,78 +231,85 @@ try_fastpath_single_dir() {
     fi
 
     local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
-    local stat_in
-    local stat_aug
+    local stat_in syms_file tperms_file stat_aug st
     stat_in="$(mktemp)"
-    stat_aug="$(mktemp)"
-    trap 'rm -f "$stat_in" "$stat_aug"' RETURN
+    trap 'rm -f "$stat_in" ${syms_file:+ "$syms_file"} ${tperms_file:+ "$tperms_file"} ${stat_aug:+ "$stat_aug"}' RETURN
 
+    # 1) Batched stat for all entries (one process)
     LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null > "$stat_in"
 
-    local stat_lines=()
-    local line
-    while IFS= read -r line; do
-      stat_lines+=("$line")
-    done < "$stat_in"
+    # Fast check: if there are NO symlinks, skip all symlink augmentation work.
+    # This is the common case in ll-perf and avoids extra mktemp/awk/disk IO.
+    if ! LC_ALL=C /usr/bin/awk -v FS="$DELIM" '$2 ~ /^l/ { found=1; exit } END{ exit found?0:1 }' "$stat_in"; then
+      stat_aug="$stat_in"
+    else
+      syms_file="$(mktemp)"
+      tperms_file="$(mktemp)"
+      stat_aug="$(mktemp)"
 
-    local symlink_indices=()
-    local symlink_names=()
-    local line_idx=0
-    for line in "${stat_lines[@]}"; do
-      if [ -n "$line" ]; then
-        IFS="$DELIM" read -r _blocks perms _links _owner _group _uid _gid _size _mtime name linktgt <<<"$line"
-        display="$name"
-        target="${linktgt:-}"
-        if [[ -z "$target" ]] && [[ "${perms:0:1}" == "l" ]] && [[ "$display" == *" -> "* ]]; then
-          target="${display#* -> }"
-          display="${display%% -> *}"
-        fi
-        if [[ "$display" == ./* ]]; then
-          display="${display#./}"
-        fi
-        if [[ "${perms:0:1}" == "l" ]]; then
-          symlink_indices+=("$line_idx")
-          symlink_names+=("$display")
-        fi
-      fi
-      line_idx=$((line_idx + 1))
-    done
+      # 2) Extract symlink display names (only) using awk (fast; no bash O(n) parsing)
+      #    NOTE: filenames with literal newlines are out-of-scope (line records).
+      LC_ALL=C /usr/bin/awk -v FS="$DELIM" '
+        $2 ~ /^l/ {
+          name=$10
+          tgt=$11
+          if (tgt=="" && index(name, " -> ")>0) {
+            name=substr(name, 1, index(name," -> ")-1)
+          }
+          if (substr(name,1,2)=="./") name=substr(name,3)
+          print name
+        }
+      ' "$stat_in" > "$syms_file"
 
-    local line_target_type=()
-    local line_target_perms=()
-    if [ "${#symlink_names[@]}" -gt 0 ]; then
-      local target_stat_fmt="%Sp"
-      local target_idx=0
-      while IFS= read -r st; do
-        if [ "$target_idx" -ge "${#symlink_names[@]}" ]; then
-          break
-        fi
-        local row_idx="${symlink_indices[$target_idx]}"
-      if [ -z "$st" ]; then
-        line_target_type[$row_idx]="O"
-        line_target_perms[$row_idx]=""
-      elif [[ "${st:0:1}" == "l" ]]; then
-        line_target_type[$row_idx]="O"
-        line_target_perms[$row_idx]=""
-      else
-        line_target_perms[$row_idx]="$st"
-        line_target_type[$row_idx]="$(target_type_from_perms "$st")"
+      # 3) For symlinks only: fetch target perms preserving 1:1 line count.
+      #    We intentionally do NOT batch here because broken symlinks can cause
+      #    missing output lines with batched -L; per-symlink keeps alignment.
+      : > "$tperms_file"
+      if [ -s "$syms_file" ]; then
+        while IFS= read -r sname; do
+          # If target missing/broken -> empty line.
+          st="$(/usr/bin/stat -f "%Sp" -L -- "$sname" 2>/dev/null || true)"
+          printf '%s\n' "${st:-}" >> "$tperms_file"
+        done < "$syms_file"
       fi
-        target_idx=$((target_idx + 1))
-      done < <(/usr/bin/stat -f "$target_stat_fmt" -L -- "${symlink_names[@]}" 2>/dev/null)
-      while [ "$target_idx" -lt "${#symlink_names[@]}" ]; do
-        row_idx="${symlink_indices[$target_idx]}"
-        line_target_type[$row_idx]="O"
-        line_target_perms[$row_idx]=""
-        target_idx=$((target_idx + 1))
-      done
+
+      # 4) Augment stat lines with target_type + target_perms, in-order.
+      #    Non-symlink rows get empty metadata (awk will treat as orphan/unknown).
+      LC_ALL=C /usr/bin/awk -v FS="$DELIM" -v OFS="$DELIM" -v DELIM="$DELIM" '
+        BEGIN { si = 0 }
+
+        # IMPORTANT:
+        # We pass 2 files: stat_in (main) and tperms_file (aux).
+        # We must NOT process tperms_file as normal input, otherwise its lines get printed.
+        FNR != NR { next }
+
+        function ttype_from_perms(p,   first) {
+          if (p=="") return "O"
+          first = substr(p,1,1)
+          if (first=="d") return "D"
+          if (p ~ /x/) return "X"
+          return "F"
+        }
+        {
+          perms = $2
+          if (perms ~ /^l/) {
+            si++
+            if ((getline tp < ARGV[2]) > 0) {
+              # If tp empty or still "l..." treat as orphan/unknown (matches old logic)
+              if (tp=="" || substr(tp,1,1)=="l") {
+                print $0, "O", ""
+              } else {
+                print $0, ttype_from_perms(tp), tp
+              }
+            } else {
+              print $0, "O", ""
+            }
+          } else {
+            print $0, "", ""
+          }
+        }
+      ' "$stat_in" "$tperms_file" > "$stat_aug"
     fi
-
-    : > "$stat_aug"
-    for idx in "${!stat_lines[@]}"; do
-      line="${stat_lines[$idx]}"
-      printf '%s%s%s%s%s\n' "$line" "$DELIM" "${line_target_type[$idx]:-}" "$DELIM" "${line_target_perms[$idx]:-}" >> "$stat_aug"
-    done
 
     # One stat + one awk (awk holds rows in arrays, computes widths, renders in END)
     # Force C locale for speed (stat+awk string handling is noticeably faster on macOS).
