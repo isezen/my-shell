@@ -357,8 +357,11 @@ try_fastpath_single_dir() {
       else if (k == "tw") COL_TW = v
       else if (k == "st") COL_ST = v
       else if (k ~ /^\*/) {
-        ext_pat[++n_ext] = substr(k, 2)   # suffix string (e.g. ".txt")
-        ext_col[n_ext] = v
+        # Store suffix->color in a hash for O(1) lookup.
+        # If suffix repeats, last assignment wins (matches GNU-ish "last wins" for same key).
+        suf = substr(k, 2)   # suffix string (e.g. ".txt")
+        ext_lastcol[suf] = v
+        ext_has_len[length(suf)] = 1
       }
     }
 
@@ -407,9 +410,12 @@ try_fastpath_single_dir() {
       COL_TW = ""  # sticky dir (no other-writable) OR fallback bucket (see below)
       COL_ST = ""  # sticky + other-writable dir
       COL_OR_DEFAULT = "48;5;196;38;5;232;1"
-      n_ext = 0
+      # extension lookup tables
+      n_extlen = 0
+      delete ext_lastcol; delete ext_has_len; delete ext_lens
 
       if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
+      build_ext_lens()
 
       cd    = esc "[38;5;122m"
       cl    = esc "[38;5;190m"
@@ -443,6 +449,27 @@ try_fastpath_single_dir() {
     }
     function max(a,b){return (a>b)?a:b}
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
+
+    # Build a descending-sorted list of unique suffix lengths from ext_has_len[].
+    # This enables "longest suffix wins" + O(1) hash lookup per candidate suffix.
+    function build_ext_lens(   k, n, i, j, tmp) {
+      n = 0
+      for (k in ext_has_len) {
+        n++
+        ext_lens[n] = k + 0
+      }
+      # insertion sort descending (n is typically small)
+      for (i = 2; i <= n; i++) {
+        tmp = ext_lens[i]
+        j = i - 1
+        while (j >= 1 && ext_lens[j] < tmp) {
+          ext_lens[j+1] = ext_lens[j]
+          j--
+        }
+        ext_lens[j+1] = tmp
+      }
+      n_extlen = n
+    }
 
     # Escape regex metacharacters so LS_COLORS "*.<ext>" rules
     # behave like suffix match (not regex wildcard match).
@@ -492,11 +519,12 @@ try_fastpath_single_dir() {
       # extension only for regular non-exec (match linux behavior for *.sh vs ex)
       col = ""
       if (base == COL_FI) {
-        for (i = 1; i <= n_ext; i++) {
-          # suffix match (avoid regex escaping differences on BSD awk)
-          if (length(name) >= length(ext_pat[i]) &&
-              substr(name, length(name) - length(ext_pat[i]) + 1) == ext_pat[i]) {
-            col = ext_col[i]
+        # Longest-suffix-wins: check suffix lengths descending; O(1) hash lookup per candidate.
+        for (j = 1; j <= n_extlen; j++) {
+          L = ext_lens[j]
+          if (length(name) >= L) {
+            suf = substr(name, length(name) - L + 1)
+            if (suf in ext_lastcol) { col = ext_lastcol[suf]; break }
           }
         }
       }
@@ -1183,6 +1211,27 @@ render_all_awk() {
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
     function _trim(s){ sub(/^[ \t]+/,"",s); sub(/[ \t]+$/,"",s); return s }
 
+    # Build a descending-sorted list of unique suffix lengths from ext_has_len[].
+    # This enables "longest suffix wins" + O(1) hash lookup per candidate suffix.
+    function build_ext_lens(   k, n, i, j, tmp) {
+      n = 0
+      for (k in ext_has_len) {
+        n++
+        ext_lens[n] = k + 0
+      }
+      # insertion sort descending (n is typically small)
+      for (i = 2; i <= n; i++) {
+        tmp = ext_lens[i]
+        j = i - 1
+        while (j >= 1 && ext_lens[j] < tmp) {
+          ext_lens[j+1] = ext_lens[j]
+          j--
+        }
+        ext_lens[j+1] = tmp
+      }
+      n_extlen = n
+    }
+
     # ----------------------------
     # LS_COLORS parser (robust)
     # ----------------------------
@@ -1204,7 +1253,13 @@ render_all_awk() {
       else if (k == "ow") COL_OW = v
       else if (k == "tw") COL_TW = v
       else if (k == "st") COL_ST = v
-      else if (k ~ /^\*/) { ext_pat[++n_ext] = substr(k,2); ext_col[n_ext] = v }
+      else if (k ~ /^\*/) {
+        # Store suffix->color in a hash for O(1) lookup.
+        # If suffix repeats, last assignment wins (matches "last wins" for same key).
+        suf = substr(k, 2)
+        ext_lastcol[suf] = v
+        ext_has_len[length(suf)] = 1
+      }
     }
     function parse_ls_colors(s,   i,c,tok) {
       tok=""
@@ -1228,8 +1283,11 @@ render_all_awk() {
       COL_EX="01;32"; COL_FI="0"
       COL_OR=""; COL_OR_DEFAULT="48;5;196;38;5;232;1"
       COL_OW=""; COL_TW=""; COL_ST=""
-      n_ext=0
+      # extension lookup tables
+      n_extlen=0
+      delete ext_lastcol; delete ext_has_len; delete ext_lens
       if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
+      build_ext_lens()
 
       cd=esc "[38;5;122m"; cl=esc "[38;5;190m"; cr=esc "[38;5;119m"
       cw=esc "[38;5;216m"; cx=esc "[38;5;124m"; cplus=esc "[38;5;129m"
@@ -1366,10 +1424,12 @@ render_all_awk() {
 
       col=""
       if (base == COL_FI) {
-        for (i=1;i<=n_ext;i++){
-          if (length(name) >= length(ext_pat[i]) &&
-              substr(name, length(name)-length(ext_pat[i])+1) == ext_pat[i]) {
-            col = ext_col[i]
+        # Longest-suffix-wins: check suffix lengths descending; O(1) hash lookup per candidate.
+        for (j = 1; j <= n_extlen; j++) {
+          L = ext_lens[j]
+          if (length(name) >= L) {
+            suf = substr(name, length(name) - L + 1)
+            if (suf in ext_lastcol) { col = ext_lastcol[suf]; break }
           }
         }
       }
