@@ -88,11 +88,9 @@
 ├── CONTRIBUTING.md
 ├── install.sh
 ├── LICENSE
-├── ll_linux.txt
-├── ll_macos.txt
 ├── Makefile
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 74 files
+19 directories, 72 files
 ```

@@ -1,6 +1,8 @@
 #!/bin/bash
 # scripts/dev/ll-compare
 # Test script to compare ll script outputs
+# NOTE: --fail-only prints ONLY failing cases (with details) + summary.
+# NOTE: compare is strict; use --show-ansi to make escapes visible when printing
 # Tests various parameter combinations
 # Usage: ll-compare [OPTIONS] <script1> <script2> [script3 ...]
 
@@ -349,106 +351,69 @@ strip_ansi_and_controls() {
   printf '%s' "$text"
 }
 
-# STRUCTURED COMPARISON FUNCTION
-# Parse each line into [prefix fields][filename/symlink tail]
-# - Prefix fields: compare STRICTLY with ANSI preserved
-# - Filename/target: strip ANSI then compare (preserves semantic spaces/tabs)
-compare_outputs_structured() {
-  # STRUCTURED COMPARISON (FINAL POLICY):
-  # - Prefix fields (permissions, links, owner, group, size, time) must match STRICTLY (with ANSI preserved)
-  # - Filename/symlink target must match AFTER ANSI STRIP (ignores color differences)
-  # - Split each line into: [prefix fields] [filename/target]
-  # - Compare prefix as-is, filename after stripping ANSI
-  
-  local out1="$1"
-  local out2="$2"
-  
-  # Split into arrays of lines (portable: avoid readarray which is bash 4+ only)
-  declare -a lines1
-  declare -a lines2
-  
-  while IFS= read -r line; do
-    lines1+=("$line")
-  done <<<"$out1"
-  
-  while IFS= read -r line; do
-    lines2+=("$line")
-  done <<<"$out2"
-  
-  # Must have same number of lines
-  if [ "${#lines1[@]}" -ne "${#lines2[@]}" ]; then
-    return 1
-  fi
-  
-  # Compare each line: prefix strict, filename ANSI-stripped
-  for idx in "${!lines1[@]}"; do
-    local l1="${lines1[$idx]}"
-    local l2="${lines2[$idx]}"
-    
-    # Extract prefix (fields 0-7): perms, links, owner, group, size, time_num, time_unit, timestamp
-    # Filename starts at field 8 (after all prefix fields)
-    
-    # Split line into fields (space-separated, but quoted filenames are single field)
-    # This is complex - for now, use simple heuristic: find the filename by looking for first non-special char sequence
-    
-    # Extract prefix and filename:
-    # Format: [-rwxrwxrwx] [links] [owner] [group] [size] [time_num] [time_unit] [timestamp] [filename or ->...]
-    # Prefix is first 8 fields, rest is filename/symlink
-    
-    local prefix1=""
-    local prefix2=""
-    local fname1=""
-    local fname2=""
-    
-    # Count fields to find where filename starts (8 fields in for regular files)
-    # WARNING: This is fragile - depends on exact format!
-    # Better: split by 8 fields from start, rest is filename
-    
-    # shellcheck disable=SC2206
-    local l1_fields=( $l1 )
-    # shellcheck disable=SC2206
-    local l2_fields=( $l2 )
-    
-    # If fewer than 8 fields, comparison fails
-    if [ "${#l1_fields[@]}" -lt 8 ] || [ "${#l2_fields[@]}" -lt 8 ]; then
-      # Not enough fields - compare as-is
-      if [ "$l1" != "$l2" ]; then
-        return 1
-      fi
-      continue
-    fi
-    
-    # Extract prefix (first 8 fields) and filename (rest)
-    prefix1="${l1_fields[0]} ${l1_fields[1]} ${l1_fields[2]} ${l1_fields[3]} ${l1_fields[4]} ${l1_fields[5]} ${l1_fields[6]} ${l1_fields[7]}"
-    prefix2="${l2_fields[0]} ${l2_fields[1]} ${l2_fields[2]} ${l2_fields[3]} ${l2_fields[4]} ${l2_fields[5]} ${l2_fields[6]} ${l2_fields[7]}"
-    
-    # Filename is everything from position 9 onward (rejoin fields 8+)
-    fname1="${l1:${#prefix1}}"
-    fname2="${l2:${#prefix2}}"
-    
-    # Remove leading space from filename part
-    fname1="${fname1# }"
-    fname2="${fname2# }"
-    
-    # Compare prefix STRICTLY (with ANSI codes)
-    if [ "$prefix1" != "$prefix2" ]; then
-      return 1
-    fi
-    
-    # Compare filename AFTER ANSI strip
-    local fname1_clean
-    fname1_clean=$(strip_ansi_and_controls "$fname1")
-    local fname2_clean
-    fname2_clean=$(strip_ansi_and_controls "$fname2")
-    
-    if [ "$fname1_clean" != "$fname2_clean" ]; then
-      return 1
-    fi
-  done
-  
-  return 0
+keep_sgr_strip_other_controls() {
+  # Keep only SGR color sequences (CSI ... m).
+  # Strip everything else that can have terminal side-effects (OSC, DCS, CSI K, etc).
+  local text="$1"
+  text=$(printf '%s' "$text" | perl -0777 -pe '
+    # OSC: ESC ] ... (BEL or ST)
+    s/\e\][^\a]*(\a|\e\\)//g;
+    # DCS/PM/APC: ESC P / ESC ^ / ESC _ ... ST
+    s/\e[P^_].*?(\e\\)//gs;
+    # Charset/designate
+    s/\e[()#][0-9A-Za-z]//g;
+    # Strip CSI sequences EXCEPT those ending with "m" (SGR).
+    # Example kept:    ESC [ 38;5;124 m
+    # Example removed: ESC [ K   (erase-to-end-of-line), cursor moves, etc.
+    s/\e\[[0-9;?]*[ -\/]*((?!m)[@-~])//g;
+    # Explicitly strip CSI ... K just in case
+    s/\e\[[0-9;]*K//g;
+    # Remove carriage return
+    s/\r//g;
+  ')
+  # Drop vertical tab
+  text=$(printf '%s' "$text" | tr -d '\v')
+  printf '%s' "$text"
 }
 
+make_visible() {
+  # Print output safely (avoid terminal control side-effects).
+  # --show-ansi: show escapes as \x1b, \r, \t etc.
+  # default: KEEP colors (SGR), strip other control sequences.
+  local text="$1"
+  if [ "$SHOW_ANSI" -eq 1 ]; then
+    python3 - <<'PY' "$text"
+import sys
+s = sys.argv[1]
+# Turn control chars (ESC, TAB, etc.) into visible escape sequences.
+# Keep unicode readable; only escape control bytes.
+bs = s.encode("utf-8", "surrogatepass").decode("utf-8", "surrogatepass")
+out = bs.encode("unicode_escape").decode("ascii")
+sys.stdout.write(out)
+PY
+  else
+    keep_sgr_strip_other_controls "$text"
+  fi
+}
+
+compare_outputs() {
+  # Strict compare (byte-for-byte in bash string terms).
+  # If you later want "ignore only filename color", we can reintroduce a smarter comparer.
+  [ "$1" = "$2" ]
+}
+
+# In nounset mode (-u), expanding an unset array like "${tc_argv[@]}" crashes.
+# Always keep tc_argv declared as an array.
+declare -a tc_argv=()
+
+print_test_header() {
+  local test_num="$1"
+  local name="$2"
+  local test_num_colored="${color_magenta}Test #${test_num}${color_reset}"
+  local display_test_name="${color_yellow}${name}${color_reset}"
+  echo -e "\n${test_num_colored}: ${display_test_name}"
+  echo "----------------------------------"
+}
 
 global_index=0
 for test_case in "${test_cases[@]}"; do
@@ -497,28 +462,24 @@ for test_case in "${test_cases[@]}"; do
       continue
     fi
   fi
-
-  if [ "$FAIL_ONLY" -eq 0 ]; then
-    test_num_colored="${color_magenta}Test #$actual_test_num${color_reset}"
-    display_test_name="${color_yellow}${test_name}${color_reset}"
-    echo "$test_num_colored: $display_test_name"
-    echo "----------------------------------"
-  fi
   
   # Run all scripts and capture outputs
   # IMPORTANT: ARGV is a shell-quoted argv string; expand it safely into an array
+  tc_argv=()
   if [ -n "$test_argv_str" ]; then
     # shellcheck disable=SC2086
     eval "tc_argv=($test_argv_str)"
-  else
-    tc_argv=()
   fi
 
   outputs=()
 
   for script_path in "${script_paths[@]}"; do
     output_file=$(mktemp)
-    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" "${tc_argv[@]:-}" >"$output_file" 2>&1 || true)
+    # Nounset-safe array expansion for Bash 3.2:
+    # If tc_argv is unset (possible edge w/ -u), expand to nothing.
+    # If set (even empty), expand normally.
+    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" \
+      ${tc_argv[@]+"${tc_argv[@]}"} >"$output_file" 2>&1 || true)
     output="$(cat "$output_file")"
     rm -f "$output_file"
     outputs+=("$output")
@@ -528,7 +489,7 @@ for test_case in "${test_cases[@]}"; do
   all_match=true
   first_output="${outputs[0]}"
   for i in $(seq 1 $((${#outputs[@]} - 1))); do
-    if ! compare_outputs_structured "$first_output" "${outputs[$i]}"; then
+    if ! compare_outputs "$first_output" "${outputs[$i]}"; then
       all_match=false
       break
     fi
@@ -536,30 +497,33 @@ for test_case in "${test_cases[@]}"; do
 
   if [ "$all_match" = true ]; then
     if [ "$FAIL_ONLY" -eq 0 ]; then
+      print_test_header "$actual_test_num" "$test_name"
+    fi
+    if [ "$FAIL_ONLY" -eq 0 ]; then
       echo "PASS"
     fi
     ((passed++))
   else
-    if [ "$FAIL_ONLY" -eq 0 ]; then
-      echo "FAIL"
-      for i in $(seq 0 $((${#script_names[@]} - 1))); do
-        if [ "$i" -gt 0 ]; then
-          echo ""
-        fi
-        echo "  ${script_names[$i]}:"
-        # shellcheck disable=SC2001
-        echo "${outputs[$i]}" | sed 's/^/    /'
-      done
-    fi
+    # Print FAIL details:
+    # - normal mode: always print
+    # - --fail-only: print ONLY failing tests (this block)
+    print_test_header "$actual_test_num" "$test_name"
+    echo "FAIL"
+    for i in $(seq 0 $((${#script_names[@]} - 1))); do
+      if [ "$i" -gt 0 ]; then
+        echo ""
+      fi
+      echo "  ${script_names[$i]}:"
+      make_visible "${outputs[$i]}" | sed 's/^/    /'
+    done
     ((errors++))
   fi
 
-  if [ "$FAIL_ONLY" -eq 0 ]; then
+  # Spacing between printed test blocks:
+  # - normal mode prints every test, so always blank line
+  # - fail-only prints only fails, so blank line only after fails
+  if [ "$FAIL_ONLY" -eq 0 ] || [ "$all_match" = false ]; then
     echo ""
-  else
-    if [ "$all_match" = false ]; then
-      echo ""
-    fi
   fi
 done
 
