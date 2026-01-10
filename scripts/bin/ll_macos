@@ -540,6 +540,7 @@ try_fastpath_single_dir() {
         t_col = color_reltime(t_raw, tunit, tfut)
 
         # name field
+        # Match ll_linux behavior: reset before starting filename color
         cname = color_for_name(name, perms)
         nout = cname quote_if_needed(name) creset
         if (perms ~ /^l/ && target != "") nout = nout " -> " quote_if_needed(target)
@@ -1092,8 +1093,9 @@ render_rows_awk() {
     function format_name(name, perms, target) {
       cname = color_for_name(name, perms)
       if (perms ~ /^l/ && target != "") {
+        # Match ll_linux behavior: reset before starting filename color
         return cname quote_if_needed(name) creset \
-               " -> " quote_if_needed(target)
+              " -> " quote_if_needed(target)
       }
       return cname quote_if_needed(name) creset
     }

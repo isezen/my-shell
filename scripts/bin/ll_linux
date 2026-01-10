@@ -318,12 +318,25 @@ function quote_if_needed(s) {
   return (index(s, " ") > 0 || index(s, "\t") > 0) ? "\"" s "\"" : s
 }
 
+function strip_leading_resets(s) {
+  # Remove redundant leading SGR resets produced by ls (e.g. "\033[0m\033[0m...")
+  while (s ~ /^\033\[0m/) sub(/^\033\[0m/, "", s)
+  return s
+}
+
 function format_name(raw, perms,   arrow_pos, name, target) {
+  raw = strip_leading_resets(raw)
+
   if (perms ~ /^l/ && (arrow_pos = index(raw, " -> ")) > 0) {
     name = substr(raw, 1, arrow_pos - 1)
     target = substr(raw, arrow_pos + 4)
+
+    name = strip_leading_resets(name)
+    target = strip_leading_resets(target)
+
     return quote_if_needed(name) " -> " quote_if_needed(target)
   }
+
   return quote_if_needed(raw)
 }
 
