@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_linux
 # Linux-specific implementation of ll command
+# (patched) Normalize ls reset placement for quoted names / symlink targets (tab case)
 # Uses GNU coreutils (ls, awk, date) for Linux compatibility
 # Usage: ll_linux [OPTIONS] [FILES...]
 # sezenismail@gmail.com
@@ -324,20 +325,40 @@ function strip_leading_resets(s) {
   return s
 }
 
+function strip_trailing_resets(s) {
+  while (s ~ /\033\[0m$/) sub(/\033\[0m$/, "", s)
+  return s
+}
+
+function has_nonreset_sgr(s,   t) {
+  t = s
+  gsub(/\033\[0m/, "", t)
+  return (t ~ /\033\[[0-9;]*m/)
+}
+
 function format_name(raw, perms,   arrow_pos, name, target) {
-  raw = strip_leading_resets(raw)
+  raw = strip_leading_resets(strip_trailing_resets(raw))
+  colored = has_nonreset_sgr(raw)
 
   if (perms ~ /^l/ && (arrow_pos = index(raw, " -> ")) > 0) {
     name = substr(raw, 1, arrow_pos - 1)
     target = substr(raw, arrow_pos + 4)
 
-    name = strip_leading_resets(name)
-    target = strip_leading_resets(target)
+    name = strip_leading_resets(strip_trailing_resets(name))
+    target = strip_leading_resets(strip_trailing_resets(target))
 
-    return quote_if_needed(name) " -> " quote_if_needed(target)
+    # If it contains only resets (no real color), drop them completely
+    if (!has_nonreset_sgr(name)) gsub(/\033\[0m/, "", name)
+    if (!has_nonreset_sgr(target)) gsub(/\033\[0m/, "", target)
+
+    out = quote_if_needed(name) " -> " quote_if_needed(target)
+    # Put reset OUTSIDE quotes only if we actually have a non-reset SGR
+    return colored ? (out creset) : out
   }
 
-  return quote_if_needed(raw)
+  if (!colored) gsub(/\033\[0m/, "", raw)
+  out = quote_if_needed(raw)
+  return colored ? (out creset) : out
 }
 
 function color_perm(p,   i,ch,out) {
