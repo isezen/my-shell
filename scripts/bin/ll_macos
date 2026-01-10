@@ -551,16 +551,44 @@ try_fastpath_single_dir() {
         # name field
         cname = color_for_name(name, perms)
         q = quote_if_needed(name)
-        if (q != name) {
-          # quoted: keep quotes uncolored; keep reset OUTSIDE quotes
-          if (cname != "") nout = "\"" cname name "\"" creset
-          else nout = "\"" name "\""
+
+        # For symlinks, match ll_linux: keep color "open" across:
+        #   "<name>" -> "<target>"\x1b[0m
+        # i.e. do NOT reset between name/arrow/target, and color the target too.
+        if (perms ~ /^l/ && target != "") {
+          # name part (no reset yet)
+          if (q != name) {
+            if (cname != "") nout = "\"" cname name "\""
+            else nout = "\"" name "\""
+          } else {
+            if (cname != "") nout = cname name
+            else nout = name
+          }
+
+          # target part (same cname; no reset yet)
+          tq = quote_if_needed(target)
+          if (tq != target) {
+            if (cname != "") tout = "\"" cname target "\""
+            else tout = "\"" target "\""
+          } else {
+            if (cname != "") tout = cname target
+            else tout = target
+          }
+
+          nout = nout " -> " tout
+          if (cname != "") nout = nout creset
         } else {
-          # unquoted
-          if (cname != "") nout = cname name creset
-          else nout = name
+          # non-symlink: keep existing behavior
+          if (q != name) {
+            # quoted: keep quotes uncolored; keep reset OUTSIDE quotes
+            if (cname != "") nout = "\"" cname name "\"" creset
+            else nout = "\"" name "\""
+          } else {
+            # unquoted
+            if (cname != "") nout = cname name creset
+            else nout = name
+          }
         }
-        if (perms ~ /^l/ && target != "") nout = nout " -> " quote_if_needed(target)
 
         name_suffix=""
         if (length(nout) >= 200) name_suffix = sprintf("%c[K", 27)
@@ -1117,17 +1145,32 @@ render_rows_awk() {
 
     function format_name(name, perms, target) {
       cname = color_for_name(name, perms)
+      # Symlink: match ll_linux behavior (color spans name + arrow + target; single reset at end)
       if (perms ~ /^l/ && target != "") {
         q = quote_if_needed(name)
         if (q != name) {
-          if (cname != "") out = "\"" cname name "\"" creset
+          if (cname != "") out = "\"" cname name "\""
           else out = "\"" name "\""
         } else {
-          if (cname != "") out = cname name creset
+          if (cname != "") out = cname name
           else out = name
         }
-        return out " -> " quote_if_needed(target)
+
+        tq = quote_if_needed(target)
+        if (tq != target) {
+          if (cname != "") tout = "\"" cname target "\""
+          else tout = "\"" target "\""
+        } else {
+          if (cname != "") tout = cname target
+          else tout = target
+        }
+
+        out = out " -> " tout
+        if (cname != "") out = out creset
+        return out
       }
+
+      # Non-symlink: existing quoting/reset behavior
       q = quote_if_needed(name)
       if (q != name) {
         if (cname != "") return "\"" cname name "\"" creset
