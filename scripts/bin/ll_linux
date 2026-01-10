@@ -243,7 +243,7 @@ fi
 
 # Print using a single awk program (stores lines once; computes widths; prints).
 # shellcheck disable=SC2016
-AWK_PROG='
+AWK_PROG_STANDALONE='
 BEGIN {
   # ANSI reset
   creset = sprintf("%c[0m", 27)
@@ -696,15 +696,28 @@ END {
 }
 '
 
+# Set AWK_PROG based on LL_USE_COMMON_AWK
 if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
-  "$AWK_BIN" -f "$LL_COMMON_AWK" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+  AWK_PROG=$(printf '%s\n' "$AWK_PROG_STANDALONE" | sed '/^function quote_if_needed/,/^function color_reltime_by_lbl/d')
+  AWK_PROG=$(printf '%s\n' "$AWK_PROG" | sed 's/BEGIN {/BEGIN {\n  ll_common_init()/')
+  AWK_PROG=$(printf '%s\n' "$AWK_PROG" | sed 's/color_reltime_by_lbl/color_reltime/g')
+else
+  AWK_PROG="$AWK_PROG_STANDALONE"
+fi
+
+# Disable colors for testing (matches ll_macos behavior)
+NO_COLOR="${LL_CHATGPT_FAST:-0}"
+
+if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
+  "$AWK_BIN" "${AWK_COMMON_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
     -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
     -v NUMERICUIDGID="$NUMERICUIDGID" \
     -v OWNER="$OWNER" \
     -v GROUPNAME="$GROUPNAME" \
     -v LISTDIRECTORY="$LISTDIRECTORY" \
-    -v USERNAME="$USERNAME" <<<"$ll_res"
+    -v USERNAME="$USERNAME" \
+    -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
 else
   "$AWK_BIN" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
@@ -713,7 +726,8 @@ else
     -v OWNER="$OWNER" \
     -v GROUPNAME="$GROUPNAME" \
     -v LISTDIRECTORY="$LISTDIRECTORY" \
-    -v USERNAME="$USERNAME" <<<"$ll_res"
+    -v USERNAME="$USERNAME" \
+    -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
 fi
 
 # Print total line if present (same as ll script)

@@ -279,7 +279,7 @@ function blocks_human_label(blocks, si_mode,   bytes, base, unit, val){
 
 function time_calc(epoch,   dt, abs, v, lbl){
   dt = int((NOW_EPOCH+0) - epoch)
-  if (dt < 0) { abs = -dt; time_future=1 } else { abs = dt; time_future=0 }
+  if (dt < 0) { abs = -dt; time_future=1; time_prefix="in" } else { abs = dt; time_future=0; time_prefix="" }
   if (abs < 120) { v=abs; lbl="sec" }
   else if (abs < 3600) { v=int(abs/60); lbl="min" }
   else if (abs < 172800) { v=int(abs/3600); lbl="hrs" }
