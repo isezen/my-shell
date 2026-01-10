@@ -501,6 +501,14 @@ for test_case in "${test_cases[@]}"; do
     fi
     if [ "$FAIL_ONLY" -eq 0 ]; then
       echo "PASS"
+      # Show outputs even on PASS (requested behavior)
+      for i in $(seq 0 $((${#script_names[@]} - 1))); do
+        if [ "$i" -gt 0 ]; then
+          echo ""
+        fi
+        echo "  ${script_names[$i]}:"
+        make_visible "${outputs[$i]}" | sed 's/^/    /'
+      done
     fi
     ((passed++))
   else
