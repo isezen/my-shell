@@ -362,6 +362,7 @@ if [ "$FAIL_ONLY" -eq 0 ]; then
   echo ""
 fi
 
+ # shellcheck disable=SC2329
 strip_ansi_and_controls() {
   local text="$1"
   text=$(printf '%s' "$text" | perl -pe '

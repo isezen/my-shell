@@ -102,7 +102,7 @@ if [ -z "$LL_COMMON_AWK" ]; then
 fi
 
 # Disable colors for testing (matches ll_linux behavior)
-NO_COLOR="${LL_CHATGPT_FAST:-0}"
+NO_COLOR="${LL_NO_COLOR:-0}"
 
 batch_push_rows() {
   # Batch stat call for multiple paths
@@ -256,15 +256,8 @@ try_fastpath_single_dir() {
     -v TOTAL_LABEL="$total_label" -v TOTAL_APPLICABLE="$total_applicable" \
     -v NO_COLOR="$NO_COLOR" \
     -f /dev/fd/3 3<<'AWK'
-    # NOTE: LS_COLORS parsing helpers (_trim, _ls_process_token, parse_ls_colors, build_ext_lens)
-    # come from ll_common.awk when it's loaded via -f "$LL_COMMON_AWK".
-
     BEGIN {
-      # NOTE: Common helpers come from ll_common.awk:
-      # max(), sp(), _trim(), build_ext_lens(), parse_ls_colors(), color_for_name(),
-      # quote_if_needed(), format_name()/format_symlink(), color_perm(), size/time helpers, sh_dquote(), etc.
       ll_common_init()
-
       n_syms = 0
     }
 
@@ -651,7 +644,7 @@ append_target_metadata_to_rows() {
   #   blocks perms links owner group size epoch name target path is_child target_type target_perms
   local idx
   for idx in "${!rows[@]}"; do
-    rows[$idx]="${rows[$idx]}${DELIM}${row_target_type[$idx]:-}${DELIM}${row_target_perms[$idx]:-}"
+    rows[idx]="${rows[idx]}${DELIM}${row_target_type[idx]:-}${DELIM}${row_target_perms[idx]:-}"
   done
 }
 
@@ -680,16 +673,16 @@ attach_symlink_target_metadata() {
 
       if [ -z "$st" ] || [[ "${st:0:1}" == "l" ]]; then
         # unknown/orphan (also treat "still symlink" as unknown)
-        row_target_type[$idx]="O"
-        row_target_perms[$idx]=""
+        row_target_type[idx]="O"
+        row_target_perms[idx]=""
       else
         ttype="$(target_type_from_perms "$st")"
-        row_target_type[$idx]="$ttype"
-        row_target_perms[$idx]="$st"
+        row_target_type[idx]="$ttype"
+        row_target_perms[idx]="$st"
       fi
     else
-      row_target_type[$idx]=""
-      row_target_perms[$idx]=""
+      row_target_type[idx]=""
+      row_target_perms[idx]=""
     fi
 
     idx=$((idx + 1))
@@ -834,13 +827,7 @@ render_all_awk() {
     -v NO_COLOR="$NO_COLOR" \
     -f /dev/fd/3 3<<'AWK'
 
-    # NOTE: max(), sp(), _trim(), _ls_process_token(), parse_ls_colors(), build_ext_lens()
-    # come from ll_common.awk when it's loaded via -f "$LL_COMMON_AWK".
-
     BEGIN {
-      # NOTE: Common helpers come from ll_common.awk:
-      # max(), sp(), _trim(), build_ext_lens(), parse_ls_colors(), color_for_name(),
-      # quote_if_needed(), format_name()/format_symlink(), color_perm(), size/time helpers, etc.
       ll_common_init()
 
       in_rows=0

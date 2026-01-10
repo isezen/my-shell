@@ -137,7 +137,6 @@ load './00_harness.bash'
   ll_touch_epoch yr.txt $((now - 400 * 86400)) || { ll_rm_testdir; skip "date -r required for time fixtures"; }
   ll_touch_epoch fut.txt $((now + 2 * 86400)) || { ll_rm_testdir; skip "date -r required for time fixtures"; }
 
-  unset LL_CHATGPT_FAST
   run "${LL_MACOS_IMPL}" .
   assert_success
 
@@ -173,7 +172,6 @@ load './00_harness.bash'
   chmod 755 xfile
   ln -s xfile lnk 2>/dev/null || true
 
-  unset LL_CHATGPT_FAST
   run "${LL_MACOS_IMPL}" .
   assert_success
 
@@ -222,7 +220,6 @@ load './00_harness.bash'
     files+=(tfile)
   fi
 
-  unset LL_CHATGPT_FAST
   run "${LL_MACOS_IMPL}" -- "${files[@]}"
   assert_success
 

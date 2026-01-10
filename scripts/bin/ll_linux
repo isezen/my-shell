@@ -13,19 +13,6 @@
 
 set -euo pipefail
 
-# Compatibility mode
-# Default behavior is to match `ll` output exactly by delegating.
-# Set LL_CHATGPT_FAST=1 to enable the optimized awk implementation below.
-# Avoid execing ourselves if no legacy script exists.
-if [ "${LL_CHATGPT_FAST:-0}" != "1" ]; then
-  _self_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
-  _self_path="${_self_dir}/$(basename -- "$0")"
-  _legacy_path="${LL_CHATGPT_LEGACY_PATH:-${_self_dir}/ll.legacy}"
-  if [ -x "$_legacy_path" ] && [ "$_legacy_path" != "$_self_path" ]; then
-    exec "$_legacy_path" "$@"
-  fi
-fi
-
 # Flags we care about (others are passed through to ls as-is)
 ASIZE=0
 HUMANREADABLE=0
@@ -89,10 +76,6 @@ else
   elif [ -x /opt/local/libexec/gnubin/ls ]; then
     LS_BIN="/opt/local/libexec/gnubin/ls"
   else
-    if [ "${LL_CHATGPT_FAST:-0}" = "1" ]; then
-      echo "GNU ls is required for LL_CHATGPT_FAST=1" >&2
-      exit 1
-    fi
     _args=()
     for arg in "$@"; do
       case "$arg" in
@@ -108,7 +91,6 @@ else
     exec ls -l "${_args[@]}"
   fi
 fi
-
 # Always force --time-style=+%s for fast relative time formatting in awk.
 # Keep user's args intact; we only read flags above and still pass "$@" through.
 # Match ll behavior: use --color (auto), so piping/ll-compare doesn't force ANSI.
@@ -221,10 +203,8 @@ if [ -z "$AWK_BIN" ]; then
   fi
 fi
 if ! "$AWK_BIN" 'BEGIN{ if (match("1", /[0-9]+/, a)) exit 0; exit 1 }' </dev/null >/dev/null 2>&1; then
-  if [ "${LL_CHATGPT_FAST:-0}" = "1" ]; then
-    echo "GNU awk (gawk) is required for LL_CHATGPT_FAST=1" >&2
-    exit 1
-  fi
+  echo "GNU awk (gawk) is required for advanced features" >&2
+  exit 1
 fi
 
 # ------------------------------
@@ -706,7 +686,7 @@ else
 fi
 
 # Disable colors for testing (matches ll_macos behavior)
-NO_COLOR="${LL_CHATGPT_FAST:-0}"
+NO_COLOR="${LL_NO_COLOR:-0}"
 
 if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
   "$AWK_BIN" "${AWK_COMMON_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \

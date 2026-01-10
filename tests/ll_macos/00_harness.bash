@@ -6,7 +6,7 @@ set -euo pipefail
 
 export LC_ALL=C
 export TZ=UTC
-export LL_CHATGPT_FAST=1
+export LL_NO_COLOR=1
 export LL_NOW_EPOCH=1577836800
 
 TESTS_DIR="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
@@ -395,7 +395,7 @@ ll_macos_ref_generate() {
 }
 
 ll_macos_run_ll() {
-  LL_CHATGPT_FAST=1 "${LL_MACOS_IMPL}" "$@" 2>&1
+  LL_NO_COLOR=1 "${LL_MACOS_IMPL}" "$@" 2>&1
 }
 
 ll_macos_canon_output() {

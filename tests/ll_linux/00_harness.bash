@@ -6,7 +6,7 @@ set -euo pipefail
 
 export LC_ALL=C
 export TZ=UTC
-export LL_CHATGPT_FAST=1
+export LL_NO_COLOR=1
 export LL_NOW_EPOCH=1577836800
 
 TESTS_DIR="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
@@ -215,15 +215,15 @@ ll_run_ll() {
   if [ "$(uname -s)" = "Darwin" ]; then
     if [ -n "$LL_GNU_LS" ]; then
       if [ -n "$LL_GNU_AWK" ]; then
-        LL_IMPL=linux LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
+        LL_IMPL=linux LL_NO_COLOR=1 LL_CHATGPT_LS="$LL_GNU_LS" LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
       else
-        LL_IMPL=linux LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" "${LL_SCRIPT}" "$@" 2>&1
+        LL_IMPL=linux LL_NO_COLOR=1 LL_CHATGPT_LS="$LL_GNU_LS" "${LL_SCRIPT}" "$@" 2>&1
       fi
     else
       if [ -n "$LL_GNU_AWK" ]; then
-        LL_IMPL=linux LL_CHATGPT_FAST=1 LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
+        LL_IMPL=linux LL_NO_COLOR=1 LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
       else
-        LL_IMPL=linux LL_CHATGPT_FAST=1 "${LL_SCRIPT}" "$@" 2>&1
+        LL_IMPL=linux LL_NO_COLOR=1 "${LL_SCRIPT}" "$@" 2>&1
       fi
     fi
     return
@@ -231,15 +231,15 @@ ll_run_ll() {
 
   if [ -n "$LL_GNU_LS" ]; then
     if [ -n "$LL_GNU_AWK" ]; then
-      LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
+      LL_NO_COLOR=1 LL_CHATGPT_LS="$LL_GNU_LS" LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
     else
-      LL_CHATGPT_FAST=1 LL_CHATGPT_LS="$LL_GNU_LS" "${LL_SCRIPT}" "$@" 2>&1
+      LL_NO_COLOR=1 LL_CHATGPT_LS="$LL_GNU_LS" "${LL_SCRIPT}" "$@" 2>&1
     fi
   else
     if [ -n "$LL_GNU_AWK" ]; then
-      LL_CHATGPT_FAST=1 LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
+      LL_NO_COLOR=1 LL_CHATGPT_AWK="$LL_GNU_AWK" "${LL_SCRIPT}" "$@" 2>&1
     else
-      LL_CHATGPT_FAST=1 "${LL_SCRIPT}" "$@" 2>&1
+      LL_NO_COLOR=1 "${LL_SCRIPT}" "$@" 2>&1
     fi
   fi
 }
@@ -276,7 +276,7 @@ ll_capture_ll() {
   stdout_file="$(mktemp)"
   stderr_file="$(mktemp)"
 
-  env_cmd=(env LL_CHATGPT_FAST=1)
+  env_cmd=(env LL_NO_COLOR=1)
   if [ "$(uname -s)" = "Darwin" ]; then
     env_cmd+=(LL_IMPL=linux)
   fi

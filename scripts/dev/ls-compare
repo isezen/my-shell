@@ -553,6 +553,7 @@ for idx in "${!test_case_names[@]}"; do
   ls_opts=()
   ls_operands=()
   outcome=""
+  # shellcheck disable=SC2034
   skip_reason=""
   
   if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
