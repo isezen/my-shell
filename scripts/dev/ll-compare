@@ -92,7 +92,7 @@ cd "$TEST_DIR" || exit 1
 touch file1.txt file2.txt
 mkdir dir1
 chmod 755 file1.txt
-chmod 644 file2.txt
+chmod 755 file2.txt
 
 # Additional filename fixtures
 printf '' > $'a b.txt'
@@ -128,6 +128,31 @@ touch -t 202001010000.00 file1.txt file2.txt dir1 \
   $'a b.txt' $' file-leading-space.txt' $'a\tb.txt' $'İçerik-ğüşöç.txt' \
   "$_long_name" symlink-to-file1 broken-symlink \
   fifo1 setuid-file setgid-file setgid-dir sticky-dir 2>/dev/null || true
+
+# All symlink variants in a single directory (one listing to cover all cases)
+mkdir -p "case-symlink-all"
+printf '' > "case-symlink-all/target.txt"
+printf '' > "case-symlink-all/file1.txt"
+printf '' > "case-symlink-all/file2.txt"
+chmod 755 "case-symlink-all/file2.txt" 2>/dev/null || true
+mkdir -p "case-symlink-all/target-dir"
+printf '' > "case-symlink-all/target file.txt"
+_all_tab_target=$'t\ta'
+printf '' > "case-symlink-all/$_all_tab_target"
+
+ln -s "target.txt"            "case-symlink-all/link-good" 2>/dev/null || true
+ln -s "does-not-exist"        "case-symlink-all/link-broken" 2>/dev/null || true
+ln -s "file1.txt"             "case-symlink-all/symlink-to-file1" 2>/dev/null || true
+ln -s "file2.txt"             "case-symlink-all/link-exe" 2>/dev/null || true
+ln -s "target file.txt"       "case-symlink-all/link space.txt" 2>/dev/null || true
+_all_tab_link=$'l\ti'
+ln -s "$_all_tab_target"      "case-symlink-all/$_all_tab_link" 2>/dev/null || true
+ln -s "target-dir"            "case-symlink-all/link-dir" 2>/dev/null || true
+
+touch -t 202001010000.00 "case-symlink-all/target.txt" "case-symlink-all/file1.txt" "case-symlink-all/file2.txt" "case-symlink-all/target file.txt" \
+  "case-symlink-all/$_all_tab_target" "case-symlink-all/target-dir" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-all/link-good" "case-symlink-all/link-broken" "case-symlink-all/symlink-to-file1" \
+  "case-symlink-all/link-exe" "case-symlink-all/link space.txt" "case-symlink-all/$_all_tab_link" "case-symlink-all/link-dir" 2>/dev/null || true
 
 # Symlink target with space
 mkdir -p "case-symlink-target-space"
@@ -315,6 +340,7 @@ test_cases=(
   "mtime now-125yr|||mtime-now-125yr|||"
   "symlink target space|||case-symlink-target-space|||"
   "symlink target tab|||case-symlink-target-tab|||"
+  "symlink all in one dir|||case-symlink-all|||"
   "future-only|||case-future-only|||"
   "mixed time width|||case-mixed-time-width|||"
 )

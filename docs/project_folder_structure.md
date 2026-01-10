@@ -82,6 +82,8 @@
 │   ├── ll_macos_perf_baseline.md
 │   ├── ll_macos_perf_final_report.md
 │   ├── ll_macos_specs.md
+│   ├── test-gls-symlink-resolve.sh
+│   ├── test-gls.txt
 │   └── todo.md
 ├── CHANGELOG.md
 ├── colortable.sh
@@ -92,5 +94,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 72 files
+19 directories, 74 files
 ```
