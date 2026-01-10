@@ -446,6 +446,10 @@ try_fastpath_single_dir() {
       cmon = esc "[38;5;151m"
       cyr  = esc "[38;5;241m"
       cfut = esc "[38;5;39m"
+
+      # Cache: perms string -> colored perms string
+      # Big win on /usr/bin where perms repeat heavily.
+      delete perm_col_cache
     }
     function max(a,b){return (a>b)?a:b}
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
@@ -606,6 +610,7 @@ try_fastpath_single_dir() {
     }
 
     function color_perm(p,   i,ch,out) {
+      if (p in perm_col_cache) return perm_col_cache[p]
       out=""
       for (i=1;i<=length(p);i++) {
         ch=substr(p,i,1)
@@ -617,6 +622,7 @@ try_fastpath_single_dir() {
         else if (ch=="+") out=out cplus ch creset
         else out=out ch
       }
+      perm_col_cache[p]=out
       return out
     }
 
@@ -1300,6 +1306,9 @@ render_all_awk() {
       cday=esc "[38;5;230m"; cmon=esc "[38;5;151m"; cyr=esc "[38;5;241m"
       cfut=esc "[38;5;39m"
 
+      # Cache: perms string -> colored perms string
+      delete perm_col_cache
+
       in_rows=0
       n_plan=0
       n_rows=0
@@ -1315,6 +1324,7 @@ render_all_awk() {
     function quote_if_needed(s){ if (index(s," ")>0 || index(s,"\t")>0) return "\"" s "\""; return s }
 
     function color_perm(p,   i,ch,out) {
+      if (p in perm_col_cache) return perm_col_cache[p]
       out=""
       for (i=1;i<=length(p);i++){
         ch=substr(p,i,1)
@@ -1326,6 +1336,7 @@ render_all_awk() {
         else if (ch=="+") out=out cplus ch creset
         else out=out ch
       }
+      perm_col_cache[p]=out
       return out
     }
 
