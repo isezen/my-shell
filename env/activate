@@ -1,4 +1,5 @@
 #!/bin/bash
+# env/activate
 # activate - my-shell environment switcher
 # Usage: activate [bash|zsh|fish]
 #   If no argument, spawns the detected current shell and activates my-shell in that spawned session.
