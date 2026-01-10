@@ -220,6 +220,8 @@ try_fastpath_single_dir() {
       COL_LN = "01;36"
       COL_SU = ""   # setuid
       COL_SG = ""   # setgid
+      COL_PI = ""   # fifo/pipe
+      COL_SO = ""   # socket
       LN_TARGET = 0
       COL_EX = "01;32"
       COL_FI = "0"
@@ -238,6 +240,8 @@ try_fastpath_single_dir() {
           }
           else if (k == "su") COL_SU = v
           else if (k == "sg") COL_SG = v
+          else if (k == "pi") COL_PI = v
+          else if (k == "so") COL_SO = v
           else if (k == "ex") COL_EX = v
           else if (k == "fi") COL_FI = v
           else if (k ~ /^\*/) {
@@ -298,12 +302,22 @@ try_fastpath_single_dir() {
     # - extension rules apply only to regular, non-executable files
     # - if multiple extension rules match, LAST match wins
     function color_for_name(name, perms,   base, col, i) {
+      # setuid/setgid override (GNU ls behavior)
+      # perms layout: 1(type) + 9(mode)
+      # user x position: 4, group x position: 7
+      ux = substr(perms, 4, 1)
+      gx = substr(perms, 7, 1)
+      if ((ux == "s" || ux == "S") && COL_SU != "") return esc "[" COL_SU "m"
+      if ((gx == "s" || gx == "S") && COL_SG != "") return esc "[" COL_SG "m"
+
       # type first
       if (perms ~ /^d/)      base = COL_DI
       else if (perms ~ /^l/) {
         if (LN_TARGET) base = "0"
         else base = COL_LN
       }
+      else if (perms ~ /^p/) base = COL_PI
+      else if (perms ~ /^s/) base = COL_SO
       else if (perms ~ /x/)  base = COL_EX
       else                   base = COL_FI
 
@@ -968,6 +982,8 @@ render_rows_awk() {
       COL_LN = "01;36"
       COL_SU = ""   # setuid
       COL_SG = ""   # setgid
+      COL_PI = ""   # fifo/pipe
+      COL_SO = ""   # socket
       LN_TARGET = 0
       COL_EX = "01;32"
       COL_FI = "0"
@@ -988,6 +1004,8 @@ render_rows_awk() {
           }
           else if (k == "su") COL_SU = v
           else if (k == "sg") COL_SG = v
+          else if (k == "pi") COL_PI = v
+          else if (k == "so") COL_SO = v
           else if (k == "ex") COL_EX = v
           else if (k == "fi") COL_FI = v
           else if (k ~ /^\*/) {
@@ -1137,6 +1155,8 @@ render_rows_awk() {
         if (LN_TARGET) base = "0"
         else base = COL_LN
       }
+      else if (perms ~ /^p/) base = COL_PI
+      else if (perms ~ /^s/) base = COL_SO
       else if (perms ~ /x/)  base = COL_EX
       else                   base = COL_FI
 
