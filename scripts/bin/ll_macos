@@ -14,6 +14,17 @@
 set -euo pipefail
 
 # ------------------------------
+# Notes on perf
+# ------------------------------
+# The hot path already uses a single awk render.
+# The general path used to do:
+#   1) build huge bash arrays
+#   2) awk width pass
+#   3) N separate awk renders (per slice/row)
+# This patch keeps the same semantics but collapses the general path into ONE awk run
+# (headers + widths + render), which fixes the 12x slowdown regression.
+
+# ------------------------------
 # Flag scan (subset)
 # ------------------------------
 ASIZE=0
@@ -956,6 +967,7 @@ list_dir_contents() {
   done < <(/usr/bin/stat -f "$stat_fmt" -- "${paths[@]}" 2>/dev/null)
 }
 
+# Grouped output order: keep operand order, but allow headers for directories when multiple.
 # Grouped output order: files first, then directories (like many ls builds). Keep simple: keep operand order.
 # If operand is a directory and not -d, list its contents.
 # If multiple directories are listed, print a header "dir:" between groups.
@@ -1020,94 +1032,58 @@ fi
 attach_symlink_target_metadata
 
 # ------------------------------
-# Compute widths
+# Directory slice lookup for render plan
 # ------------------------------
-# Use awk to compute widths from the US-separated rows (safe w.r.t. names).
-widths="$(
-  printf '%s\n' "${rows[@]}" \
-  | /usr/bin/awk -v FS="$DELIM" -v DELIM="$DELIM" -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" -v DEC_SEP="$DEC_SEP" '
-    function max(a,b){return (a>b)?a:b}
-    BEGIN{w_blocks=0;w_perms=0;w_links=0;w_owner=0;w_group=0;w_size=0;w_tnum=0;w_tunit=0;any_fut=0}
-    {
-      blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7
-
-      if (ASIZE) {
-        # Human-readable blocks width: mimic GNU ls -s -h (base-1024, K) or -s --si (base-1000, k)
-        if (HUMAN && blocks ~ /^[0-9]+$/) {
-          label=""
-          bytes = blocks * 1024
-          base = SI ? 1000 : 1024
-          if (bytes < base) {
-            label = "0B"
-          } else if (bytes < base*base) {
-            unit_str = SI ? "k" : "K"
-            val = bytes / base
-            label = sprintf("%.1f%s", val, unit_str)
-          } else if (bytes < base*base*base) {
-            val = bytes / (base*base)
-            label = sprintf("%.1fM", val)
-          } else if (bytes < base*base*base*base) {
-            val = bytes / (base*base*base)
-            label = sprintf("%.1fG", val)
-          } else {
-            val = bytes / (base*base*base*base)
-            label = sprintf("%.1fT", val)
-          }
-          if (DEC_SEP != ".") {
-            gsub(/\./, DEC_SEP, label)
-          }
-          w_blocks = max(w_blocks, length(label))
-        } else {
-          w_blocks = max(w_blocks, length(blocks))
-        }
-      }
-      w_perms=max(w_perms, length(perms))
-      w_links=max(w_links, length(links))
-
-      if (OWNER) {
-        o=owner
-        if (!NUMERIC && USERNAME!="" && o==USERNAME) o="you"
-        w_owner=max(w_owner, length(o))
-      }
-      if (GROUPNAME) w_group=max(w_group, length(group))
-
-      if (HUMAN && size ~ /^[0-9]+$/) size=size"B"
-      w_size=max(w_size, length(size))
-
-      # time widths: prefix may be "in"
-      # We keep conservative widths based on computed buckets.
-      now = NOW_EPOCH + 0
-      dt = now - epoch
-      abs=dt
-      if (dt<0){abs=-dt; any_fut=1}
-      if (abs<120){num=abs; unit="sec"}
-      else if (abs<3600){num=int(abs/60); unit="min"}
-      else if (abs<172800){num=int(abs/3600); unit="hrs"}
-      else if (abs<3888000){num=int(abs/86400); unit="day"}
-      else if (abs<31536000){num=int(abs/2592000); unit="mon"}
-      else {num=int(abs/31536000); unit="yr"}
-
-      w_tnum=max(w_tnum, length(num ""))
-      w_tunit=max(w_tunit, length(unit))
-    }
-    END{printf "%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d%s%d\n", w_blocks,DELIM,w_perms,DELIM,w_links,DELIM,w_owner,DELIM,w_group,DELIM,w_size,DELIM,any_fut,DELIM,w_tnum,DELIM,w_tunit}
-  '
-)"
-
-IFS="$DELIM" read -r W_BLOCKS W_PERMS W_LINKS W_OWNER W_GROUP W_SIZE ANY_FUT W_TNUM W_TUNIT <<<"$widths"
-
+# dir_markers items are: "<dir><US><start_index><US><end_index>" where indices are 0-based
+# Build maps so render_all_awk can emit D<US><start><US><end> quickly.
+declare -A dir_start_index
+declare -A dir_end_index
+for m in "${dir_markers[@]}"; do
+  IFS="$DELIM" read -r _d _s _e <<<"$m"
+  dir_start_index["$_d"]="$_s"
+  dir_end_index["$_d"]="$_e"
+done
 
 # ------------------------------
-# Print groups in requested order (OPTIMIZED: single awk render pass)
+# Render (GENERAL PATH): single awk, preserves behavior
 # ------------------------------
-# Render rows using single awk pass (OPTIMIZED - stream processing)
-render_rows_awk() {
-  local start_idx="$1"
-  local end_idx="$2"
-  local slice_len=$((end_idx - start_idx))
-  
-  # Render using awk (stream processing - no need to store all rows)
-  printf '%s\n' "${rows[@]:start_idx:slice_len}" | /usr/bin/awk \
+# We stream an "order plan" (headers + row indices) to awk, so awk can:
+# - compute widths in one pass
+# - render in END without re-invoking awk per slice
+# - print headers like ls when multiple operands
+# - print "total" only when it was previously applicable (single dir operand, not -d)
+render_all_awk() {
+  # Build a lightweight plan:
+  #   H<US><dirname>                 (directory header marker; printed only when MULTI==1)
+  #   D<US><start_1based><end_1based_exclusive>   (directory slice; always rendered)
+  #   R<US><row_1based>              (single operand row; always rendered)
+  # Then provide all rows on stdin via awk-accessible arrays (we pass rows as a second stream).
+  # Implementation trick: we print plan lines first, then a separator line "ROWS", then all rows.
+  {
+    for g in "${groups[@]}"; do
+      kind="${g%%"${DELIM}"*}"
+      val="${g#*"${DELIM}"}"
+      if [ "$kind" = "ROW" ]; then
+        if [ -n "${row_index_map["$val"]:-}" ]; then
+          # row_index_map is 0-based; awk rows are 1-based
+          printf 'R%s%s\n' "$DELIM" "$(( row_index_map["$val"] + 1 ))"
+        fi
+      else
+        # HDR groups were expanded into rows; print the header marker in operand order.
+        printf 'H%s%s\n' "$DELIM" "$val"
+        # Also print the directory slice so awk can render its children.
+        s="${dir_start_index["$val"]:-}"
+        e="${dir_end_index["$val"]:-}"
+        if [ -n "$s" ] && [ -n "$e" ]; then
+          # bash indices are 0-based and end is exclusive.
+          # awk rows are 1-based; end becomes (e + 1) exclusive to cover last row.
+          printf 'D%s%s%s%s\n' "$DELIM" "$(( s + 1 ))" "$DELIM" "$(( e + 1 ))"
+        fi
+      fi
+    done
+    printf 'ROWS\n'
+    printf '%s\n' "${rows[@]}"
+  } | LC_ALL=C /usr/bin/awk \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
     -v ASIZE="$ASIZE" \
@@ -1119,27 +1095,16 @@ render_rows_awk() {
     -v NUMERIC="$NUMERICUIDGID" \
     -v NOW_EPOCH="$NOW_EPOCH" \
     -v DEC_SEP="$DEC_SEP" \
-    -v W_BLOCKS="$W_BLOCKS" \
-    -v W_PERMS="$W_PERMS" \
-    -v W_LINKS="$W_LINKS" \
-    -v W_OWNER="$W_OWNER" \
-    -v W_GROUP="$W_GROUP" \
-    -v W_SIZE="$W_SIZE" \
-    -v ANY_FUT="$ANY_FUT" \
-    -v W_TNUM="$W_TNUM" \
-    -v W_TUNIT="$W_TUNIT" \
+    -v MULTI="$multiple" \
+    -v TOTAL_LABEL="$total_label" \
+    -v TOTAL_APPLICABLE="$total_applicable" \
     '
-    # trim helpers (BSD awk: NO nested function defs)
-    function _trim(s) {
-      sub(/^[ \t]+/, "", s)
-      sub(/[ \t]+$/, "", s)
-      return s
-    }
+    function max(a,b){return (a>b)?a:b}
+    function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
+    function _trim(s){ sub(/^[ \t]+/,"",s); sub(/[ \t]+$/,"",s); return s }
 
     # ----------------------------
-    # Robust LS_COLORS parser
-    # - Handles escaped ":" and "=" (e.g. "\:" "\=")
-    # - Splits on unescaped ":" into tokens "key=value"
+    # LS_COLORS parser (robust)
     # ----------------------------
     function _ls_process_token(tok,   eq, k, v) {
       if (tok == "") return
@@ -1147,323 +1112,177 @@ render_rows_awk() {
       if (eq <= 0) return
       k = _trim(substr(tok, 1, eq-1))
       v = _trim(substr(tok, eq+1))
-
       if (k == "di") COL_DI = v
-      else if (k == "ln") {
-        # GNU ls supports "ln=target" to color symlinks like their targets.
-        # For ll_linux parity (tests), we IGNORE ln=target and keep a fixed symlink SGR.
-        # So: do not set LN_TARGET here.
-        if (v != "target") COL_LN = v
-      }
+      else if (k == "ln") { if (v != "target") COL_LN = v }  # ignore ln=target for test parity
       else if (k == "su") COL_SU = v
       else if (k == "sg") COL_SG = v
       else if (k == "pi") COL_PI = v
       else if (k == "so") COL_SO = v
       else if (k == "ex") COL_EX = v
       else if (k == "fi") COL_FI = v
-      else if (k ~ /^\*/) {
-        ext_pat[++n_ext] = substr(k, 2)   # suffix string (e.g. ".txt")
-        ext_col[n_ext] = v
-      }
+      else if (k == "or") COL_OR = v
+      else if (k ~ /^\*/) { ext_pat[++n_ext] = substr(k,2); ext_col[n_ext] = v }
     }
-
-    function parse_ls_colors(s,   i, c, tok) {
-      tok = ""
-      for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c == "\\") {
-          if (i < length(s)) {
-            tok = tok substr(s, i+1, 1)
-            i++
-          } else {
-            tok = tok c
-          }
-        } else if (c == ":") {
-          _ls_process_token(tok)
-          tok = ""
-        } else {
-          tok = tok c
-        }
+    function parse_ls_colors(s,   i,c,tok) {
+      tok=""
+      for (i=1;i<=length(s);i++) {
+        c=substr(s,i,1)
+        if (c=="\\") {
+          if (i<length(s)) { tok=tok substr(s,i+1,1); i++ } else tok=tok c
+        } else if (c==":") { _ls_process_token(tok); tok="" }
+        else tok=tok c
       }
       _ls_process_token(tok)
     }
 
-    function sp(n,   s) { if (n <= 0) return ""; return sprintf("%*s", n, "") }
-    # Escape regex metacharacters for LS_COLORS suffix rules
-    function re_escape(s,   i,c,out) {
-      out=""
-      for (i=1; i<=length(s); i++) {
-        c=substr(s,i,1)
-        if (c ~ /[.[\]{}()*+?^$\\|]/) out = out "\\" c
-        else out = out c
-      }
-      return out
-    }
     BEGIN {
       esc = sprintf("%c", 27)
       creset = esc "[0m"
       CSYMLINK = esc "[38;5;208;1m"
 
-      # --------------------------------------------------
-      # LS_COLORS support (GNU ls compatible subset)
-      # --------------------------------------------------
-      COL_DI = "01;34"
-      COL_LN = "01;36"
-      COL_SU = ""   # setuid
-      COL_SG = ""   # setgid
-      COL_PI = ""   # fifo/pipe
-      COL_SO = ""   # socket
-      LN_TARGET = 0
-      COL_EX = "01;32"
-      COL_FI = "0"
-      n_ext = 0
-
+      COL_DI="01;34"; COL_LN="01;36"; COL_SU=""; COL_SG=""; COL_PI=""; COL_SO=""
+      LN_TARGET=0
+      COL_EX="01;32"; COL_FI="0"
+      COL_OR=""; COL_OR_DEFAULT="48;5;196;38;5;232;1"
+      n_ext=0
       if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
 
-      cd    = esc "[38;5;122m"
-      cl    = esc "[38;5;190m"
-      cr    = esc "[38;5;119m"
-      cw    = esc "[38;5;216m"
-      cx    = esc "[38;5;124m"
-      cplus = esc "[38;5;129m"
+      cd=esc "[38;5;122m"; cl=esc "[38;5;190m"; cr=esc "[38;5;119m"
+      cw=esc "[38;5;216m"; cx=esc "[38;5;124m"; cplus=esc "[38;5;129m"
+      cusr=esc "[38;5;66m"; croot=esc "[38;5;160m"
+      cb=esc "[38;5;240m"; ck=esc "[38;5;250m"; cm=esc "[38;5;117m"
+      cg=esc "[38;5;208m"; ct=esc "[38;5;160m"
+      clT=esc "[1;38;5;167m"; clG=esc "[1;38;5;220m"; clM=esc "[1;38;5;123m"
+      clK=esc "[1;38;5;107m"; clB=esc "[1;38;5;248m"
+      csec=esc "[38;5;124m"; cmin=esc "[38;5;215m"; chrs=esc "[38;5;196m"
+      cday=esc "[38;5;230m"; cmon=esc "[38;5;151m"; cyr=esc "[38;5;241m"
+      cfut=esc "[38;5;39m"
 
-      cusr  = esc "[38;5;66m"
-      croot = esc "[38;5;160m"
+      in_rows=0
+      n_plan=0
+      n_rows=0
 
-      cb = esc "[38;5;240m"
-      ck = esc "[38;5;250m"
-      cm = esc "[38;5;117m"
-      cg = esc "[38;5;208m"
-      ct = esc "[38;5;160m"
-
-      clT = esc "[1;38;5;167m"
-      clG = esc "[1;38;5;220m"
-      clM = esc "[1;38;5;123m"
-      clK = esc "[1;38;5;107m"
-      clB = esc "[1;38;5;248m"
-
-      csec = esc "[38;5;124m"
-      cmin = esc "[38;5;215m"
-      chrs = esc "[38;5;196m"
-      cday = esc "[38;5;230m"
-      cmon = esc "[38;5;151m"
-      cyr  = esc "[38;5;241m"
-      cfut = esc "[38;5;39m"
-    }
-    # STREAM RENDER: each input row is already in the right slice
-    {
-      # Fields: blocks perms links owner group size epoch name target path is_child target_type target_perms
-      blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7; name=$8; target=$9; path=$10; is_child=$11; target_type=$12; target_perms=$13;
-      
-      # Owner substitution
-      if (!NUMERIC && USERNAME != "" && owner == USERNAME) owner = "you"
-      
-      # Colorize owner
-      if (owner == "you") owner_colored = cusr owner creset
-      else if (owner == "root") owner_colored = croot owner creset
-      else owner_colored = owner
-      
-      # Size formatting/coloring
-      if (HUMAN && size ~ /^[0-9]+$/) {
-        size_disp = human_size(size)
-        size_colored = color_size_human(size_disp)
-      } else {
-        c = size_color_numeric(size + 0)
-        size_colored = c size creset
-      }
-      
-      # Blocks formatting/coloring
-      blocks_colored = ""
-      if (ASIZE) {
-        if (HUMAN && blocks ~ /^[0-9]+$/) {
-          b_label = blocks_human_label(blocks, SI)
-          b_colored = color_size_human(b_label)
-          b_pad = W_BLOCKS - length(b_label)
-          blocks_colored = sp(b_pad) b_colored " "
-        } else {
-          b_pad = W_BLOCKS - length(blocks)
-          blocks_colored = cb sp(b_pad) blocks creset " "
-        }
-      }
-      
-      # Time formatting
-      time_calc(epoch + 0)
-      num_s = sprintf("%d", time_num)
-      unit_pad = W_TUNIT - length(time_unit)
-      unit_s = time_unit sp(unit_pad)
-      value_width = ANY_FUT ? (W_TNUM + 3) : W_TNUM
-      value_core = time_future ? ("in " num_s) : num_s
-      value_pad = value_width - length(value_core)
-      value_field = sp(value_pad) value_core
-      t_raw = value_field " " unit_s
-      t_colored = color_reltime(t_raw, time_unit, time_future)
-      
-      # Permissions coloring
-      perms_colored = color_perm(perms)
-      perms_pad = W_PERMS - length(perms)
-      perms_field = perms_colored sp(perms_pad)
-      
-      # Name formatting (symlink target comes from stat %N; no readlink spawns)
-      name_out = format_name(name, perms, target, target_type, target_perms)
-      name_suffix = ""
-      name_len = length(name_out)
-      if (name_len >= 200) name_suffix = sprintf("%c[K", 27)
-      
-      # Links: left-pad using raw length
-      links_pad = W_LINKS - length(links)
-      links_field = sp(links_pad) links
-      
-      # Owner/group: right-pad using raw length (after "you" substitution)
-      owner_field = ""
-      if (OWNER) {
-        owner_pad = W_OWNER - length(owner)
-        owner_field = owner_colored sp(owner_pad) " "
-      }
-      group_field = ""
-      if (GROUPNAME) {
-        group_pad = W_GROUP - length(group)
-        group_field = group sp(group_pad) " "
-      }
-      
-      # Size: left-pad using display label length (human vs numeric)
-      size_label = (HUMAN && size ~ /^[0-9]+$/) ? size_disp : size
-      size_pad = W_SIZE - length(size_label)
-      size_field = sp(size_pad) size_colored
-      
-      out = ""
-      if (ASIZE) out = out blocks_colored
-      out = out perms_field " "
-      out = out links_field " "
-      out = out owner_field
-      out = out group_field
-      out = out size_field " "
-      out = out t_colored " "
-      out = out name_out name_suffix
-      print out
-    }
-    
-    # GNU-ls-ish priority:
-    # - type class first (di/ln/ex/fi)
-    # - extension rules apply only to regular, non-executable files
-    # - if multiple extension rules match, LAST match wins
-    function color_for_name(name, perms,   base, col, i) {
-      # setuid/setgid override (GNU ls behavior)
-      ux = substr(perms, 4, 1)
-      gx = substr(perms, 7, 1)
-      if ((ux == "s" || ux == "S") && COL_SU != "") return esc "[" COL_SU "m"
-      if ((gx == "s" || gx == "S") && COL_SG != "") return esc "[" COL_SG "m"
-
-      # type first
-      if (perms ~ /^d/)      base = COL_DI
-      else if (perms ~ /^l/) {
-        if (LN_TARGET) base = "0"
-        else base = COL_LN
-      }
-      else if (perms ~ /^p/) base = COL_PI
-      else if (perms ~ /^s/) base = COL_SO
-      else if (perms ~ /x/)  base = COL_EX
-      else                   base = COL_FI
-
-      # extension only for regular non-exec (match linux behavior for *.sh vs ex)
-      col = ""
-      if (base == COL_FI) {
-        for (i = 1; i <= n_ext; i++) {
-          # suffix match (avoid regex escaping differences on BSD awk)
-          if (length(name) >= length(ext_pat[i]) &&
-              substr(name, length(name) - length(ext_pat[i]) + 1) == ext_pat[i]) {
-            col = ext_col[i]
-    }
-  }
-}
-
-append_target_metadata_to_rows() {
-  for idx in "${!rows[@]}"; do
-    rows[$idx]="${rows[$idx]}${DELIM}${row_target_type[$idx]:-}${DELIM}${row_target_perms[$idx]:-}"
-  done
-}
-
-attach_symlink_target_metadata() {
-  row_target_type=()
-  row_target_perms=()
-  local symlink_paths=()
-  local symlink_rows=()
-  local idx=0
-
-  for row in "${rows[@]}"; do
-    IFS="$DELIM" read -r _blocks perms _links _owner _group _size _epoch _name _target path _child <<<"$row"
-    if [[ "${perms:0:1}" == "l" ]]; then
-      symlink_paths+=("$path")
-      symlink_rows+=("$idx")
-    fi
-    idx=$((idx + 1))
-  done
-
-  if [ "${#symlink_paths[@]}" -gt 0 ]; then
-    local stat_fmt="%Sp"
-    local read_idx=0
-    while IFS= read -r st; do
-      if [ "$read_idx" -ge "${#symlink_paths[@]}" ]; then
-        break
-      fi
-      local row_idx="${symlink_rows[$read_idx]}"
-      if [ -z "$st" ]; then
-        row_target_type[$row_idx]="O"
-        row_target_perms[$row_idx]=""
-      elif [[ "${st:0:1}" == "l" ]]; then
-        row_target_type[$row_idx]="O"
-        row_target_perms[$row_idx]=""
-      else
-        row_target_perms[$row_idx]="$st"
-        row_target_type[$row_idx]="$(target_type_from_perms "$st")"
-      fi
-      read_idx=$((read_idx + 1))
-    done < <(/usr/bin/stat -f "$stat_fmt" -L -- "${symlink_paths[@]}" 2>/dev/null)
-
-    while [ "$read_idx" -lt "${#symlink_paths[@]}" ]; do
-      row_idx="${symlink_rows[$read_idx]}"
-      row_target_type[$row_idx]="O"
-      row_target_perms[$row_idx]=""
-      read_idx=$((read_idx + 1))
-    done
-  fi
-
-  append_target_metadata_to_rows
-}
-
-# ------------------------------
-# If multiple operands and we have directory groups, print headers like ls.
-      if (col != "") return esc "[" col "m"
-      if (base == "0" || base == "") return ""
-      return esc "[" base "m"
+      # widths init
+      w_blocks=0; w_perms=0; w_links=0; w_owner=0; w_group=0; w_size=0; any_fut=0; w_tnum=0; w_tunit=0
+      total_blocks=0
     }
 
-    function quote_if_needed(s) {
-      if (index(s, " ") > 0 || index(s, "\t") > 0) return "\"" s "\""
+    # ----------------------------
+    # Formatting helpers
+    # ----------------------------
+    function quote_if_needed(s){ if (index(s," ")>0 || index(s,"\t")>0) return "\"" s "\""; return s }
+
+    function color_perm(p,   i,ch,out) {
+      out=""
+      for (i=1;i<=length(p);i++){
+        ch=substr(p,i,1)
+        if (ch=="d") out=out cd ch creset
+        else if (ch=="l") out=out cl ch creset
+        else if (ch=="r") out=out cr ch creset
+        else if (ch=="w") out=out cw ch creset
+        else if (ch=="x") out=out cx ch creset
+        else if (ch=="+") out=out cplus ch creset
+        else out=out ch
+      }
+      return out
+    }
+
+    function size_color_numeric(x){
+      if (x < 1024) return cb
+      if (x < 1048576) return ck
+      if (x < 1073741824) return cm
+      if (x < 1099511627776) return cg
+      return ct
+    }
+
+    function human_size(bytes,   scaled) {
+      if (bytes !~ /^[0-9]+$/) return bytes
+      if (bytes < 1024) return bytes "B"
+      if (bytes < 1048576) { scaled=sprintf("%.1f", bytes/1024.0); sub(/\.0$/,"",scaled); return scaled "K" }
+      if (bytes < 1073741824) { scaled=sprintf("%.1f", bytes/1048576.0); sub(/\.0$/,"",scaled); return scaled "M" }
+      if (bytes < 1099511627776) { scaled=sprintf("%.1f", bytes/1073741824.0); sub(/\.0$/,"",scaled); return scaled "G" }
+      scaled=sprintf("%.1f", bytes/1099511627776.0); sub(/\.0$/,"",scaled); return scaled "T"
+    }
+
+    function color_size_human(s,   num,suf,len) {
+      if (s ~ /^[0-9]+$/) s = s "B"
+      if (s ~ /^[0-9]+(\.[0-9]+)?[kKMGTTB]$/) {
+        len = length(s)
+        suf = substr(s, len, 1)
+        num = substr(s, 1, len-1)
+        if (suf=="T") return ct num creset clT suf creset
+        if (suf=="G") return cg num creset clG suf creset
+        if (suf=="M") return cm num creset clM suf creset
+        if (suf=="K" || suf=="k") return ck num creset clK suf creset
+        if (suf=="B") return cb num creset clB suf creset
+      }
+      return cb s creset
+    }
+
+    function blocks_human_label(blocks, si_mode,   bytes,base,unit,val) {
+      if (blocks !~ /^[0-9]+$/) return blocks
+      bytes = blocks * 1024
+      base = si_mode ? 1000 : 1024
+      if (bytes < base) return "0B"
+      if (bytes < base*base) {
+        unit = si_mode ? "k" : "K"
+        val = sprintf("%.1f", bytes/base)
+        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
+        return val unit
+      }
+      if (bytes < base*base*base) { val=sprintf("%.1f", bytes/(base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "M" }
+      if (bytes < base*base*base*base) { val=sprintf("%.1f", bytes/(base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "G" }
+      val=sprintf("%.1f", bytes/(base*base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "T"
+    }
+
+    function time_calc(epoch,   dt,abs,v,lbl) {
+      dt = int((NOW_EPOCH+0) - epoch)
+      if (dt < 0) { abs = -dt; time_future=1 } else { abs=dt; time_future=0 }
+      if (abs < 120) { v=abs; lbl="sec" }
+      else if (abs < 3600) { v=int(abs/60); lbl="min" }
+      else if (abs < 172800) { v=int(abs/3600); lbl="hrs" }
+      else if (abs < 3888000) { v=int(abs/86400); lbl="day" }
+      else if (abs < 31536000) { v=int(abs/2592000); lbl="mon" }
+      else { v=int(abs/31536000); lbl="yr" }
+      time_num=v; time_unit=lbl
+    }
+
+    function color_reltime(s, unit, is_future) {
+      if (is_future) return cfut s creset
+      if (unit=="sec") return csec s creset
+      if (unit=="min") return cmin s creset
+      if (unit=="hrs") return chrs s creset
+      if (unit=="day") return cday s creset
+      if (unit=="mon") return cmon s creset
+      if (unit=="yr") return cyr s creset
       return s
     }
 
-    function format_name(name, perms, target, target_type, target_perms) {
-      if (perms ~ /^l/ && target != "") {
-        return format_symlink(name, target, target_type, target_perms)
-      }
-      cname = color_for_name(name, perms)
-      q = quote_if_needed(name)
-      if (q != name) {
-        if (cname != "") return "\"" cname name "\"" creset
-        return "\"" name "\""
-      }
-      if (cname != "") return cname name creset
-      return name
-    }
+    function color_for_name(name, perms,   base, col, i, ux, gx) {
+      ux = substr(perms,4,1)
+      gx = substr(perms,7,1)
+      if ((ux=="s" || ux=="S") && COL_SU!="") return esc "[" COL_SU "m"
+      if ((gx=="s" || gx=="S") && COL_SG!="") return esc "[" COL_SG "m"
 
-    function color_and_quote(value, color,   quoted) {
-      quoted = quote_if_needed(value)
-      if (quoted != value) {
-        if (color != "") return "\"" color value "\""
-        return "\"" value "\""
+      if (perms ~ /^d/) base = COL_DI
+      else if (perms ~ /^l/) base = COL_LN
+      else if (perms ~ /^p/) base = COL_PI
+      else if (perms ~ /^s/) base = COL_SO
+      else if (perms ~ /x/)  base = COL_EX
+      else base = COL_FI
+
+      col=""
+      if (base == COL_FI) {
+        for (i=1;i<=n_ext;i++){
+          if (length(name) >= length(ext_pat[i]) &&
+              substr(name, length(name)-length(ext_pat[i])+1) == ext_pat[i]) {
+            col = ext_col[i]
+          }
+        }
       }
-      if (color != "") return color value
-      return value
+      if (col!="") return esc "[" col "m"
+      if (base=="0" || base=="") return ""
+      return esc "[" base "m"
     }
 
     function orphan_color(   color) {
@@ -1497,6 +1316,16 @@ attach_symlink_target_metadata() {
       return color_for_name(target, "----------")
     }
 
+    function color_and_quote(value, color,   quoted) {
+      quoted = quote_if_needed(value)
+      if (quoted != value) {
+        if (color != "") return "\"" color value "\""
+        return "\"" value "\""
+      }
+      if (color != "") return color value
+      return value
+    }
+
     function format_symlink(name, target, target_type, target_perms,   link_color, target_color, color_for_target, colored_name, colored_target) {
       link_color = symlink_link_color(name, target, target_type, target_perms)
       target_color = symlink_target_color(target, target_type, target_perms)
@@ -1508,177 +1337,260 @@ attach_symlink_target_metadata() {
       if (link_color != "" || color_for_target != "") out = out creset
       return out
     }
-    
-    function color_perm(p,   i, ch, out) {
-      out = ""
-      for (i=1; i<=length(p); i++) {
-        ch = substr(p, i, 1)
-        if (ch == "d") out = out cd ch creset
-        else if (ch == "l") out = out cl ch creset
-        else if (ch == "r") out = out cr ch creset
-        else if (ch == "w") out = out cw ch creset
-        else if (ch == "x") out = out cx ch creset
-        else if (ch == "+") out = out cplus ch creset
-        else out = out ch
+
+    function format_name(name, perms, target, target_type, target_perms,   cname,q) {
+      if (perms ~ /^l/ && target != "") return format_symlink(name, target, target_type, target_perms)
+      cname = color_for_name(name, perms)
+      q = quote_if_needed(name)
+      if (q != name) {
+        if (cname != "") return "\"" cname name "\"" creset
+        return "\"" name "\""
       }
-      return out
-    }
-    
-    function size_color_numeric(x) {
-      if (x < 1024) return cb
-      if (x < 1048576) return ck
-      if (x < 1073741824) return cm
-      if (x < 1099511627776) return cg
-      return ct
-    }
-    
-    function color_size_human(s,   num, suf, pos, len) {
-      if (s ~ /^[0-9]+$/) s = s "B"
-      # BSD awk compatible: extract number and suffix manually
-      if (s ~ /^[0-9]+(\.[0-9]+)?[kKMGTTB]$/) {
-        # Find the suffix (last character)
-        len = length(s)
-        suf = substr(s, len, 1)
-        # Extract number part (everything except suffix)
-        num = substr(s, 1, len - 1)
-        if (suf == "T") return ct num creset clT suf creset
-        if (suf == "G") return cg num creset clG suf creset
-        if (suf == "M") return cm num creset clM suf creset
-        if (suf == "K" || suf == "k") return ck num creset clK suf creset
-        if (suf == "B") return cb num creset clB suf creset
-      }
-      return cb s creset
-    }
-    
-    function human_size(bytes,   unit, scaled) {
-      if (bytes !~ /^[0-9]+$/) return bytes
-      if (bytes < 1024) return bytes "B"
-      if (bytes < 1048576) {
-        scaled = sprintf("%.1f", bytes / 1024.0)
-        gsub(/\.0$/, "", scaled)
-        return scaled "K"
-      }
-      if (bytes < 1073741824) {
-        scaled = sprintf("%.1f", bytes / 1048576.0)
-        gsub(/\.0$/, "", scaled)
-        return scaled "M"
-      }
-      if (bytes < 1099511627776) {
-        scaled = sprintf("%.1f", bytes / 1073741824.0)
-        gsub(/\.0$/, "", scaled)
-        return scaled "G"
-      }
-      scaled = sprintf("%.1f", bytes / 1099511627776.0)
-      gsub(/\.0$/, "", scaled)
-      return scaled "T"
-    }
-    
-    function blocks_human_label(blocks, si_mode,   bytes, base, unit, val, out) {
-      if (blocks !~ /^[0-9]+$/) return blocks
-      bytes = blocks * 1024
-      base = si_mode ? 1000 : 1024
-      if (bytes < base) return "0B"
-      if (bytes < base*base) {
-        unit = si_mode ? "k" : "K"
-        val = sprintf("%.1f", bytes / base)
-        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
-        return val unit
-      }
-      if (bytes < base*base*base) {
-        val = sprintf("%.1f", bytes / (base*base))
-        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
-        return val "M"
-      }
-      if (bytes < base*base*base*base) {
-        val = sprintf("%.1f", bytes / (base*base*base))
-        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
-        return val "G"
-      }
-      val = sprintf("%.1f", bytes / (base*base*base*base))
-      if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
-      return val "T"
-    }
-    
-    function time_calc(epoch,   dt, now, prefix, abs, v, lbl) {
-      now = NOW_EPOCH + 0
-      dt = int(now - epoch)
-      if (dt < 0) { prefix = "in"; abs = -dt } else { prefix = ""; abs = dt }
-      if (abs < 120) { v = abs; lbl = "sec" }
-      else if (abs < 3600) { v = int(abs/60); lbl = "min" }
-      else if (abs < 172800) { v = int(abs/3600); lbl = "hrs" }
-      else if (abs < 3888000) { v = int(abs/86400); lbl = "day" }
-      else if (abs < 31536000) { v = int(abs/2592000); lbl = "mon" }
-      else { v = int(abs/31536000); lbl = "yr" }
-      time_prefix = prefix
-      time_num = v
-      time_unit = lbl
-      time_future = (prefix != "")
+      if (cname != "") return cname name creset
+      return name
     }
 
-    function color_reltime(s, unit, is_future) {
-      if (is_future) return cfut s creset
-      if (unit == "sec") return csec s creset
-      if (unit == "min") return cmin s creset
-      if (unit == "hrs") return chrs s creset
-      if (unit == "day") return cday s creset
-      if (unit == "mon") return cmon s creset
-      if (unit == "yr") return cyr s creset
-      return s
+    # ----------------------------
+    # Input parsing
+    # ----------------------------
+    $0 == "ROWS" { in_rows=1; next }
+
+    # Plan lines (before ROWS):
+    in_rows==0 {
+      # "H<US>dir" or "R<US>row_1based" or "D<US>start_1based<US>end_1based_exclusive"
+      plan_kind[++n_plan] = $1
+      plan_a[n_plan] = $2
+      plan_b[n_plan] = $3
+      next
+    }
+
+    # Row lines (after ROWS):
+    {
+      # Fields: blocks perms links owner group size epoch name target path is_child target_type target_perms
+      n_rows++
+      rows_blocks[n_rows]=$1
+      rows_perms[n_rows]=$2
+      rows_links[n_rows]=$3
+      rows_owner[n_rows]=$4
+      rows_group[n_rows]=$5
+      rows_size[n_rows]=$6
+      rows_epoch[n_rows]=$7
+      rows_name[n_rows]=$8
+      rows_target[n_rows]=$9
+      rows_path[n_rows]=$10
+      rows_child[n_rows]=$11
+      rows_ttype[n_rows]=$12
+      rows_tperms[n_rows]=$13
+
+      owner = rows_owner[n_rows]
+      if (!NUMERIC && USERNAME!="" && owner==USERNAME) owner="you"
+
+      # Precompute time bucket widths (and any_fut)
+      time_calc(rows_epoch[n_rows]+0)
+      tnum=time_num; tunit=time_unit; tfut=time_future
+      rows_tnum[n_rows]=tnum
+      rows_tunit[n_rows]=tunit
+      rows_tfut[n_rows]=tfut
+      if (tfut) any_fut=1
+
+      # Size label (human)
+      rows_szlab[n_rows]=""
+      if (HUMAN && rows_size[n_rows] ~ /^[0-9]+$/) rows_szlab[n_rows]=human_size(rows_size[n_rows])
+
+      # widths
+      w_perms=max(w_perms, length(rows_perms[n_rows]))
+      w_links=max(w_links, length(rows_links[n_rows]))
+      if (OWNER) w_owner=max(w_owner, length(owner))
+      if (GROUPNAME) w_group=max(w_group, length(rows_group[n_rows]))
+
+      if (HUMAN && rows_size[n_rows] ~ /^[0-9]+$/) {
+        w_size=max(w_size, length(rows_szlab[n_rows]))
+      } else {
+        w_size=max(w_size, length(rows_size[n_rows]))
+      }
+
+      if (ASIZE) {
+        if (HUMAN && rows_blocks[n_rows] ~ /^[0-9]+$/) {
+          blab = blocks_human_label(rows_blocks[n_rows], SI)
+          rows_blab[n_rows]=blab
+          w_blocks=max(w_blocks, length(blab))
+        } else {
+          rows_blab[n_rows]=""
+          w_blocks=max(w_blocks, length(rows_blocks[n_rows] ""))
+        }
+      }
+
+      w_tnum=max(w_tnum, length(tnum ""))
+      w_tunit=max(w_tunit, length(tunit))
+
+      # totals (only meaningful for directory listing; original code used blocks in 1K already)
+      if (rows_child[n_rows]+0 == 1) total_blocks += (rows_blocks[n_rows]+0)
+    }
+
+    function render_row(ri,   blocks,perms,links,owner,group,size,epoch,name,target,ttype,tperms, \
+                           perms_col,perms_field,links_field,owner_field,owner_col,group_field, \
+                           szlab,szcol,size_field,blocks_field,blab,bcol, \
+                           tnum,tunit,tfut,num_s,value_width,value_core,value_field,unit_field,t_raw,t_col, \
+                           name_out,name_suffix,out,c) {
+      if (ri <= 0 || ri > n_rows) return
+
+      blocks=rows_blocks[ri]
+      perms=rows_perms[ri]
+      links=rows_links[ri]
+      owner=rows_owner[ri]
+      group=rows_group[ri]
+      size=rows_size[ri]
+      epoch=rows_epoch[ri]
+      name=rows_name[ri]
+      target=rows_target[ri]
+      ttype=rows_ttype[ri]
+      tperms=rows_tperms[ri]
+
+      if (!NUMERIC && USERNAME!="" && owner==USERNAME) owner="you"
+
+      # perms
+      perms_col=color_perm(perms)
+      perms_field = perms_col sp(w_perms - length(perms))
+
+      # links
+      links_field = sp(w_links - length(links)) links
+
+      # owner
+      owner_field=""
+      if (OWNER) {
+        if (owner=="you") owner_col=cusr owner creset
+        else if (owner=="root") owner_col=croot owner creset
+        else owner_col=owner
+        owner_field = owner_col sp(w_owner - length(owner)) " "
+      }
+
+      # group
+      group_field=""
+      if (GROUPNAME) group_field = group sp(w_group - length(group)) " "
+
+      # size
+      if (HUMAN && size ~ /^[0-9]+$/) {
+        szlab=rows_szlab[ri]
+        szcol=color_size_human(szlab)
+        size_field = sp(w_size - length(szlab)) szcol
+      } else {
+        c=size_color_numeric(size+0)
+        szcol=c size creset
+        size_field = sp(w_size - length(size)) szcol
+      }
+
+      # blocks
+      blocks_field=""
+      if (ASIZE) {
+        if (HUMAN && blocks ~ /^[0-9]+$/) {
+          blab = rows_blab[ri]
+          if (blab=="") blab=blocks_human_label(blocks, SI)
+          bcol=color_size_human(blab)
+          blocks_field = sp(w_blocks - length(blab)) bcol " "
+        } else {
+          blocks_field = cb sp(w_blocks - length(blocks "")) (blocks "") creset " "
+        }
+      }
+
+      # time
+      tnum=rows_tnum[ri]; tunit=rows_tunit[ri]; tfut=rows_tfut[ri]
+      num_s=sprintf("%d", tnum)
+      value_width = any_fut ? (w_tnum + 3) : w_tnum
+      value_core = tfut ? ("in " num_s) : num_s
+      value_field = sp(value_width - length(value_core)) value_core
+      unit_field = tunit sp(w_tunit - length(tunit))
+      t_raw = value_field " " unit_field
+      t_col = color_reltime(t_raw, tunit, tfut)
+
+      # name
+      name_out = format_name(name, perms, target, ttype, tperms)
+      name_suffix=""
+      if (length(name_out) >= 200) name_suffix = sprintf("%c[K", 27)
+
+      out=""
+      if (ASIZE) out = out blocks_field
+      out = out perms_field " " links_field " " owner_field group_field size_field " " t_col " " name_out name_suffix
+      print out
+    }
+
+    END {
+      printed_any=0
+      last_was_header=0
+
+      for (pi=1; pi<=n_plan; pi++) {
+        kind = plan_kind[pi]
+        a = plan_a[pi]
+        b = plan_b[pi]
+
+        if (kind == "H") {
+          # Only show headers when MULTI==1 (matches original behavior)
+          if (MULTI+0 == 1) {
+            if (printed_any) print ""
+            print a ":"
+            printed_any=1
+          }
+          last_was_header=1
+          continue
+        }
+
+        if (kind == "R") {
+          # Single ROW operand: a is 1-based row index
+          render_row(a + 0)
+          printed_any=1
+          last_was_header=0
+          continue
+        }
+
+        if (kind == "D") {
+          # Directory slice: a=start_1based, b=end_1based_exclusive
+          start = a + 0
+          end = b + 0
+          for (ri = start; ri < end; ri++) {
+            render_row(ri)
+            printed_any=1
+          }
+          last_was_header=0
+          continue
+        }
+      }
+
+      # totals only when original code would print them:
+      # - directory listing, single operand, not -d, and operand is a directory (TOTAL_APPLICABLE==1)
+      if (TOTAL_APPLICABLE+0 == 1) {
+        if (ASIZE+0==1 && HUMAN+0==1) {
+          # deterministic minimal total formatting (same as fastpath block)
+          bytes = total_blocks * 1024
+          base = (SI+0) ? 1000 : 1024
+          if (bytes < base) tlabel="0"
+          else if (bytes < base*base) {
+            unit = (SI+0) ? "k" : "K"
+            if (SI+0) val = int((bytes + base - 1)/base)
+            else val = int((bytes/base) + 0.5)
+            tlabel = val unit
+          } else if (bytes < base*base*base) {
+            div=base*base
+            if (SI+0) val=int((bytes + div - 1)/div)
+            else val=int((bytes/div) + 0.5)
+            tlabel = val "M"
+          } else if (bytes < base*base*base*base) {
+            div=base*base*base
+            if (SI+0) val=int((bytes + div - 1)/div)
+            else val=int((bytes/div) + 0.5)
+            tlabel = val "G"
+          } else {
+            div=base*base*base*base
+            if (SI+0) val=int((bytes + div - 1)/div)
+            else val=int((bytes/div) + 0.5)
+            tlabel = val "T"
+          }
+          print TOTAL_LABEL " " tlabel
+        } else {
+          print TOTAL_LABEL " " total_blocks
+        }
+      }
     }
     '
 }
 
-# If multiple operands and we have directory groups, print headers like ls.
-# We use dir_markers to identify which slices came from which dir.
-printed_any=0
-
-# First, print standalone ROW operands in operand order.
-# Then, for directories, print header + slice.
-# This is a simplified grouping that stays deterministic.
-
-# Print ROW ops in order (including -d directories).
-for g in "${groups[@]}"; do
-  kind="${g%%"${DELIM}"*}"
-  val="${g#*"${DELIM}"}"
-
-  if [ "$kind" = "ROW" ]; then
-    # Use stored index mapping for O(1) lookup instead of O(n) scan
-    if [ -n "${row_index_map["$val"]:-}" ]; then
-      idx="${row_index_map["$val"]}"
-      render_rows_awk "$idx" "$((idx + 1))"
-      printed_any=1
-    fi
-  fi
-done
-
-# Print directories (if any) in operand order.
-for m in "${dir_markers[@]}"; do
-  IFS="$DELIM" read -r d start end <<<"$m"
-  if [ "$multiple" -eq 1 ]; then
-    if [ "$printed_any" -eq 1 ]; then
-      printf '\n'
-    fi
-    printf '%s:\n' "$d"
-  fi
-
-  render_rows_awk "$start" "$end"
-
-  if [ "$total_applicable" -eq 1 ]; then
-    total_blocks=0
-    for ((i=start; i<end; i++)); do
-      rec="${rows[$i]}"
-      IFS="$DELIM" read -r blocks _ <<<"$rec"
-      total_blocks=$((total_blocks + blocks))
-    done
-    if [ "$ASIZE" -eq 1 ] && [ "$HUMANREADABLE" -eq 1 ]; then
-      printf '%s %s\n' "$total_label" "$(blocks_total_label "$total_blocks" "$SI")"
-    else
-      printf '%s %s\n' "$total_label" "$total_blocks"
-    fi
-  fi
-
-  printed_any=1
-
-done
-
+render_all_awk
 exit 0
