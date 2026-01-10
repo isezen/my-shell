@@ -212,6 +212,31 @@ try_fastpath_single_dir() {
       esc = sprintf("%c", 27)
       creset = esc "[0m"
 
+      # ------------------------------------------
+      # LS_COLORS (GNU ls compatible subset)
+      # ------------------------------------------
+      COL_DI = "01;34"
+      COL_LN = "01;36"
+      COL_EX = "01;32"
+      COL_FI = "0"
+      n_ext = 0
+
+      if (ENVIRON["LS_COLORS"] != "") {
+        n = split(ENVIRON["LS_COLORS"], parts, ":")
+        for (i = 1; i <= n; i++) {
+          split(parts[i], kv, "=")
+          k = kv[1]; v = kv[2]
+          if (k == "di") COL_DI = v
+          else if (k == "ln") COL_LN = v
+          else if (k == "ex") COL_EX = v
+          else if (k == "fi") COL_FI = v
+          else if (k ~ /^\*/) {
+            ext_pat[++n_ext] = substr(k, 2)
+            ext_col[n_ext] = v
+          }
+        }
+      }
+
       cd    = esc "[38;5;122m"
       cl    = esc "[38;5;190m"
       cr    = esc "[38;5;119m"
@@ -244,6 +269,16 @@ try_fastpath_single_dir() {
     }
     function max(a,b){return (a>b)?a:b}
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
+
+    function color_for_name(name, perms,   i) {
+      for (i = 1; i <= n_ext; i++) {
+        if (name ~ ext_pat[i] "$") return esc "[" ext_col[i] "m"
+      }
+      if (perms ~ /^d/) return esc "[" COL_DI "m"
+      if (perms ~ /^l/) return esc "[" COL_LN "m"
+      if (perms ~ /x/)  return esc "[" COL_EX "m"
+      return esc "[" COL_FI "m"
+    }
 
     function quote_if_needed(s) {
       if (index(s, " ")>0 || index(s, "\t")>0) return "\"" s "\""
@@ -479,8 +514,10 @@ try_fastpath_single_dir() {
         t_col = color_reltime(t_raw, tunit, tfut)
 
         # name field
-        nout = quote_if_needed(name)
+        cname = color_for_name(name, perms)
+        nout = cname quote_if_needed(name) creset
         if (perms ~ /^l/ && target != "") nout = nout " -> " quote_if_needed(target)
+
         name_suffix=""
         if (length(nout) >= 200) name_suffix = sprintf("%c[K", 27)
 
