@@ -85,6 +85,7 @@
 │   ├── test-gls-symlink-resolve.sh
 │   ├── test-gls.txt
 │   └── todo.md
+├── AGENTS.md
 ├── CHANGELOG.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
@@ -94,5 +95,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 74 files
+19 directories, 75 files
 ```
