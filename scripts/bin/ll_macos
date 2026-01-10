@@ -218,6 +218,8 @@ try_fastpath_single_dir() {
       # ------------------------------------------
       COL_DI = "01;34"
       COL_LN = "01;36"
+      COL_SU = ""   # setuid
+      COL_SG = ""   # setgid
       LN_TARGET = 0
       COL_EX = "01;32"
       COL_FI = "0"
@@ -234,6 +236,8 @@ try_fastpath_single_dir() {
             if (v == "target") { LN_TARGET = 1; COL_LN = "0" }  # GNU dircolors special
             else COL_LN = v
           }
+          else if (k == "su") COL_SU = v
+          else if (k == "sg") COL_SG = v
           else if (k == "ex") COL_EX = v
           else if (k == "fi") COL_FI = v
           else if (k ~ /^\*/) {
@@ -962,6 +966,8 @@ render_rows_awk() {
       # --------------------------------------------------
       COL_DI = "01;34"
       COL_LN = "01;36"
+      COL_SU = ""   # setuid
+      COL_SG = ""   # setgid
       LN_TARGET = 0
       COL_EX = "01;32"
       COL_FI = "0"
@@ -980,6 +986,8 @@ render_rows_awk() {
             if (v == "target") { LN_TARGET = 1; COL_LN = "0" }
             else COL_LN = v
           }
+          else if (k == "su") COL_SU = v
+          else if (k == "sg") COL_SG = v
           else if (k == "ex") COL_EX = v
           else if (k == "fi") COL_FI = v
           else if (k ~ /^\*/) {
@@ -1117,6 +1125,12 @@ render_rows_awk() {
     # - extension rules apply only to regular, non-executable files
     # - if multiple extension rules match, LAST match wins
     function color_for_name(name, perms,   base, col, i) {
+      # setuid/setgid override (GNU ls behavior)
+      ux = substr(perms, 4, 1)
+      gx = substr(perms, 7, 1)
+      if ((ux == "s" || ux == "S") && COL_SU != "") return esc "[" COL_SU "m"
+      if ((gx == "s" || gx == "S") && COL_SG != "") return esc "[" COL_SG "m"
+
       # type first
       if (perms ~ /^d/)      base = COL_DI
       else if (perms ~ /^l/) {
