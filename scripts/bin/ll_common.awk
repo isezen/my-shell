@@ -97,7 +97,7 @@ function sh_dquote(s,   t){
   return "\"" t "\""
 }
 
-function quote_if_needed(s){
+function llc_quote_if_needed(s){
   if (index(s, " ")>0 || index(s, "\t")>0) return "\"" s "\""
   return s
 }
@@ -212,7 +212,7 @@ function format_name(name, perms, target, target_type, target_perms,   cname, q)
   return name
 }
 
-function color_perm(p,   i, ch, out){
+function llc_color_perm(p,   i, ch, out){
   if (p in perm_col_cache) return perm_col_cache[p]
   out = ""
   for (i=1; i<=length(p); i++) {
@@ -277,19 +277,7 @@ function blocks_human_label(blocks, si_mode,   bytes, base, unit, val){
   val=sprintf("%.1f", bytes/(base*base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "T"
 }
 
-function time_calc(epoch,   dt, abs, v, lbl){
-  dt = int((NOW_EPOCH+0) - epoch)
-  if (dt < 0) { abs = -dt; time_future=1; time_prefix="in" } else { abs = dt; time_future=0; time_prefix="" }
-  if (abs < 120) { v=abs; lbl="sec" }
-  else if (abs < 3600) { v=int(abs/60); lbl="min" }
-  else if (abs < 172800) { v=int(abs/3600); lbl="hrs" }
-  else if (abs < 3888000) { v=int(abs/86400); lbl="day" }
-  else if (abs < 31536000) { v=int(abs/2592000); lbl="mon" }
-  else { v=int(abs/31536000); lbl="yr" }
-  time_num=v; time_unit=lbl
-}
-
-function color_reltime(s, unit, is_future){
+function llc_color_reltime(s, unit, is_future){
   if (is_future) return cfut s creset
   if (unit=="sec") return csec s creset
   if (unit=="min") return cmin s creset
@@ -367,6 +355,9 @@ function ll_common_init(){
   cfut = esc "[38;5;39m"
 
   delete perm_col_cache
+  llc_init_ansi()
+  llc_init_size_constants()
+  llc_init_time_constants()
 }
 
 # ----------------------------
@@ -446,35 +437,9 @@ function llc_rpad(s, w,    raw_len, n, out) {
   return s out
 }
 
-function llc_quote_if_needed(s) {
-  # Function docstring:
-  #   Quote filename if it contains space or tab.
-  if (index(s, " ") > 0 || index(s, "\t") > 0) return "\"" s "\""
-  return s
-}
-
 # ----------------------------
 # Permission rendering
 # ----------------------------
-
-function llc_color_perm(p,    i, ch, out) {
-  # Function docstring:
-  #   Colorize permission string. Requires the following globals (set by main):
-  #     cd, cl, cr, cw, cx, cplus, creset
-  #   If not set, output will degrade gracefully (no colors).
-  out = ""
-  for (i = 1; i <= length(p); i++) {
-    ch = substr(p, i, 1)
-    if      (ch == "d" && cd    != "") out = out cd ch llc_creset
-    else if (ch == "l" && cl    != "") out = out cl ch llc_creset
-    else if (ch == "r" && cr    != "") out = out cr ch llc_creset
-    else if (ch == "w" && cw    != "") out = out cw ch llc_creset
-    else if (ch == "x" && cx    != "") out = out cx ch llc_creset
-    else if (ch == "+" && cplus != "") out = out cplus ch llc_creset
-    else out = out ch
-  }
-  return out
-}
 
 # ----------------------------
 # Size rendering
@@ -543,16 +508,23 @@ function llc_time_calc(epoch, now_epoch,    dt, v, lbl, prefix) {
   llc_time_unit = lbl
 }
 
-function llc_color_reltime(field, unit, is_future) {
-  # Function docstring:
-  #   Colorize a pre-formatted relative time field according to its unit.
-  #   Requires globals: csec/cmin/chrs/cday/cmon/cyr/cfut and llc_creset.
-  if (is_future) return cfut field llc_creset
-  if (unit == llc_lsec) return csec field llc_creset
-  if (unit == llc_lmin) return cmin field llc_creset
-  if (unit == llc_lhrs) return chrs field llc_creset
-  if (unit == llc_lday) return cday field llc_creset
-  if (unit == llc_lmon) return cmon field llc_creset
-  if (unit == llc_lyr ) return cyr  field llc_creset
-  return field
+# Wrapper functions for backward compatibility
+function time_calc(epoch) {
+  llc_time_calc(epoch, NOW_EPOCH)
+  time_future = llc_time_future
+  time_prefix = llc_time_prefix
+  time_num = llc_time_num
+  time_unit = llc_time_unit
+}
+
+function color_reltime(field, unit, is_future) {
+  return llc_color_reltime(field, unit, is_future)
+}
+
+function color_perm(p) {
+  return llc_color_perm(p)
+}
+
+function quote_if_needed(s) {
+  return llc_quote_if_needed(s)
 }
