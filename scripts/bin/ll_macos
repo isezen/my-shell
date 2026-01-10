@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_macos
+
 # macOS-specific implementation of ll command
 # (patched) Match ll_linux symlink SGR (ignore LS_COLORS ln=target; use fixed symlink SGR)
 # Uses BSD utilities (ls, awk, stat) for macOS compatibility
@@ -91,6 +92,17 @@ fi
 USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
 DELIM=$'\037'
 # NOTE: Filenames with literal newlines are out-of-scope (line-based records).
+
+# Shared awk helpers (ll_common.awk)
+LL_COMMON_AWK="${LL_COMMON_AWK:-}"
+if [ -z "$LL_COMMON_AWK" ]; then
+  # Resolve alongside this script; keep in sync with ll_linux
+  _this_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+  LL_COMMON_AWK="${_this_dir}/ll_common.awk"
+fi
+
+# Disable colors for testing (matches ll_linux behavior)
+NO_COLOR="${LL_CHATGPT_FAST:-0}"
 
 batch_push_rows() {
   # Batch stat call for multiple paths
@@ -236,412 +248,24 @@ try_fastpath_single_dir() {
     # - If symlinks exist, do a SINGLE batched `stat -L` from inside awk to fetch target perms.
     #   Broken symlinks can cause missing output lines; we preserve alignment by filling the rest as orphan.
     LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null | LC_ALL=C /usr/bin/awk \
+    -f "$LL_COMMON_AWK" \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
     -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" \
     -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" -v DEC_SEP="$DEC_SEP" \
     -v TOTAL_LABEL="$total_label" -v TOTAL_APPLICABLE="$total_applicable" \
-    '
-    # trim helpers (BSD awk: NO nested function defs)
-    function _trim(s) {
-      sub(/^[ \t]+/, "", s)
-      sub(/[ \t]+$/, "", s)
-      return s
-    }
-
-    # ----------------------------
-    # Robust LS_COLORS parser
-    # - Handles escaped ":" and "=" (e.g. "\:" "\=")
-    # - Splits on unescaped ":" into tokens "key=value"
-    # ----------------------------
-    function _ls_process_token(tok,   eq, k, v) {
-      if (tok == "") return
-      eq = index(tok, "=")
-      if (eq <= 0) return
-      k = _trim(substr(tok, 1, eq-1))
-      v = _trim(substr(tok, eq+1))
-
-      if (k == "di") COL_DI = v
-      else if (k == "ln") {
-        # GNU ls supports "ln=target" to color symlinks like their targets.
-        # For ll_linux parity (tests), we IGNORE ln=target and keep a fixed symlink SGR.
-        # So: do not set LN_TARGET here.
-        if (v != "target") COL_LN = v
-      }
-      else if (k == "su") COL_SU = v
-      else if (k == "sg") COL_SG = v
-      else if (k == "pi") COL_PI = v
-      else if (k == "so") COL_SO = v
-      else if (k == "ex") COL_EX = v
-      else if (k == "fi") COL_FI = v
-      else if (k == "or") COL_OR = v
-      else if (k == "ow") COL_OW = v
-      else if (k == "tw") COL_TW = v
-      else if (k == "st") COL_ST = v
-      else if (k ~ /^\*/) {
-        # Store suffix->color in a hash for O(1) lookup.
-        # If suffix repeats, last assignment wins (matches GNU-ish "last wins" for same key).
-        suf = substr(k, 2)   # suffix string (e.g. ".txt")
-        ext_lastcol[suf] = v
-        ext_has_len[length(suf)] = 1
-      }
-    }
-
-    function parse_ls_colors(s,   i, c, tok) {
-      tok = ""
-      for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c == "\\") {
-          # keep escaped char verbatim (e.g. "\:" -> ":" , "\=" -> "=")
-          if (i < length(s)) {
-            tok = tok substr(s, i+1, 1)
-            i++
-          } else {
-            tok = tok c
-          }
-        } else if (c == ":") {
-          _ls_process_token(tok)
-          tok = ""
-        } else {
-          tok = tok c
-        }
-      }
-      _ls_process_token(tok)
-    }
+    -v NO_COLOR="$NO_COLOR" \
+    -f /dev/fd/3 3<<'AWK'
+    # NOTE: LS_COLORS parsing helpers (_trim, _ls_process_token, parse_ls_colors, build_ext_lens)
+    # come from ll_common.awk when it's loaded via -f "$LL_COMMON_AWK".
 
     BEGIN {
-      esc = sprintf("%c", 27)
-      creset = esc "[0m"
-      # ll_linux (GNU ls) style symlink SGR used by tests
-      CSYMLINK = esc "[38;5;208;1m"
+      # NOTE: Common helpers come from ll_common.awk:
+      # max(), sp(), _trim(), build_ext_lens(), parse_ls_colors(), color_for_name(),
+      # quote_if_needed(), format_name()/format_symlink(), color_perm(), size/time helpers, sh_dquote(), etc.
+      ll_common_init()
 
-      # ------------------------------------------
-      # LS_COLORS (GNU ls compatible subset)
-      # ------------------------------------------
-      COL_DI = "01;34"
-      COL_LN = "01;36"
-      COL_SU = ""   # setuid
-      COL_SG = ""   # setgid
-      COL_PI = ""   # fifo/pipe
-      COL_SO = ""   # socket
-      LN_TARGET = 0
-      COL_EX = "01;32"
-      COL_FI = "0"
-      COL_OR = ""
-      COL_OW = ""  # other-writable dir (no sticky)
-      COL_TW = ""  # sticky dir (no other-writable) OR fallback bucket (see below)
-      COL_ST = ""  # sticky + other-writable dir
-      COL_OR_DEFAULT = "48;5;196;38;5;232;1"
-      # extension lookup tables
-      n_extlen = 0
-      delete ext_lastcol; delete ext_has_len; delete ext_lens
-
-      if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
-      build_ext_lens()
-
-      cd    = esc "[38;5;122m"
-      cl    = esc "[38;5;190m"
-      cr    = esc "[38;5;119m"
-      cw    = esc "[38;5;216m"
-      cx    = esc "[38;5;124m"
-      cplus = esc "[38;5;129m"
-
-      cusr  = esc "[38;5;66m"
-      croot = esc "[38;5;160m"
-
-      cb = esc "[38;5;240m"
-      ck = esc "[38;5;250m"
-      cm = esc "[38;5;117m"
-      cg = esc "[38;5;208m"
-      ct = esc "[38;5;160m"
-
-      clT = esc "[1;38;5;167m"
-      clG = esc "[1;38;5;220m"
-      clM = esc "[1;38;5;123m"
-      clK = esc "[1;38;5;107m"
-      clB = esc "[1;38;5;248m"
-
-      csec = esc "[38;5;124m"
-      cmin = esc "[38;5;215m"
-      chrs = esc "[38;5;196m"
-      cday = esc "[38;5;230m"
-      cmon = esc "[38;5;151m"
-      cyr  = esc "[38;5;241m"
-      cfut = esc "[38;5;39m"
-
-      # Cache: perms string -> colored perms string
-      # Big win on /usr/bin where perms repeat heavily.
-      delete perm_col_cache
-
-      # Symlink collection for batched stat -L in END
       n_syms = 0
-    }
-    function max(a,b){return (a>b)?a:b}
-    function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
-
-    function ttype_from_perms(p,   first) {
-      if (p=="") return "O"
-      first = substr(p,1,1)
-      if (first=="d") return "D"
-      if (p ~ /x/) return "X"
-      return "F"
-    }
-
-    # Safe double-quote shell quoting for passing filenames to /bin/sh.
-    # Avoids literal single-quote characters in this awk program because the whole
-    # program is embedded in bash as a single-quoted string.
-    function sh_dquote(s,   t) {
-      t = s
-      # Escape chars that are special inside double-quotes in POSIX shells.
-      # - backslash
-      # - double quote
-      # - dollar (var expansion)
-      # - backtick (command substitution)
-      gsub(/[\\\"$`]/, "\\\\&", t)
-      return "\"" t "\""
-    }
-
-    # Build a descending-sorted list of unique suffix lengths from ext_has_len[].
-    # This enables "longest suffix wins" + O(1) hash lookup per candidate suffix.
-    function build_ext_lens(   k, n, i, j, tmp) {
-      n = 0
-      for (k in ext_has_len) {
-        n++
-        ext_lens[n] = k + 0
-      }
-      # insertion sort descending (n is typically small)
-      for (i = 2; i <= n; i++) {
-        tmp = ext_lens[i]
-        j = i - 1
-        while (j >= 1 && ext_lens[j] < tmp) {
-          ext_lens[j+1] = ext_lens[j]
-          j--
-        }
-        ext_lens[j+1] = tmp
-      }
-      n_extlen = n
-    }
-
-    # Escape regex metacharacters so LS_COLORS "*.<ext>" rules
-    # behave like suffix match (not regex wildcard match).
-    function re_escape(s,   i,c,out) {
-      out=""
-      for (i=1; i<=length(s); i++) {
-        c=substr(s,i,1)
-        if (c ~ /[.[\]{}()*+?^$\\|]/) out = out "\\" c
-        else out = out c
-      }
-      return out
-    }
-
-    # GNU-ls-ish priority:
-    # - type class first (di/ln/ex/fi)
-    # - extension rules apply only to regular, non-executable files
-    # - if multiple extension rules match, LAST match wins
-    function color_for_name(name, perms,   base, col, i, ux, gx, owrite, sticky) {
-      # setuid/setgid override (GNU ls behavior)
-      # perms layout: 1(type) + 9(mode)
-      # user x position: 4, group x position: 7
-      ux = substr(perms, 4, 1)
-      gx = substr(perms, 7, 1)
-      if ((ux == "s" || ux == "S") && COL_SU != "") return esc "[" COL_SU "m"
-      if ((gx == "s" || gx == "S") && COL_SG != "") return esc "[" COL_SG "m"
-
-      # type first
-      if (perms ~ /^d/) {
-        # Match ll_linux/test-suite behavior:
-        # If directory is sticky (t/T), ALWAYS use "tw" (ignore "st"),
-        # even when other-writable is also set.
-        owrite = (substr(perms, 9, 1) == "w")
-        sticky = (substr(perms,10,1) == "t" || substr(perms,10,1) == "T")
-        if (sticky && COL_TW != "") return esc "[" COL_TW "m"
-        if (!sticky && owrite && COL_OW != "") return esc "[" COL_OW "m"
-        base = COL_DI
-      }
-      else if (perms ~ /^l/) {
-        if (LN_TARGET) base = "0"
-        else base = COL_LN
-      }
-      else if (perms ~ /^p/) base = COL_PI
-      else if (perms ~ /^s/) base = COL_SO
-      else if (perms ~ /x/)  base = COL_EX
-      else                   base = COL_FI
-
-      # extension only for regular non-exec (match linux behavior for *.sh vs ex)
-      col = ""
-      if (base == COL_FI) {
-        # Longest-suffix-wins: check suffix lengths descending; O(1) hash lookup per candidate.
-        for (j = 1; j <= n_extlen; j++) {
-          L = ext_lens[j]
-          if (length(name) >= L) {
-            suf = substr(name, length(name) - L + 1)
-            if (suf in ext_lastcol) { col = ext_lastcol[suf]; break }
-          }
-        }
-      }
-      if (col != "") return esc "[" col "m"
-      if (base == "0" || base == "") return ""
-      return esc "[" base "m"
-    }
-
-    function quote_if_needed(s) {
-      if (index(s, " ")>0 || index(s, "\t")>0) return "\"" s "\""
-      return s
-    }
-
-    function format_name(name, perms, target, target_type, target_perms) {
-      if (perms ~ /^l/ && target != "") {
-        return format_symlink(name, target, target_type, target_perms)
-      }
-      cname = color_for_name(name, perms)
-      q = quote_if_needed(name)
-      if (q != name) {
-        if (cname != "") return "\"" cname name "\"" creset
-        return "\"" name "\""
-      }
-      if (cname != "") return cname name creset
-      return name
-    }
-
-    function color_and_quote(value, color,   quoted) {
-      quoted = quote_if_needed(value)
-      if (quoted != value) {
-        if (color != "") return "\"" color value "\""
-        return "\"" value "\""
-      }
-      if (color != "") return color value
-      return value
-    }
-
-    function orphan_color(   color) {
-      color = COL_OR
-      if (color == "") color = COL_OR_DEFAULT
-      if (color == "") return ""
-      return esc "[" color "m"
-    }
-
-    function symlink_link_color(name, target, target_type, target_perms,   color) {
-      if (target_type == "O") return orphan_color()
-      if (target_type == "D" || target_type == "X") {
-        if (target_perms != "") return color_for_name(target, target_perms)
-        if (target_type == "D") return color_for_name(target, "d---------")
-        return color_for_name(target, "-x------")
-      }
-      if (target_type == "F") {
-        color = color_for_name(name, "----------")
-        if (color != "") return color
-        return ""
-      }
-      if (CSYMLINK != "") return CSYMLINK
-      return ""
-    }
-
-    function symlink_target_color(target, target_type, target_perms) {
-      if (target_type == "O") return orphan_color()
-      if (target_perms != "") return color_for_name(target, target_perms)
-      if (target_type == "D") return color_for_name(target, "d---------")
-      if (target_type == "X") return color_for_name(target, "-x------")
-      return color_for_name(target, "----------")
-    }
-
-    function format_symlink(name, target, target_type, target_perms,   link_color, target_color, color_for_target, colored_name, colored_target) {
-      link_color = symlink_link_color(name, target, target_type, target_perms)
-      target_color = symlink_target_color(target, target_type, target_perms)
-      if (link_color != "") color_for_target = link_color
-      else color_for_target = target_color
-      colored_name = color_and_quote(name, link_color)
-      colored_target = color_and_quote(target, color_for_target)
-      out = colored_name " -> " colored_target
-      if (link_color != "" || color_for_target != "") out = out creset
-      return out
-    }
-
-    function color_perm(p,   i,ch,out) {
-      if (p in perm_col_cache) return perm_col_cache[p]
-      out=""
-      for (i=1;i<=length(p);i++) {
-        ch=substr(p,i,1)
-        if (ch=="d") out=out cd ch creset
-        else if (ch=="l") out=out cl ch creset
-        else if (ch=="r") out=out cr ch creset
-        else if (ch=="w") out=out cw ch creset
-        else if (ch=="x") out=out cx ch creset
-        else if (ch=="+") out=out cplus ch creset
-        else out=out ch
-      }
-      perm_col_cache[p]=out
-      return out
-    }
-
-    function size_color_numeric(x) {
-      if (x < 1024) return cb
-      if (x < 1048576) return ck
-      if (x < 1073741824) return cm
-      if (x < 1099511627776) return cg
-      return ct
-    }
-
-    function color_size_human(s,   num,suf,len) {
-      if (s ~ /^[0-9]+$/) s = s "B"
-      if (s ~ /^[0-9]+(\.[0-9]+)?[kKMGTTB]$/) {
-        len = length(s)
-        suf = substr(s, len, 1)
-        num = substr(s, 1, len-1)
-        if (suf=="T") return ct num creset clT suf creset
-        if (suf=="G") return cg num creset clG suf creset
-        if (suf=="M") return cm num creset clM suf creset
-        if (suf=="K" || suf=="k") return ck num creset clK suf creset
-        if (suf=="B") return cb num creset clB suf creset
-      }
-      return cb s creset
-    }
-
-    function human_size(bytes,   scaled) {
-      if (bytes !~ /^[0-9]+$/) return bytes
-      if (bytes < 1024) return bytes "B"
-      if (bytes < 1048576) { scaled=sprintf("%.1f", bytes/1024.0); sub(/\.0$/,"",scaled); return scaled "K" }
-      if (bytes < 1073741824) { scaled=sprintf("%.1f", bytes/1048576.0); sub(/\.0$/,"",scaled); return scaled "M" }
-      if (bytes < 1099511627776) { scaled=sprintf("%.1f", bytes/1073741824.0); sub(/\.0$/,"",scaled); return scaled "G" }
-      scaled=sprintf("%.1f", bytes/1099511627776.0); sub(/\.0$/,"",scaled); return scaled "T"
-    }
-
-    function blocks_human_label(blocks, si_mode,   bytes,base,unit,val) {
-      if (blocks !~ /^[0-9]+$/) return blocks
-      bytes = blocks * 1024
-      base = si_mode ? 1000 : 1024
-      if (bytes < base) return "0B"
-      if (bytes < base*base) {
-        unit = si_mode ? "k" : "K"
-        val = sprintf("%.1f", bytes/base)
-        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
-        return val unit
-      }
-      if (bytes < base*base*base) { val=sprintf("%.1f", bytes/(base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "M" }
-      if (bytes < base*base*base*base) { val=sprintf("%.1f", bytes/(base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "G" }
-      val=sprintf("%.1f", bytes/(base*base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "T"
-    }
-
-    function time_calc(epoch,   dt,abs,v,lbl) {
-      dt = int((NOW_EPOCH+0) - epoch)
-      if (dt < 0) { abs = -dt; time_future=1 } else { abs=dt; time_future=0 }
-      if (abs < 120) { v=abs; lbl="sec" }
-      else if (abs < 3600) { v=int(abs/60); lbl="min" }
-      else if (abs < 172800) { v=int(abs/3600); lbl="hrs" }
-      else if (abs < 3888000) { v=int(abs/86400); lbl="day" }
-      else if (abs < 31536000) { v=int(abs/2592000); lbl="mon" }
-      else { v=int(abs/31536000); lbl="yr" }
-      time_num=v; time_unit=lbl
-    }
-
-    function color_reltime(s, unit, is_future) {
-      if (is_future) return cfut s creset
-      if (unit=="sec") return csec s creset
-      if (unit=="min") return cmin s creset
-      if (unit=="hrs") return chrs s creset
-      if (unit=="day") return cday s creset
-      if (unit=="mon") return cmon s creset
-      if (unit=="yr") return cyr s creset
-      return s
     }
 
     {
@@ -886,7 +510,7 @@ try_fastpath_single_dir() {
         }
       }
     }
-    '
+AWK
   )
 
   return 0
@@ -1192,6 +816,7 @@ render_all_awk() {
     printf 'ROWS\n'
     printf '%s\n' "${rows[@]}"
   } | LC_ALL=C /usr/bin/awk \
+    -f "$LL_COMMON_AWK" \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
     -v ASIZE="$ASIZE" \
@@ -1206,102 +831,17 @@ render_all_awk() {
     -v MULTI="$multiple" \
     -v TOTAL_LABEL="$total_label" \
     -v TOTAL_APPLICABLE="$total_applicable" \
-    '
-    function max(a,b){return (a>b)?a:b}
-    function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
-    function _trim(s){ sub(/^[ \t]+/,"",s); sub(/[ \t]+$/,"",s); return s }
+    -v NO_COLOR="$NO_COLOR" \
+    -f /dev/fd/3 3<<'AWK'
 
-    # Build a descending-sorted list of unique suffix lengths from ext_has_len[].
-    # This enables "longest suffix wins" + O(1) hash lookup per candidate suffix.
-    function build_ext_lens(   k, n, i, j, tmp) {
-      n = 0
-      for (k in ext_has_len) {
-        n++
-        ext_lens[n] = k + 0
-      }
-      # insertion sort descending (n is typically small)
-      for (i = 2; i <= n; i++) {
-        tmp = ext_lens[i]
-        j = i - 1
-        while (j >= 1 && ext_lens[j] < tmp) {
-          ext_lens[j+1] = ext_lens[j]
-          j--
-        }
-        ext_lens[j+1] = tmp
-      }
-      n_extlen = n
-    }
-
-    # ----------------------------
-    # LS_COLORS parser (robust)
-    # ----------------------------
-    function _ls_process_token(tok,   eq, k, v) {
-      if (tok == "") return
-      eq = index(tok, "=")
-      if (eq <= 0) return
-      k = _trim(substr(tok, 1, eq-1))
-      v = _trim(substr(tok, eq+1))
-      if (k == "di") COL_DI = v
-      else if (k == "ln") { if (v != "target") COL_LN = v }  # ignore ln=target for test parity
-      else if (k == "su") COL_SU = v
-      else if (k == "sg") COL_SG = v
-      else if (k == "pi") COL_PI = v
-      else if (k == "so") COL_SO = v
-      else if (k == "ex") COL_EX = v
-      else if (k == "fi") COL_FI = v
-      else if (k == "or") COL_OR = v
-      else if (k == "ow") COL_OW = v
-      else if (k == "tw") COL_TW = v
-      else if (k == "st") COL_ST = v
-      else if (k ~ /^\*/) {
-        # Store suffix->color in a hash for O(1) lookup.
-        # If suffix repeats, last assignment wins (matches "last wins" for same key).
-        suf = substr(k, 2)
-        ext_lastcol[suf] = v
-        ext_has_len[length(suf)] = 1
-      }
-    }
-    function parse_ls_colors(s,   i,c,tok) {
-      tok=""
-      for (i=1;i<=length(s);i++) {
-        c=substr(s,i,1)
-        if (c=="\\") {
-          if (i<length(s)) { tok=tok substr(s,i+1,1); i++ } else tok=tok c
-        } else if (c==":") { _ls_process_token(tok); tok="" }
-        else tok=tok c
-      }
-      _ls_process_token(tok)
-    }
+    # NOTE: max(), sp(), _trim(), _ls_process_token(), parse_ls_colors(), build_ext_lens()
+    # come from ll_common.awk when it's loaded via -f "$LL_COMMON_AWK".
 
     BEGIN {
-      esc = sprintf("%c", 27)
-      creset = esc "[0m"
-      CSYMLINK = esc "[38;5;208;1m"
-
-      COL_DI="01;34"; COL_LN="01;36"; COL_SU=""; COL_SG=""; COL_PI=""; COL_SO=""
-      LN_TARGET=0
-      COL_EX="01;32"; COL_FI="0"
-      COL_OR=""; COL_OR_DEFAULT="48;5;196;38;5;232;1"
-      COL_OW=""; COL_TW=""; COL_ST=""
-      # extension lookup tables
-      n_extlen=0
-      delete ext_lastcol; delete ext_has_len; delete ext_lens
-      if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
-      build_ext_lens()
-
-      cd=esc "[38;5;122m"; cl=esc "[38;5;190m"; cr=esc "[38;5;119m"
-      cw=esc "[38;5;216m"; cx=esc "[38;5;124m"; cplus=esc "[38;5;129m"
-      cusr=esc "[38;5;66m"; croot=esc "[38;5;160m"
-      cb=esc "[38;5;240m"; ck=esc "[38;5;250m"; cm=esc "[38;5;117m"
-      cg=esc "[38;5;208m"; ct=esc "[38;5;160m"
-      clT=esc "[1;38;5;167m"; clG=esc "[1;38;5;220m"; clM=esc "[1;38;5;123m"
-      clK=esc "[1;38;5;107m"; clB=esc "[1;38;5;248m"
-      csec=esc "[38;5;124m"; cmin=esc "[38;5;215m"; chrs=esc "[38;5;196m"
-      cday=esc "[38;5;230m"; cmon=esc "[38;5;151m"; cyr=esc "[38;5;241m"
-      cfut=esc "[38;5;39m"
-
-      # Cache: perms string -> colored perms string
-      delete perm_col_cache
+      # NOTE: Common helpers come from ll_common.awk:
+      # max(), sp(), _trim(), build_ext_lens(), parse_ls_colors(), color_for_name(),
+      # quote_if_needed(), format_name()/format_symlink(), color_perm(), size/time helpers, etc.
+      ll_common_init()
 
       in_rows=0
       n_plan=0
@@ -1312,201 +852,33 @@ render_all_awk() {
       total_blocks=0
     }
 
-    # ----------------------------
-    # Formatting helpers
-    # ----------------------------
-    function quote_if_needed(s){ if (index(s," ")>0 || index(s,"\t")>0) return "\"" s "\""; return s }
 
-    function color_perm(p,   i,ch,out) {
-      if (p in perm_col_cache) return perm_col_cache[p]
-      out=""
-      for (i=1;i<=length(p);i++){
-        ch=substr(p,i,1)
-        if (ch=="d") out=out cd ch creset
-        else if (ch=="l") out=out cl ch creset
-        else if (ch=="r") out=out cr ch creset
-        else if (ch=="w") out=out cw ch creset
-        else if (ch=="x") out=out cx ch creset
-        else if (ch=="+") out=out cplus ch creset
-        else out=out ch
-      }
-      perm_col_cache[p]=out
-      return out
-    }
 
-    function size_color_numeric(x){
-      if (x < 1024) return cb
-      if (x < 1048576) return ck
-      if (x < 1073741824) return cm
-      if (x < 1099511627776) return cg
-      return ct
-    }
 
-    function human_size(bytes,   scaled) {
-      if (bytes !~ /^[0-9]+$/) return bytes
-      if (bytes < 1024) return bytes "B"
-      if (bytes < 1048576) { scaled=sprintf("%.1f", bytes/1024.0); sub(/\.0$/,"",scaled); return scaled "K" }
-      if (bytes < 1073741824) { scaled=sprintf("%.1f", bytes/1048576.0); sub(/\.0$/,"",scaled); return scaled "M" }
-      if (bytes < 1099511627776) { scaled=sprintf("%.1f", bytes/1073741824.0); sub(/\.0$/,"",scaled); return scaled "G" }
-      scaled=sprintf("%.1f", bytes/1099511627776.0); sub(/\.0$/,"",scaled); return scaled "T"
-    }
 
-    function color_size_human(s,   num,suf,len) {
-      if (s ~ /^[0-9]+$/) s = s "B"
-      if (s ~ /^[0-9]+(\.[0-9]+)?[kKMGTTB]$/) {
-        len = length(s)
-        suf = substr(s, len, 1)
-        num = substr(s, 1, len-1)
-        if (suf=="T") return ct num creset clT suf creset
-        if (suf=="G") return cg num creset clG suf creset
-        if (suf=="M") return cm num creset clM suf creset
-        if (suf=="K" || suf=="k") return ck num creset clK suf creset
-        if (suf=="B") return cb num creset clB suf creset
-      }
-      return cb s creset
-    }
 
-    function blocks_human_label(blocks, si_mode,   bytes,base,unit,val) {
-      if (blocks !~ /^[0-9]+$/) return blocks
-      bytes = blocks * 1024
-      base = si_mode ? 1000 : 1024
-      if (bytes < base) return "0B"
-      if (bytes < base*base) {
-        unit = si_mode ? "k" : "K"
-        val = sprintf("%.1f", bytes/base)
-        if (DEC_SEP != ".") gsub(/\./, DEC_SEP, val)
-        return val unit
-      }
-      if (bytes < base*base*base) { val=sprintf("%.1f", bytes/(base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "M" }
-      if (bytes < base*base*base*base) { val=sprintf("%.1f", bytes/(base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "G" }
-      val=sprintf("%.1f", bytes/(base*base*base*base)); if (DEC_SEP!=".") gsub(/\./,DEC_SEP,val); return val "T"
-    }
 
-    function time_calc(epoch,   dt,abs,v,lbl) {
-      dt = int((NOW_EPOCH+0) - epoch)
-      if (dt < 0) { abs = -dt; time_future=1 } else { abs=dt; time_future=0 }
-      if (abs < 120) { v=abs; lbl="sec" }
-      else if (abs < 3600) { v=int(abs/60); lbl="min" }
-      else if (abs < 172800) { v=int(abs/3600); lbl="hrs" }
-      else if (abs < 3888000) { v=int(abs/86400); lbl="day" }
-      else if (abs < 31536000) { v=int(abs/2592000); lbl="mon" }
-      else { v=int(abs/31536000); lbl="yr" }
-      time_num=v; time_unit=lbl
-    }
 
-    function color_reltime(s, unit, is_future) {
-      if (is_future) return cfut s creset
-      if (unit=="sec") return csec s creset
-      if (unit=="min") return cmin s creset
-      if (unit=="hrs") return chrs s creset
-      if (unit=="day") return cday s creset
-      if (unit=="mon") return cmon s creset
-      if (unit=="yr") return cyr s creset
-      return s
-    }
 
-    function color_for_name(name, perms,   base, col, i, ux, gx, owrite, sticky) {
-      ux = substr(perms,4,1)
-      gx = substr(perms,7,1)
-      if ((ux=="s" || ux=="S") && COL_SU!="") return esc "[" COL_SU "m"
-      if ((gx=="s" || gx=="S") && COL_SG!="") return esc "[" COL_SG "m"
 
-      if (perms ~ /^d/) {
-        # Match ll_linux/test-suite behavior:
-        # If directory is sticky (t/T), ALWAYS use "tw" (ignore "st"),
-        # even when other-writable is also set.
-        owrite = (substr(perms, 9, 1) == "w")
-        sticky = (substr(perms,10,1) == "t" || substr(perms,10,1) == "T")
-        if (sticky && COL_TW != "") return esc "[" COL_TW "m"
-        if (!sticky && owrite && COL_OW != "") return esc "[" COL_OW "m"
-        base = COL_DI
-      }
-      else if (perms ~ /^l/) base = COL_LN
-      else if (perms ~ /^p/) base = COL_PI
-      else if (perms ~ /^s/) base = COL_SO
-      else if (perms ~ /x/)  base = COL_EX
-      else base = COL_FI
 
-      col=""
-      if (base == COL_FI) {
-        # Longest-suffix-wins: check suffix lengths descending; O(1) hash lookup per candidate.
-        for (j = 1; j <= n_extlen; j++) {
-          L = ext_lens[j]
-          if (length(name) >= L) {
-            suf = substr(name, length(name) - L + 1)
-            if (suf in ext_lastcol) { col = ext_lastcol[suf]; break }
-          }
-        }
-      }
-      if (col!="") return esc "[" col "m"
-      if (base=="0" || base=="") return ""
-      return esc "[" base "m"
-    }
 
-    function orphan_color(   color) {
-      color = COL_OR
-      if (color == "") color = COL_OR_DEFAULT
-      if (color == "") return ""
-      return esc "[" color "m"
-    }
 
-    function symlink_link_color(name, target, target_type, target_perms,   color) {
-      if (target_type == "O") return orphan_color()
-      if (target_type == "D" || target_type == "X") {
-        if (target_perms != "") return color_for_name(target, target_perms)
-        if (target_type == "D") return color_for_name(target, "d---------")
-        return color_for_name(target, "-x------")
-      }
-      if (target_type == "F") {
-        color = color_for_name(name, "----------")
-        if (color != "") return color
-        return ""
-      }
-      if (CSYMLINK != "") return CSYMLINK
-      return ""
-    }
 
-    function symlink_target_color(target, target_type, target_perms) {
-      if (target_type == "O") return orphan_color()
-      if (target_perms != "") return color_for_name(target, target_perms)
-      if (target_type == "D") return color_for_name(target, "d---------")
-      if (target_type == "X") return color_for_name(target, "-x------")
-      return color_for_name(target, "----------")
-    }
 
-    function color_and_quote(value, color,   quoted) {
-      quoted = quote_if_needed(value)
-      if (quoted != value) {
-        if (color != "") return "\"" color value "\""
-        return "\"" value "\""
-      }
-      if (color != "") return color value
-      return value
-    }
 
-    function format_symlink(name, target, target_type, target_perms,   link_color, target_color, color_for_target, colored_name, colored_target) {
-      link_color = symlink_link_color(name, target, target_type, target_perms)
-      target_color = symlink_target_color(target, target_type, target_perms)
-      if (link_color != "") color_for_target = link_color
-      else color_for_target = target_color
-      colored_name = color_and_quote(name, link_color)
-      colored_target = color_and_quote(target, color_for_target)
-      out = colored_name " -> " colored_target
-      if (link_color != "" || color_for_target != "") out = out creset
-      return out
-    }
 
-    function format_name(name, perms, target, target_type, target_perms,   cname,q) {
-      if (perms ~ /^l/ && target != "") return format_symlink(name, target, target_type, target_perms)
-      cname = color_for_name(name, perms)
-      q = quote_if_needed(name)
-      if (q != name) {
-        if (cname != "") return "\"" cname name "\"" creset
-        return "\"" name "\""
-      }
-      if (cname != "") return cname name creset
-      return name
-    }
+
+
+
+
+
+
+
+
+
+
+
 
     # ----------------------------
     # Input parsing
@@ -1747,7 +1119,7 @@ render_all_awk() {
         }
       }
     }
-    '
+AWK
 }
 
 render_all_awk
