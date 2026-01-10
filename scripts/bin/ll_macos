@@ -220,6 +220,7 @@ try_fastpath_single_dir() {
       COL_EX = "01;32"
       COL_FI = "0"
       n_ext = 0
+      # ext_re[i] = regex-escaped suffix pattern for ext_pat[i]
 
       if (ENVIRON["LS_COLORS"] != "") {
         n = split(ENVIRON["LS_COLORS"], parts, ":")
@@ -232,6 +233,7 @@ try_fastpath_single_dir() {
           else if (k == "fi") COL_FI = v
           else if (k ~ /^\*/) {
             ext_pat[++n_ext] = substr(k, 2)
+            ext_re[n_ext] = re_escape(ext_pat[n_ext])
             ext_col[n_ext] = v
           }
         }
@@ -270,14 +272,38 @@ try_fastpath_single_dir() {
     function max(a,b){return (a>b)?a:b}
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
 
-    function color_for_name(name, perms,   i) {
-      for (i = 1; i <= n_ext; i++) {
-        if (name ~ ext_pat[i] "$") return esc "[" ext_col[i] "m"
+    # Escape regex metacharacters so LS_COLORS "*.<ext>" rules
+    # behave like suffix match (not regex wildcard match).
+    function re_escape(s,   i,c,out) {
+      out=""
+      for (i=1; i<=length(s); i++) {
+        c=substr(s,i,1)
+        if (c ~ /[.[\]{}()*+?^$\\|]/) out = out "\\" c
+        else out = out c
       }
-      if (perms ~ /^d/) return esc "[" COL_DI "m"
-      if (perms ~ /^l/) return esc "[" COL_LN "m"
-      if (perms ~ /x/)  return esc "[" COL_EX "m"
-      return esc "[" COL_FI "m"
+      return out
+    }
+
+    # GNU-ls-ish priority:
+    # - type class first (di/ln/ex/fi)
+    # - extension rules apply only to regular, non-executable files
+    # - if multiple extension rules match, LAST match wins
+    function color_for_name(name, perms,   base, col, i) {
+      # type first
+      if (perms ~ /^d/)      base = COL_DI
+      else if (perms ~ /^l/) base = COL_LN
+      else if (perms ~ /x/)  base = COL_EX
+      else                   base = COL_FI
+
+      # extension only for regular non-exec (match linux behavior for *.sh vs ex)
+      col = ""
+      if (base == COL_FI) {
+        for (i = 1; i <= n_ext; i++) {
+          if (name ~ ext_re[i] "$") col = ext_col[i]
+        }
+      }
+      if (col != "") return esc "[" col "m"
+      return esc "[" base "m"
     }
 
     function quote_if_needed(s) {
@@ -871,6 +897,16 @@ render_rows_awk() {
     -v W_TUNIT="$W_TUNIT" \
     '
     function sp(n,   s) { if (n <= 0) return ""; return sprintf("%*s", n, "") }
+    # Escape regex metacharacters for LS_COLORS suffix rules
+    function re_escape(s,   i,c,out) {
+      out=""
+      for (i=1; i<=length(s); i++) {
+        c=substr(s,i,1)
+        if (c ~ /[.[\]{}()*+?^$\\|]/) out = out "\\" c
+        else out = out c
+      }
+      return out
+    }
     BEGIN {
       esc = sprintf("%c", 27)
       creset = esc "[0m"
@@ -883,6 +919,7 @@ render_rows_awk() {
       COL_EX = "01;32"
       COL_FI = "0"
       n_ext = 0
+      # ext_re[i] = regex-escaped suffix pattern for ext_pat[i]
 
       if (ENVIRON["LS_COLORS"] != "") {
         n = split(ENVIRON["LS_COLORS"], parts, ":")
@@ -897,6 +934,7 @@ render_rows_awk() {
           else if (k == "fi") COL_FI = v
           else if (k ~ /^\*/) {
             ext_pat[++n_ext] = substr(k, 2)
+            ext_re[n_ext] = re_escape(ext_pat[n_ext])
             ext_col[n_ext] = v
           }
         }
@@ -1024,20 +1062,26 @@ render_rows_awk() {
       print out
     }
     
-    function color_for_name(name, perms,   i) {
-      # Extension rules (highest priority)
-      for (i = 1; i <= n_ext; i++) {
-        if (name ~ ext_pat[i] "$") {
-          return esc "[" ext_col[i] "m"
+    # GNU-ls-ish priority:
+    # - type class first (di/ln/ex/fi)
+    # - extension rules apply only to regular, non-executable files
+    # - if multiple extension rules match, LAST match wins
+    function color_for_name(name, perms,   base, col, i) {
+      # type first
+      if (perms ~ /^d/)      base = COL_DI
+      else if (perms ~ /^l/) base = COL_LN
+      else if (perms ~ /x/)  base = COL_EX
+      else                   base = COL_FI
+
+      # extension only for regular non-exec (match linux behavior for *.sh vs ex)
+      col = ""
+      if (base == COL_FI) {
+        for (i = 1; i <= n_ext; i++) {
+          if (name ~ ext_re[i] "$") col = ext_col[i]
         }
       }
-
-      # Type rules
-      if (perms ~ /^d/) return esc "[" COL_DI "m"
-      if (perms ~ /^l/) return esc "[" COL_LN "m"
-      if (perms ~ /x/)  return esc "[" COL_EX "m"
-
-      return esc "[" COL_FI "m"
+      if (col != "") return esc "[" col "m"
+      return esc "[" base "m"
     }
 
     function quote_if_needed(s) {
