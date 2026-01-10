@@ -1,39 +1,37 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `shell/` holds the per-shell configs (`bash|zsh|fish` subdirectories with `init.*`, `aliases.*`, `prompt.*`, `env.*` entry points).
-- `scripts/bin/` is the executable surface (`ll`, `dus`, `dusf`, `dusf.`) while `scripts/dev/` contains helper tooling (`ll-compare`, `ls-compare`, `run-shellcheck`).
-- `env/` houses the activation helpers (`activate`, `activate.*`) that bootstrap the dev environment from anywhere.
-- `tests/` is a BATS-heavy suite (alias checks, platform-specific `ll` tests, scripts coverage) and `docs/` stores specs like `LL_SPECIFICATIONS.md`.
-- `install.sh`, `Makefile`, `.shellcheckrc`, and `pre-commit` config tie the tooling together; update `README.md`/`CHANGELOG.md` when public behavior changes.
+- `shell/` stores per-shell entry points and reuseable alias definitions across `bash/`, `zsh/`, and `fish/` subfolders; update both the shell-specific scripts and `aliases.*` when you touch shared aliases.
+- `scripts/bin/` is the user-facing surface (`ll`, `ll_linux`, `ll_macos`, `llfish`, etc.), while `scripts/dev/` hosts helpers that the tests or maintainers use (`ll-compare`, `run-shellcheck`, `ll-compare` fixtures).
+- `env/` contains activation helpers (`activate`, `activate.bash`, `activate.fish`) so any terminal can reach the same tooling; don’t forget to refresh the environment after changing those scripts.
+- `tests/` is primarily a BATS suite with fixtures under `tests/ll_linux/`, `tests/ll_macos/`, and `tests/alias-sync/`; keep docs/news in `docs/`, `README.md`, and `CHANGELOG.md` aligned with public behaviors.
 
 ## Build, Test, and Development Commands
-- `make help` — lists available targets.
-- `make lint`, `make lint-bash`, `make lint-fish` — ShellCheck/fish syntax validation for the codebase.
-- `make test` / `make test-bats` — run the full BATS suite; `make test-ll` auto-detects macOS vs. Linux wrappers, while `make test-ll-linux`, `make test-ll-macos`, `make test-ll-common` focus narrower scopes.
-- `make alias-sync` — ensures `shell/aliases.yml` definitions are mirrored across `aliases.*`.
-- `make format` / `make format-fish` — run `fish_indent` formatting on fish files, keeping style consistent.
-- `make install-hooks` — installs the pre-commit hooks that gate commits.
+- `make help` — prints available targets so you know what’s maintained.
+- `make lint`, `make lint-bash`, `make lint-fish` — run ShellCheck (or `fish -n`) across the relevant sources before a PR.
+- `make test` (or `make test-bats`) — executes the entire BATS suite; for platform-specific runs use `make test-ll`, `make test-ll-linux`, or `make test-ll-macos`.
+- `make alias-sync` — keeps `shell/aliases.yml` and generated alias files in sync; rerun after editing `aliases.yml`.
+- `scripts/dev/ll-compare --show-ansi --only=50 ll_macos ll_linux` — reproduces the single ll test that spots ANSI/coloring regressions for symlink rendering changes.
 
 ## Coding Style & Naming Conventions
-- Follow existing shell patterns: readable helper functions, short helper scripts, and two-space indentation for fish configs; keep behavior encapsulated and comment only when logic would otherwise be unclear.
-- ShellCheck is the baseline lint (run via `make lint-bash` or `./scripts/dev/run-shellcheck`), and every fish file must pass `fish -n`.
-- Executables live under `scripts/bin/`, dev helpers under `scripts/dev/`, and activation scripts under `env/`—keep names descriptive (e.g., `ll_linux`, `activate.zsh`).
-- Use feature/prefix branch names (`feature/`, `fix/`, `docs/`, `refactor/`) for Git work and keep commits focused.
+- Favor readable helper functions, short scripts, and well-scoped responsibilities; when a helper is reused across linux/macos, keep it in `scripts/dev/` and reference it from both wrappers.
+- Shell files should stick to two-space indentation for `if`, `for`, and `case` blocks, avoid needless subshells, and use descriptive names (`ll_macos`, `batch_push_rows`, `render_rows_awk`).
+- Annotate non-obvious logic with concise comments (e.g., why `stat -f` uses `%N`), and keep inline quoting consistent: use `printf '%s' "$var"` when expanding user input, `"$@"` when forwarding arguments, and `DELIM=$'\037'` when working with record separators.
+- Keep executable helpers under `scripts/bin/`, dev helpers under `scripts/dev/`, configuration under `env/`, and docs in `docs/` or `README.md`.
 
 ## Testing Guidelines
-- Primary framework: [BATS](https://github.com/bats-core/bats-core). Tests live in `tests/`, with platform-specific subdirectories for `ll_linux/`, `ll_macos/`, and helper fixtures.
-- Maintain at least 55 tests and update `tests/TEST_COVERAGE.md` plus the badge in `README.md` when adding new suites.
-- Test files are `#!/usr/bin/env bats`, use helpers from `test_helper/`, and assert output/exit behavior (`run`, `assert_success`, `assert_output`).
-- Alias sync is tested via `tests/alias-sync.bats`; run `make alias-sync` locally before submitting changes touching alias YAML or shell alias files.
+- The suite is BATS-based. Tests name directories/fixtures in `tests/ll_*` and call helpers from `tests/test_helper/`. Add new tests adjacent to existing ones (`tests/ll_macos/case-*`) when extending behavior.
+- When editing fast-path logic, rerun `scripts/dev/ll-compare --show-ansi --only=50 ll_macos ll_linux` to confirm ANSI parity before broader test runs; the script is the authoritative comparison between the two `ll` implementations.
+- Alias sync is validated by `tests/alias-sync.bats`; run `make alias-sync` before touching alias sources and commit the generated files.
+- Any new test should update `tests/TEST_COVERAGE.md` and the badge in `README.md`.
 
 ## Commit & Pull Request Guidelines
-- Commit messages are imperative and descriptive (`Fix history search edge cases`, not `Fixed…`). Keep the first line ≈50–72 characters and add a body when necessary.
-- PRs should run `make test`, `make lint`, and `make alias-sync` locally before pushing; mention tests in the PR description.
-- Use the provided PR template: describe the change, mark the change type, list testing performed, and check the checklist (style, docs, warnings, tests).
-- Link issues, include screenshots when UI/behavior changes are visible, and keep discussions constructive during reviews.
+- Use imperative, descriptive commit messages (“Fix ll_macos broken symlink coloring”) with a 50–72 character summary and optional body.
+- PRs run `make test`, `make lint`, and `make alias-sync` locally; mention these commands in the PR description and include the results.
+- Fill the repository’s PR template, describe the change’s scope, select the correct change type, and note the registers (style/docs/tests) you touched.
+- Link related issues, add screenshots for visual changes, and keep discussions professional.
 
 ## Environment & Configuration Tips
-- Activate the repo’s shell environment before testing: `./env/activate` (bash/zsh/fish variations exist).
-- When working on prompts or aliases, `reactivate` reloads the active shell without deactivating so you can iterate quickly.
-- Keep pre-commit hooks installed (`make install-hooks` or `pre-commit install`) to ensure ShellCheck/fish linting, alias sync, and formatting run automatically.
+- Source `./env/activate` (or `./env/activate.fish`) to get consistent PATHs, `shellcheck`, and lint hooks before running scripts.
+- Re-run `./env/activate` (or its `reactivate` helper) after editing aliases or tools so your shell keeps in sync.
+- Install pre-commit hooks via `make install-hooks` (or `pre-commit install`) to automatically run ShellCheck/fish linting and enforce formatting before commits.
