@@ -3,7 +3,7 @@
 ├── codex
 ├── docs
 │   ├── ACTIVATION_SPECIFICATION.md
-│   ├── LL_SPECIFICATIONS.md
+│   ├── LL_SPECS.md
 │   ├── proj_summary.md
 │   └── project_folder_structure.md
 ├── env
