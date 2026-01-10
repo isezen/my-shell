@@ -231,89 +231,11 @@ try_fastpath_single_dir() {
     fi
 
     local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
-    local stat_in syms_file tperms_file stat_aug st
-    stat_in="$(mktemp)"
-    trap 'rm -f "$stat_in" ${syms_file:+ "$syms_file"} ${tperms_file:+ "$tperms_file"} ${stat_aug:+ "$stat_aug"}' RETURN
-
-    # 1) Batched stat for all entries (one process)
-    LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null > "$stat_in"
-
-    # Fast check: if there are NO symlinks, skip all symlink augmentation work.
-    # This is the common case in ll-perf and avoids extra mktemp/awk/disk IO.
-    if ! LC_ALL=C /usr/bin/awk -v FS="$DELIM" '$2 ~ /^l/ { found=1; exit } END{ exit found?0:1 }' "$stat_in"; then
-      stat_aug="$stat_in"
-    else
-      syms_file="$(mktemp)"
-      tperms_file="$(mktemp)"
-      stat_aug="$(mktemp)"
-
-      # 2) Extract symlink display names (only) using awk (fast; no bash O(n) parsing)
-      #    NOTE: filenames with literal newlines are out-of-scope (line records).
-      LC_ALL=C /usr/bin/awk -v FS="$DELIM" '
-        $2 ~ /^l/ {
-          name=$10
-          tgt=$11
-          if (tgt=="" && index(name, " -> ")>0) {
-            name=substr(name, 1, index(name," -> ")-1)
-          }
-          if (substr(name,1,2)=="./") name=substr(name,3)
-          print name
-        }
-      ' "$stat_in" > "$syms_file"
-
-      # 3) For symlinks only: fetch target perms preserving 1:1 line count.
-      #    We intentionally do NOT batch here because broken symlinks can cause
-      #    missing output lines with batched -L; per-symlink keeps alignment.
-      : > "$tperms_file"
-      if [ -s "$syms_file" ]; then
-        while IFS= read -r sname; do
-          # If target missing/broken -> empty line.
-          st="$(/usr/bin/stat -f "%Sp" -L -- "$sname" 2>/dev/null || true)"
-          printf '%s\n' "${st:-}" >> "$tperms_file"
-        done < "$syms_file"
-      fi
-
-      # 4) Augment stat lines with target_type + target_perms, in-order.
-      #    Non-symlink rows get empty metadata (awk will treat as orphan/unknown).
-      LC_ALL=C /usr/bin/awk -v FS="$DELIM" -v OFS="$DELIM" -v DELIM="$DELIM" '
-        BEGIN { si = 0 }
-
-        # IMPORTANT:
-        # We pass 2 files: stat_in (main) and tperms_file (aux).
-        # We must NOT process tperms_file as normal input, otherwise its lines get printed.
-        FNR != NR { next }
-
-        function ttype_from_perms(p,   first) {
-          if (p=="") return "O"
-          first = substr(p,1,1)
-          if (first=="d") return "D"
-          if (p ~ /x/) return "X"
-          return "F"
-        }
-        {
-          perms = $2
-          if (perms ~ /^l/) {
-            si++
-            if ((getline tp < ARGV[2]) > 0) {
-              # If tp empty or still "l..." treat as orphan/unknown (matches old logic)
-              if (tp=="" || substr(tp,1,1)=="l") {
-                print $0, "O", ""
-              } else {
-                print $0, ttype_from_perms(tp), tp
-              }
-            } else {
-              print $0, "O", ""
-            }
-          } else {
-            print $0, "", ""
-          }
-        }
-      ' "$stat_in" "$tperms_file" > "$stat_aug"
-    fi
-
-    # One stat + one awk (awk holds rows in arrays, computes widths, renders in END)
-    # Force C locale for speed (stat+awk string handling is noticeably faster on macOS).
-    LC_ALL=C /usr/bin/awk \
+    # One stat + one awk:
+    # - Stream stat output directly into the renderer (no mktemp/disk IO).
+    # - If symlinks exist, do a SINGLE batched `stat -L` from inside awk to fetch target perms.
+    #   Broken symlinks can cause missing output lines; we preserve alignment by filling the rest as orphan.
+    LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null | LC_ALL=C /usr/bin/awk \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
     -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" \
@@ -450,9 +372,34 @@ try_fastpath_single_dir() {
       # Cache: perms string -> colored perms string
       # Big win on /usr/bin where perms repeat heavily.
       delete perm_col_cache
+
+      # Symlink collection for batched stat -L in END
+      n_syms = 0
     }
     function max(a,b){return (a>b)?a:b}
     function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }
+
+    function ttype_from_perms(p,   first) {
+      if (p=="") return "O"
+      first = substr(p,1,1)
+      if (first=="d") return "D"
+      if (p ~ /x/) return "X"
+      return "F"
+    }
+
+    # Safe double-quote shell quoting for passing filenames to /bin/sh.
+    # Avoids literal single-quote characters in this awk program because the whole
+    # program is embedded in bash as a single-quoted string.
+    function sh_dquote(s,   t) {
+      t = s
+      # Escape chars that are special inside double-quotes in POSIX shells.
+      # - backslash
+      # - double quote
+      # - dollar (var expansion)
+      # - backtick (command substitution)
+      gsub(/[\\\"$`]/, "\\\\&", t)
+      return "\"" t "\""
+    }
 
     # Build a descending-sorted list of unique suffix lengths from ext_has_len[].
     # This enables "longest suffix wins" + O(1) hash lookup per candidate suffix.
@@ -699,7 +646,7 @@ try_fastpath_single_dir() {
 
     {
       # stat fields
-      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10; ltarget=$11; row_target_type=$12; row_target_perms=$13
+      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10; ltarget=$11
 
       # blocks in 1K
       blocks1k = int((b512 + 1) / 2)
@@ -715,6 +662,13 @@ try_fastpath_single_dir() {
       display = nraw
       if (substr(display,1,2)=="./") display = substr(display,3)
       target = ltarget
+
+      # Backward-compat fallback: if %Y empty but %N contains "name -> target", split it.
+      if (target=="" && perms ~ /^l/ && index(display, " -> ")>0) {
+        target = substr(display, index(display, " -> ") + 4)
+        display = substr(display, 1, index(display, " -> ") - 1)
+      }
+
       rows_blocks[n_rows]=blocks1k
       rows_perms[n_rows]=perms
       rows_links[n_rows]=links
@@ -724,8 +678,15 @@ try_fastpath_single_dir() {
       rows_epoch[n_rows]=epoch
       rows_name[n_rows]=display
       rows_target[n_rows]=target
-      rows_target_type[n_rows]=row_target_type
-      rows_target_perms[n_rows]=row_target_perms
+      rows_target_type[n_rows]=""
+      rows_target_perms[n_rows]=""
+
+      # Collect symlink display names for ONE batched stat -L in END.
+      if (perms ~ /^l/) {
+        n_syms++
+        syms_rowidx[n_syms]=n_rows
+        syms_name[n_syms]=display
+      }
 
       # Precompute expensive derived fields once (reuse in END).
       # time
@@ -771,6 +732,39 @@ try_fastpath_single_dir() {
     }
 
     END {
+      # If we have symlinks, fetch target perms with ONE batched stat -L.
+      # Broken symlinks can cause missing output lines; preserve alignment by
+      # treating missing rows as orphan/unknown (O, "").
+      if (n_syms > 0) {
+        cmd = "/usr/bin/stat -f \"%Sp\" -L --"
+        for (k = 1; k <= n_syms; k++) {
+          cmd = cmd " " sh_dquote(syms_name[k])
+        }
+
+        k = 1
+        while ((cmd | getline tp) > 0) {
+          if (k > n_syms) break
+          ri = syms_rowidx[k]
+          if (tp=="" || substr(tp,1,1)=="l") {
+            rows_target_type[ri] = "O"
+            rows_target_perms[ri] = ""
+          } else {
+            rows_target_type[ri] = ttype_from_perms(tp)
+            rows_target_perms[ri] = tp
+          }
+          k++
+        }
+        close(cmd)
+
+        # Fill any remaining symlinks (no output line) as orphan/unknown.
+        while (k <= n_syms) {
+          ri = syms_rowidx[k]
+          rows_target_type[ri] = "O"
+          rows_target_perms[ri] = ""
+          k++
+        }
+      }
+
       # render
       for (i=1;i<=n_rows;i++) {
         blocks=rows_blocks[i]
@@ -892,7 +886,7 @@ try_fastpath_single_dir() {
         }
       }
     }
-    ' "$stat_aug"
+    '
   )
 
   return 0
@@ -1085,7 +1079,7 @@ attach_symlink_target_metadata() {
 # If operand is a directory and not -d, list its contents.
 # If multiple directories are listed, print a header "dir:" between groups.
 
-groups=()  # stores: "HDR<US><dir>" or "ROW<US><path>" markers
+groups=()  # stores: "HDR" or "ROW" markers with delimiter
 
 for op in "${ops[@]}"; do
   if [ "$LISTDIRECTORY" -eq 1 ]; then
@@ -1104,7 +1098,7 @@ done
 # For HDR groups, optionally print headers later; collect rows for that directory.
 # For ROW groups, collect that single path.
 
-dir_markers=() # each marker: "<dir><US><start_index><US><end_index>"
+dir_markers=() # each marker: dir, delimiter, start_index, delimiter, end_index
 
 # Batch stat calls for ROW operands
 row_paths=()
@@ -1148,8 +1142,8 @@ attach_symlink_target_metadata
 # ------------------------------
 # Directory slice lookup for render plan
 # ------------------------------
-# dir_markers items are: "<dir><US><start_index><US><end_index>" where indices are 0-based
-# Build maps so render_all_awk can emit D<US><start><US><end> quickly.
+# dir_markers items are: dir, delimiter, start_index, delimiter, end_index (indices are 0-based)
+# Build maps so render_all_awk can emit D + delimiter + start + delimiter + end quickly.
 declare -A dir_start_index
 declare -A dir_end_index
 for m in "${dir_markers[@]}"; do
@@ -1168,9 +1162,9 @@ done
 # - print "total" only when it was previously applicable (single dir operand, not -d)
 render_all_awk() {
   # Build a lightweight plan:
-  #   H<US><dirname>                 (directory header marker; printed only when MULTI==1)
-  #   D<US><start_1based><end_1based_exclusive>   (directory slice; always rendered)
-  #   R<US><row_1based>              (single operand row; always rendered)
+  #   H + delimiter + dirname         (directory header marker; printed only when MULTI==1)
+  #   D + delimiter + start_1based + delimiter + end_1based_exclusive   (directory slice; always rendered)
+  #   R + delimiter + row_1based      (single operand row; always rendered)
   # Then provide all rows on stdin via awk-accessible arrays (we pass rows as a second stream).
   # Implementation trick: we print plan lines first, then a separator line "ROWS", then all rows.
   {
@@ -1521,7 +1515,7 @@ render_all_awk() {
 
     # Plan lines (before ROWS):
     in_rows==0 {
-      # "H<US>dir" or "R<US>row_1based" or "D<US>start_1based<US>end_1based_exclusive"
+      # "H" + delimiter + "dir" or "R" + delimiter + "row_1based" or "D" + delimiter + "start_1based" + delimiter + "end_1based_exclusive"
       plan_kind[++n_plan] = $1
       plan_a[n_plan] = $2
       plan_b[n_plan] = $3
