@@ -141,6 +141,24 @@ batch_push_rows() {
   done < <(/usr/bin/stat -f "$stat_fmt" -- "${stat_paths[@]}" 2>/dev/null)
 }
 
+target_type_from_perms() {
+  local perms="$1"
+  if [ -z "$perms" ]; then
+    printf 'O'
+    return
+  fi
+  local first="${perms:0:1}"
+  if [ "$first" = "d" ]; then
+    printf 'D'
+    return
+  fi
+  if [[ "$perms" == *x* ]]; then
+    printf 'X'
+    return
+  fi
+  printf 'F'
+}
+
 # ------------------------------
 # FAST PATH (single directory operand)
 # ------------------------------
@@ -198,11 +216,82 @@ try_fastpath_single_dir() {
     fi
 
     local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
+    local stat_in
+    local stat_aug
+    stat_in="$(mktemp)"
+    stat_aug="$(mktemp)"
+    trap 'rm -f "$stat_in" "$stat_aug"' RETURN
+
+    LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null > "$stat_in"
+
+    local stat_lines=()
+    local line
+    while IFS= read -r line; do
+      stat_lines+=("$line")
+    done < "$stat_in"
+
+    local symlink_indices=()
+    local symlink_names=()
+    local line_idx=0
+    for line in "${stat_lines[@]}"; do
+      if [ -n "$line" ]; then
+        IFS="$DELIM" read -r _blocks perms _links _owner _group _uid _gid _size _mtime name linktgt <<<"$line"
+        display="$name"
+        target="${linktgt:-}"
+        if [[ -z "$target" ]] && [[ "${perms:0:1}" == "l" ]] && [[ "$display" == *" -> "* ]]; then
+          target="${display#* -> }"
+          display="${display%% -> *}"
+        fi
+        if [[ "$display" == ./* ]]; then
+          display="${display#./}"
+        fi
+        if [[ "${perms:0:1}" == "l" ]]; then
+          symlink_indices+=("$line_idx")
+          symlink_names+=("$display")
+        fi
+      fi
+      line_idx=$((line_idx + 1))
+    done
+
+    local line_target_type=()
+    local line_target_perms=()
+    if [ "${#symlink_names[@]}" -gt 0 ]; then
+      local target_stat_fmt="%Sp"
+      local target_idx=0
+      while IFS= read -r st; do
+        if [ "$target_idx" -ge "${#symlink_names[@]}" ]; then
+          break
+        fi
+        local row_idx="${symlink_indices[$target_idx]}"
+      if [ -z "$st" ]; then
+        line_target_type[$row_idx]="O"
+        line_target_perms[$row_idx]=""
+      elif [[ "${st:0:1}" == "l" ]]; then
+        line_target_type[$row_idx]="O"
+        line_target_perms[$row_idx]=""
+      else
+        line_target_perms[$row_idx]="$st"
+        line_target_type[$row_idx]="$(target_type_from_perms "$st")"
+      fi
+        target_idx=$((target_idx + 1))
+      done < <(/usr/bin/stat -f "$target_stat_fmt" -L -- "${symlink_names[@]}" 2>/dev/null)
+      while [ "$target_idx" -lt "${#symlink_names[@]}" ]; do
+        row_idx="${symlink_indices[$target_idx]}"
+        line_target_type[$row_idx]="O"
+        line_target_perms[$row_idx]=""
+        target_idx=$((target_idx + 1))
+      done
+    fi
+
+    : > "$stat_aug"
+    for idx in "${!stat_lines[@]}"; do
+      line="${stat_lines[$idx]}"
+      printf '%s%s%s%s%s\n' "$line" "$DELIM" "${line_target_type[$idx]:-}" "$DELIM" "${line_target_perms[$idx]:-}" >> "$stat_aug"
+    done
 
     # One stat + one awk (awk holds rows in arrays, computes widths, renders in END)
     # Force C locale for speed (stat+awk string handling is noticeably faster on macOS).
-    LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null \
-    | LC_ALL=C /usr/bin/awk \
+    LC_ALL=C /usr/bin/awk \
     -v FS="$DELIM" \
     -v DELIM="$DELIM" \
     -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" \
@@ -241,6 +330,7 @@ try_fastpath_single_dir() {
       else if (k == "so") COL_SO = v
       else if (k == "ex") COL_EX = v
       else if (k == "fi") COL_FI = v
+      else if (k == "or") COL_OR = v
       else if (k ~ /^\*/) {
         ext_pat[++n_ext] = substr(k, 2)   # suffix string (e.g. ".txt")
         ext_col[n_ext] = v
@@ -287,6 +377,8 @@ try_fastpath_single_dir() {
       LN_TARGET = 0
       COL_EX = "01;32"
       COL_FI = "0"
+      COL_OR = ""
+      COL_OR_DEFAULT = "48;5;196;38;5;232;1"
       n_ext = 0
 
       if (ENVIRON["LS_COLORS"] != "") parse_ls_colors(ENVIRON["LS_COLORS"])
@@ -381,6 +473,73 @@ try_fastpath_single_dir() {
       return s
     }
 
+    function format_name(name, perms, target, target_type, target_perms) {
+      if (perms ~ /^l/ && target != "") {
+        return format_symlink(name, target, target_type, target_perms)
+      }
+      cname = color_for_name(name, perms)
+      q = quote_if_needed(name)
+      if (q != name) {
+        if (cname != "") return "\"" cname name "\"" creset
+        return "\"" name "\""
+      }
+      if (cname != "") return cname name creset
+      return name
+    }
+
+    function color_and_quote(value, color,   quoted) {
+      quoted = quote_if_needed(value)
+      if (quoted != value) {
+        if (color != "") return "\"" color value "\""
+        return "\"" value "\""
+      }
+      if (color != "") return color value
+      return value
+    }
+
+    function orphan_color(   color) {
+      color = COL_OR
+      if (color == "") color = COL_OR_DEFAULT
+      if (color == "") return ""
+      return esc "[" color "m"
+    }
+
+    function symlink_link_color(name, target, target_type, target_perms,   color) {
+      if (target_type == "O") return orphan_color()
+      if (target_type == "D" || target_type == "X") {
+        if (target_perms != "") return color_for_name(target, target_perms)
+        if (target_type == "D") return color_for_name(target, "d---------")
+        return color_for_name(target, "-x------")
+      }
+      if (target_type == "F") {
+        color = color_for_name(name, "----------")
+        if (color != "") return color
+        return ""
+      }
+      if (CSYMLINK != "") return CSYMLINK
+      return ""
+    }
+
+    function symlink_target_color(target, target_type, target_perms) {
+      if (target_type == "O") return orphan_color()
+      if (target_perms != "") return color_for_name(target, target_perms)
+      if (target_type == "D") return color_for_name(target, "d---------")
+      if (target_type == "X") return color_for_name(target, "-x------")
+      return color_for_name(target, "----------")
+    }
+
+    function format_symlink(name, target, target_type, target_perms,   link_color, target_color, color_for_target, colored_name, colored_target) {
+      link_color = symlink_link_color(name, target, target_type, target_perms)
+      target_color = symlink_target_color(target, target_type, target_perms)
+      if (link_color != "") color_for_target = link_color
+      else color_for_target = target_color
+      colored_name = color_and_quote(name, link_color)
+      colored_target = color_and_quote(target, color_for_target)
+      out = colored_name " -> " colored_target
+      if (link_color != "" || color_for_target != "") out = out creset
+      return out
+    }
+
     function color_perm(p,   i,ch,out) {
       out=""
       for (i=1;i<=length(p);i++) {
@@ -469,7 +628,7 @@ try_fastpath_single_dir() {
 
     {
       # stat fields
-      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10; ltarget=$11
+      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10; ltarget=$11; row_target_type=$12; row_target_perms=$13
 
       # blocks in 1K
       blocks1k = int((b512 + 1) / 2)
@@ -494,6 +653,8 @@ try_fastpath_single_dir() {
       rows_epoch[n_rows]=epoch
       rows_name[n_rows]=display
       rows_target[n_rows]=target
+      rows_target_type[n_rows]=row_target_type
+      rows_target_perms[n_rows]=row_target_perms
 
       # Precompute expensive derived fields once (reuse in END).
       # time
@@ -610,65 +771,13 @@ try_fastpath_single_dir() {
         t_col = color_reltime(t_raw, tunit, tfut)
 
         # name field
-        # ln=target: GNU ls behavior — if LS_COLORS has "ln=target",
-        # color symlink as if it were the target (we approximate via target NAME).
-        # This enables extension-based coloring to match ll_linux tests.
-        if (perms ~ /^l/ && target != "" && LN_TARGET) {
-          # Use a non-symlink perms template so color_for_name treats it like a file
-          # and extension rules can apply (e.g., *.txt).
-          cname = color_for_name(target, "----------")
-        } else if (perms ~ /^l/) {
-          # Match ll_linux: fixed symlink SGR (and repeated before target)
-          cname = CSYMLINK
-        } else {
-          cname = color_for_name(name, perms)
-        }
-        q = quote_if_needed(name)
-
-        # For symlinks, match ll_linux: emit color code BOTH before name and before target:
-        #   <c><name> -> <c><target>\x1b[0m
-        if (perms ~ /^l/ && target != "") {
-          # name part (no reset yet)
-          if (q != name) {
-            if (cname != "") nout = "\"" cname name "\""
-            else nout = "\"" name "\""
-          } else {
-            if (cname != "") nout = cname name
-            else nout = name
-          }
-
-          # target part (repeat cname like GNU ls does)
-          tq = quote_if_needed(target)
-          if (tq != target) {
-            if (cname != "") tout = "\"" cname target "\""
-            else tout = "\"" target "\""
-          } else {
-            if (cname != "") tout = cname target
-            else tout = target
-          }
-
-          # IMPORTANT: keep arrow colored by the first cname, and re-emit cname before target
-          nout = nout " -> " tout
-          if (cname != "") nout = nout creset
-        } else {
-          # non-symlink: keep existing behavior
-          if (q != name) {
-            # quoted: keep quotes uncolored; keep reset OUTSIDE quotes
-            if (cname != "") nout = "\"" cname name "\"" creset
-            else nout = "\"" name "\""
-          } else {
-            # unquoted
-            if (cname != "") nout = cname name creset
-            else nout = name
-          }
-        }
-
+        name_out = format_name(name, perms, target, rows_target_type[i], rows_target_perms[i])
         name_suffix=""
-        if (length(nout) >= 200) name_suffix = sprintf("%c[K", 27)
+        if (length(name_out) >= 200) name_suffix = sprintf("%c[K", 27)
 
         out = ""
         if (ASIZE) out = out blocks_field
-        out = out perms_field " " links_field " " owner_field group_field size_field " " t_col " " nout name_suffix
+        out = out perms_field " " links_field " " owner_field group_field size_field " " t_col " " name_out name_suffix
         print out
       }
 
@@ -712,7 +821,7 @@ try_fastpath_single_dir() {
         }
       }
     }
-    '
+    ' "$stat_aug"
   )
 
   return 0
@@ -775,6 +884,9 @@ fi
 rows=()
 # Map from path to row index for O(1) lookup when printing ROW operands
 declare -A row_index_map
+
+row_target_type=()
+row_target_perms=()
 
 list_dir_contents() {
   local d="$1"
@@ -904,6 +1016,8 @@ if [ "${#rows[@]}" -eq 0 ]; then
   fi
   exit 0
 fi
+
+attach_symlink_target_metadata
 
 # ------------------------------
 # Compute widths
@@ -1138,8 +1252,8 @@ render_rows_awk() {
     }
     # STREAM RENDER: each input row is already in the right slice
     {
-      # Fields: blocks perms links owner group size epoch name target path is_child
-      blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7; name=$8; target=$9; path=$10;
+      # Fields: blocks perms links owner group size epoch name target path is_child target_type target_perms
+      blocks=$1; perms=$2; links=$3; owner=$4; group=$5; size=$6; epoch=$7; name=$8; target=$9; path=$10; is_child=$11; target_type=$12; target_perms=$13;
       
       # Owner substitution
       if (!NUMERIC && USERNAME != "" && owner == USERNAME) owner = "you"
@@ -1190,7 +1304,7 @@ render_rows_awk() {
       perms_field = perms_colored sp(perms_pad)
       
       # Name formatting (symlink target comes from stat %N; no readlink spawns)
-      name_out = format_name(name, perms, target)
+      name_out = format_name(name, perms, target, target_type, target_perms)
       name_suffix = ""
       name_len = length(name_out)
       if (name_len >= 200) name_suffix = sprintf("%c[K", 27)
@@ -1258,9 +1372,66 @@ render_rows_awk() {
           if (length(name) >= length(ext_pat[i]) &&
               substr(name, length(name) - length(ext_pat[i]) + 1) == ext_pat[i]) {
             col = ext_col[i]
-          }
-        }
-      }
+    }
+  }
+}
+
+append_target_metadata_to_rows() {
+  for idx in "${!rows[@]}"; do
+    rows[$idx]="${rows[$idx]}${DELIM}${row_target_type[$idx]:-}${DELIM}${row_target_perms[$idx]:-}"
+  done
+}
+
+attach_symlink_target_metadata() {
+  row_target_type=()
+  row_target_perms=()
+  local symlink_paths=()
+  local symlink_rows=()
+  local idx=0
+
+  for row in "${rows[@]}"; do
+    IFS="$DELIM" read -r _blocks perms _links _owner _group _size _epoch _name _target path _child <<<"$row"
+    if [[ "${perms:0:1}" == "l" ]]; then
+      symlink_paths+=("$path")
+      symlink_rows+=("$idx")
+    fi
+    idx=$((idx + 1))
+  done
+
+  if [ "${#symlink_paths[@]}" -gt 0 ]; then
+    local stat_fmt="%Sp"
+    local read_idx=0
+    while IFS= read -r st; do
+      if [ "$read_idx" -ge "${#symlink_paths[@]}" ]; then
+        break
+      fi
+      local row_idx="${symlink_rows[$read_idx]}"
+      if [ -z "$st" ]; then
+        row_target_type[$row_idx]="O"
+        row_target_perms[$row_idx]=""
+      elif [[ "${st:0:1}" == "l" ]]; then
+        row_target_type[$row_idx]="O"
+        row_target_perms[$row_idx]=""
+      else
+        row_target_perms[$row_idx]="$st"
+        row_target_type[$row_idx]="$(target_type_from_perms "$st")"
+      fi
+      read_idx=$((read_idx + 1))
+    done < <(/usr/bin/stat -f "$stat_fmt" -L -- "${symlink_paths[@]}" 2>/dev/null)
+
+    while [ "$read_idx" -lt "${#symlink_paths[@]}" ]; do
+      row_idx="${symlink_rows[$read_idx]}"
+      row_target_type[$row_idx]="O"
+      row_target_perms[$row_idx]=""
+      read_idx=$((read_idx + 1))
+    done
+  fi
+
+  append_target_metadata_to_rows
+}
+
+# ------------------------------
+# If multiple operands and we have directory groups, print headers like ls.
       if (col != "") return esc "[" col "m"
       if (base == "0" || base == "") return ""
       return esc "[" base "m"
@@ -1271,46 +1442,10 @@ render_rows_awk() {
       return s
     }
 
-    function format_name(name, perms, target) {
-      # ln=target: GNU ls behavior — if LS_COLORS has "ln=target",
-      # color symlink as if it were the target (approx by target NAME).
-      if (perms ~ /^l/ && target != "" && LN_TARGET) {
-        # Non-symlink perms template so extension rules apply (e.g., *.txt)
-        cname = color_for_name(target, "----------")
-      } else if (perms ~ /^l/) {
-        cname = CSYMLINK
-      } else {
-        cname = color_for_name(name, perms)
-      }
-
-      # Symlink: match ll_linux behavior:
-      #   <c><name> -> <c><target>\x1b[0m
-      # NOTE: GNU ls repeats the same SGR before the target; tests expect that.
+    function format_name(name, perms, target, target_type, target_perms) {
       if (perms ~ /^l/ && target != "") {
-        q = quote_if_needed(name)
-        if (q != name) {
-          if (cname != "") out = "\"" cname name "\""
-          else out = "\"" name "\""
-        } else {
-          if (cname != "") out = cname name
-          else out = name
-        }
-
-        tq = quote_if_needed(target)
-        if (tq != target) {
-          if (cname != "") tout = "\"" cname target "\""
-          else tout = "\"" target "\""
-        } else {
-          if (cname != "") tout = cname target
-          else tout = target
-        }
-
-        out = out " -> " tout
-        if (cname != "") out = out creset
-        return out
+        return format_symlink(name, target, target_type, target_perms)
       }
-
-      # Non-symlink: existing quoting/reset behavior
       cname = color_for_name(name, perms)
       q = quote_if_needed(name)
       if (q != name) {
@@ -1319,6 +1454,59 @@ render_rows_awk() {
       }
       if (cname != "") return cname name creset
       return name
+    }
+
+    function color_and_quote(value, color,   quoted) {
+      quoted = quote_if_needed(value)
+      if (quoted != value) {
+        if (color != "") return "\"" color value "\""
+        return "\"" value "\""
+      }
+      if (color != "") return color value
+      return value
+    }
+
+    function orphan_color(   color) {
+      color = COL_OR
+      if (color == "") color = COL_OR_DEFAULT
+      if (color == "") return ""
+      return esc "[" color "m"
+    }
+
+    function symlink_link_color(name, target, target_type, target_perms,   color) {
+      if (target_type == "O") return orphan_color()
+      if (target_type == "D" || target_type == "X") {
+        if (target_perms != "") return color_for_name(target, target_perms)
+        if (target_type == "D") return color_for_name(target, "d---------")
+        return color_for_name(target, "-x------")
+      }
+      if (target_type == "F") {
+        color = color_for_name(name, "----------")
+        if (color != "") return color
+        return ""
+      }
+      if (CSYMLINK != "") return CSYMLINK
+      return ""
+    }
+
+    function symlink_target_color(target, target_type, target_perms) {
+      if (target_type == "O") return orphan_color()
+      if (target_perms != "") return color_for_name(target, target_perms)
+      if (target_type == "D") return color_for_name(target, "d---------")
+      if (target_type == "X") return color_for_name(target, "-x------")
+      return color_for_name(target, "----------")
+    }
+
+    function format_symlink(name, target, target_type, target_perms,   link_color, target_color, color_for_target, colored_name, colored_target) {
+      link_color = symlink_link_color(name, target, target_type, target_perms)
+      target_color = symlink_target_color(target, target_type, target_perms)
+      if (link_color != "") color_for_target = link_color
+      else color_for_target = target_color
+      colored_name = color_and_quote(name, link_color)
+      colored_target = color_and_quote(target, color_for_target)
+      out = colored_name " -> " colored_target
+      if (link_color != "" || color_for_target != "") out = out creset
+      return out
     }
     
     function color_perm(p,   i, ch, out) {
@@ -1426,7 +1614,7 @@ render_rows_awk() {
       time_unit = lbl
       time_future = (prefix != "")
     }
-    
+
     function color_reltime(s, unit, is_future) {
       if (is_future) return cfut s creset
       if (unit == "sec") return csec s creset
