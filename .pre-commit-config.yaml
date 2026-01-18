@@ -22,6 +22,7 @@ repos:
         exclude: \.md$
       - id: end-of-file-fixer
         name: Fix end of files
+        exclude: ^docs/project_folder_structure\.md$
       - id: check-yaml
         name: Check YAML files
       - id: check-added-large-files
