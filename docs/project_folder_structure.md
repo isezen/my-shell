@@ -2,6 +2,8 @@
 .
 ├── codex
 ├── docs
+│   ├── issues
+│   │   └── fish-non-interactive-breakage.md
 │   ├── ACTIVATION_SPECIFICATION.md
 │   ├── LL_SPECS.md
 │   ├── proj_summary.md
@@ -98,5 +100,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 78 files
+20 directories, 79 files
 ```

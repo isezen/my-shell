@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Guard `shell/fish/aliases.fish` and `shell/fish/prompt.fish` behind `status is-interactive` in `shell/fish/init.fish` (areas: fish/init). Behavior change: non-interactive fish invocations (`fish -c`, SSH command runs, scripts) no longer load interactive command overrides (`head`/`tail` wrappers calling `tput cols`, colorised `grep`, `ll`, `htop`, etc.), which previously broke on missing `$TERM`. `env.fish` still loads unconditionally so PATH/CLICOLOR/LSCOLORS remain available. Fixes the breakage documented in `docs/issues/fish-non-interactive-breakage.md`.
+
 ### Added
 - Commit 21: Implement FINAL POLICY for ll-compare and ls-compare dev tools (areas: dev-tools/testing). Behavior change: ll-compare now uses structured comparison (prefix fields compared strictly with ANSI codes, filenames compared after ANSI strip only), allowing color differences while preserving semantic content (spaces, tabs, total/toplam lines); ls-compare respects STRIP_ANSI flag (off by default for byte-for-byte comparison). Both scripts correctly enforce LL_NOW_EPOCH (default 1577836800), LC_ALL=C, TZ=UTC, and preserve tricky filenames. Array variables use `${array[@]:-}` syntax for robustness under strict mode. All 51 ll-compare tests pass, ls-compare runs successfully.
 - Commit 20: Implement `-s -h` and `-s --si` blocks column support in ll_macos (areas: macos/blocks). Behavior change: blocks column now humanized with -h (base-1024, uppercase K/M/G/T, e.g., `4.0K`) and --si (base-1000, lowercase k/M/G/T, e.g., `4.1k`). Total line rounds to nearest integer for -h mode and uses ceiling division for --si mode (matching GNU ls). Data rows show one decimal place. Tests #17 and #18 now pass.
