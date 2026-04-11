@@ -89,6 +89,7 @@
 │   └── todo.md
 ├── AGENTS.md
 ├── CHANGELOG.md
+├── CLAUDE.md
 ├── colortable.sh
 ├── CONTRIBUTING.md
 ├── install.sh
@@ -97,5 +98,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-19 directories, 77 files
+19 directories, 78 files
 ```

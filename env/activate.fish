@@ -16,14 +16,14 @@ end
 
 # Set activation mode (default to source if not set)
 if not set -q MY_SHELL_ACTIVATION_MODE
-    set -gx MY_SHELL_ACTIVATION_MODE "source"
+    set -gx MY_SHELL_ACTIVATION_MODE source
 end
 
 # Save PATH snapshot for exact restoration
 set -gx MY_SHELL_OLD_PATH $PATH
 
 # Optional BSD-only mode: remove GNU coreutils gnubin paths.
-if test "$LL_BSD_USERLAND" = "1" -o "$LL_NO_GNUBIN" = "1"
+if test "$LL_BSD_USERLAND" = 1 -o "$LL_NO_GNUBIN" = 1
     set -l new_path
     for p in $PATH
         switch $p
@@ -99,7 +99,7 @@ function reactivate -d "Reload my-shell environment files"
     if not functions -q __my_shell_old_fish_prompt
         functions -c fish_prompt __my_shell_old_fish_prompt
     end
-    
+
     # Replace fish_prompt to include prefix
     function fish_prompt
         __my_shell_prompt_prefix
@@ -140,7 +140,7 @@ function deactivate -d "Deactivate my-shell environment"
     # Check if this session was spawned by ./env/activate before cleanup
     set -l spawned_session 0
     if set -q MY_SHELL_SESSION_SPAWNED
-        if test "$MY_SHELL_SESSION_SPAWNED" = "1"
+        if test "$MY_SHELL_SESSION_SPAWNED" = 1
             set spawned_session 1
         end
     end
@@ -163,7 +163,7 @@ function deactivate -d "Deactivate my-shell environment"
 
     echo "- my-shell environment deactivated"
     echo "- Bye..."
-    
+
     # If this session was spawned by ./env/activate, exit back to the parent shell.
     if test $spawned_session -eq 1
         exit
