@@ -74,7 +74,7 @@ reactivate() {
 
     # Remove existing prefix if present (to avoid duplication)
     if [[ "$PS1" == *"(my-shell)"* ]]; then
-        # Remove the prefix pattern: %F{magenta}(my-shell)%f 
+        # Remove the prefix pattern: %F{magenta}(my-shell)%f
         PS1="${PS1//%F{magenta}(my-shell)%f /}"
     fi
 
@@ -115,12 +115,12 @@ deactivate() {
 
     # Capture spawn flag (./env/activate always spawns a new shell)
     _SPAWNED_SESSION="$MY_SHELL_SESSION_SPAWNED"
-    
+
     # Clean up activation variables
     unset MY_SHELL_ACTIVATED
     unset MY_SHELL_ACTIVATION_MODE
     unset MY_SHELL_ROOT
-    
+
     # Clean up temporary artifacts (best-effort)
     if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
         rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null || true
@@ -130,14 +130,14 @@ deactivate() {
     # Spawn marker cleanup
     unset MY_SHELL_SESSION_SPAWNED
     unset MY_SHELL_SPAWNED_SHELL
-    
+
     # Remove functions
     unset -f deactivate
     unset -f reactivate
 
     echo "- my-shell environment deactivated"
     echo "- Bye..."
-    
+
     # If this session was spawned by ./env/activate, exit back to the parent shell.
     if [ "$_SPAWNED_SESSION" = "1" ]; then
         exit

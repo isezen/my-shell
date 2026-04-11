@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
     --side-by-side) SIDE_BY_SIDE=1; shift ;;
     --only) ONLY_MODE=1; ONLY_TESTS+=("$2"); shift 2 ;;
     --only=*) ONLY_MODE=1; ONLY_TESTS+=("${1#--only=}"); shift ;;
-    --help|-h) 
+    --help|-h)
       cat <<'EOF'
 Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
 
@@ -438,17 +438,17 @@ set_compare_env() {
 canonicalize_output() {
   local output="$1"
   local is_script="${2:-0}"
-  
+
   # Strip ANSI codes first
   output=$(strip_ansi_and_controls "$output")
-  
+
   # Drop total/toplam lines
   output=$(printf '%s\n' "$output" | perl -ne 'print unless /^\s*(toplam|total)\b/i')
-  
+
   # Ensure environment variables are set
   export LS_COMPARE_NOW_EPOCH="${LL_NOW_EPOCH:-$(date +%s)}"
   export LS_COMPARE_USER="${USER}"
-  
+
   # Use appropriate canonicalization script
   if [ "$is_script" -eq 1 ]; then
     # Canonicalize script output (ll_linux, ll_macos)
@@ -468,7 +468,7 @@ print_comparison() {
 
   local ls_canon
   local script_canon
-  
+
   # Canonicalize both outputs
   ls_canon=$(canonicalize_output "$ls_output" 0)
   script_canon=$(canonicalize_output "$script_output" 1)
@@ -508,7 +508,7 @@ fi
 for idx in "${!test_case_names[@]}"; do
   test_name="${test_case_names[$idx]}"
   test_argv_snippet="${test_case_argv[$idx]}"
-  
+
   actual_test_num=$((idx + 1))
 
   if [ "$ONLY_MODE" -eq 1 ]; then
@@ -555,7 +555,7 @@ for idx in "${!test_case_names[@]}"; do
   outcome=""
   # shellcheck disable=SC2034
   skip_reason=""
-  
+
   if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
     for a in "${tc_argv_clean[@]}"; do
       case "$a" in
@@ -583,7 +583,7 @@ for idx in "${!test_case_names[@]}"; do
   if [ "${#tc_argv[@]}" -gt 0 ]; then
     script_cmd_array+=("${tc_argv[@]}")
   fi
-  
+
   # Build command display strings (exact arrays joined by single space)
   ls_cmd_display="${ls_cmd_array[*]}"
   script_cmd_display="${script_cmd_array[*]}"
@@ -595,7 +595,7 @@ for idx in "${!test_case_names[@]}"; do
   ls_stdout="$(cat "$ls_stdout_file")"
   ls_stderr="$(cat "$ls_stderr_file")"
   rm -f "$ls_stdout_file" "$ls_stderr_file"
-  
+
   # If no stdout but there's stderr, this is likely an error - use empty stdout
   if [ -z "$ls_stdout" ] && [ -n "$ls_stderr" ]; then
     ls_stdout="[ERROR] $ls_stderr"
@@ -607,7 +607,7 @@ for idx in "${!test_case_names[@]}"; do
     echo "Error: Script '$script_path' not found or not executable" >&2
     exit 1
   fi
-  
+
   script_stdout_file=$(mktemp)
   if [ "${#tc_argv[@]}" -gt 0 ]; then
     (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" "${tc_argv[@]}" >"$script_stdout_file" 2>/dev/null || true)

@@ -522,7 +522,7 @@ pfind() {
 }
 
 if __my_shell_has htop; then
-  # 
+  #
   top()   { command htop -s PERCENT_CPU "$@"; }
   # top for current user
   topme() { command htop -u "$USER" "$@"; }

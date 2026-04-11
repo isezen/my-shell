@@ -278,4 +278,3 @@ command -v grc && echo "grc: available" || echo "grc: not installed"
 - [POSIX Specification](https://pubs.opengroup.org/onlinepubs/9699919799/)
 - [ShellCheck Documentation](https://www.shellcheck.net/)
 - [BATS Documentation](https://github.com/bats-core/bats-core)
-

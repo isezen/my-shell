@@ -98,4 +98,3 @@ setup() {
   [ "$status" -eq 1 ]
   assert_output --partial "LL_IMPL_PATH is set but not executable"
 }
-

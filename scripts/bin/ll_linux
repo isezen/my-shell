@@ -475,13 +475,13 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
 
   # Extract tail (filename + symlink target if any) safely:
   # CRITICAL: Use "tail" approach - never tokenize the filename part.
-  # 
+  #
   # Pattern: ^(PREFIX)(EPOCH)(TAIL)$
   # where TAIL = everything after epoch (including any leading whitespace, tabs, unicode, symlink arrows)
   #
   # IMPORTANT: We preserve:
   # - Leading spaces in filenames (e.g., " file-leading-space.txt")
-  # - Tabs in filenames (e.g., "a\tb.txt")  
+  # - Tabs in filenames (e.g., "a\tb.txt")
   # - Spaces in filenames (e.g., "a b.txt")
   # - Unicode characters (e.g., "İçerik-ğüşöç.txt")
   # - Symlink arrows (" -> target")
@@ -492,7 +492,7 @@ function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
   # - A separator space (normal case)
   # - Part of the filename (if filename starts with space)
   # Both cases are handled correctly by taking everything as-is.
-  
+
   # Extract tail: everything after epoch_end (inclusive of epoch_end+1)
   # This preserves ALL whitespace, tabs, and content exactly as-is
   name = substr(line, epoch_end + 1)

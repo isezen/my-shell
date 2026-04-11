@@ -489,7 +489,7 @@ for test_case in "${test_cases[@]}"; do
       continue
     fi
   fi
-  
+
   # Run all scripts and capture outputs
   # IMPORTANT: ARGV is a shell-quoted argv string; expand it safely into an array
   tc_argv=()

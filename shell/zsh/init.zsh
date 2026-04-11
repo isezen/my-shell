@@ -9,4 +9,3 @@ MY_SHELL_ROOT="${MY_SHELL_ROOT:-$(cd "$(dirname "${(%):-%x}")/../.." && pwd)}"
 source "$MY_SHELL_ROOT/shell/zsh/env.zsh"
 source "$MY_SHELL_ROOT/shell/zsh/aliases.zsh"
 source "$MY_SHELL_ROOT/shell/zsh/prompt.zsh"
-

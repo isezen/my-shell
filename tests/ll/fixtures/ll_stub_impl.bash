@@ -20,4 +20,3 @@ for a in "$@"; do
 done
 
 exit "${STUB_EXIT:-0}"
-

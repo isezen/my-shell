@@ -77,4 +77,3 @@ When adding new tests:
 - Tests are designed to work on both macOS and Linux
 - Some tests may be skipped if required tools are not available
 - Tests use temporary directories that are cleaned up automatically
-

@@ -108,7 +108,7 @@ batch_push_rows() {
   # Batch stat call for multiple paths
   local paths=("$@")
   [ "${#paths[@]}" -eq 0 ] && return 0
-  
+
   # Prepare paths for stat (escape leading dashes)
   local stat_paths=()
   for p in "${paths[@]}"; do
@@ -118,7 +118,7 @@ batch_push_rows() {
       stat_paths+=("$p")
     fi
   done
-  
+
   local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
   local idx=0
   while IFS= read -r st; do
@@ -127,10 +127,10 @@ batch_push_rows() {
       ((idx++))
       continue
     fi
-    
+
     local b512 perms links su sg uid gid size epoch name linktgt target
     IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name linktgt <<<"$st"
-    
+
     # Prefer %Y as link target (works for broken symlinks too).
     target="${linktgt:-}"
 
@@ -142,9 +142,9 @@ batch_push_rows() {
     if [[ "$name" == ./* ]]; then
       name="${name#./}"
     fi
-    
+
     local blocks1k=$(( (b512 + 1) / 2 ))
-    
+
     local owner group
     if [ "$NUMERICUIDGID" -eq 1 ]; then
       owner="$uid"
@@ -153,7 +153,7 @@ batch_push_rows() {
       owner="$su"
       group="$sg"
     fi
-    
+
     local path="${paths[$idx]}"
     local row_idx=${#rows[@]}
     # Fields: blocks perms links owner group size epoch name target path is_child
@@ -579,16 +579,16 @@ list_dir_contents() {
   if [[ "$ls_dir" == -* ]]; then
     ls_dir="./$ls_dir"
   fi
-  
+
   # Collect entries first, then batch stat
   local entries=()
   local entry
   while IFS= read -r entry; do
     entries+=("$entry")
   done < <(/bin/ls -1 "$ls_dir" 2>/dev/null)
-  
+
   [ "${#entries[@]}" -eq 0 ] && return 0
-  
+
   # Batch stat all entries
   local paths=()
   local display_names=()
@@ -596,7 +596,7 @@ list_dir_contents() {
     paths+=("${d%/}/$entry")
     display_names+=("$entry")
   done
-  
+
   local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
   local idx=0
   while IFS= read -r st; do
@@ -605,10 +605,10 @@ list_dir_contents() {
       ((idx++))
       continue
     fi
-    
+
     local b512 perms links su sg uid gid size epoch name linktgt target
     IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name linktgt <<<"$st"
-    
+
     target="${linktgt:-}"
 
     # Backward-compat fallback if %Y is empty but %N contains arrow.
@@ -619,9 +619,9 @@ list_dir_contents() {
     if [[ "$name" == ./* ]]; then
       name="${name#./}"
     fi
-    
+
     local blocks1k=$(( (b512 + 1) / 2 ))
-    
+
     local owner group
     if [ "$NUMERICUIDGID" -eq 1 ]; then
       owner="$uid"
@@ -630,7 +630,7 @@ list_dir_contents() {
       owner="$su"
       group="$sg"
     fi
-    
+
     local display_name="${display_names[$idx]}"
     local path="${paths[$idx]}"
     rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${display_name}${DELIM}${target}${DELIM}${path}${DELIM}1")

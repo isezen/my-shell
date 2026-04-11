@@ -52,7 +52,7 @@ assert_output() {
       return
     fi
   fi
-  
+
   if [ "$output" != "$expected" ]; then
     {
       echo "output differs"
@@ -66,7 +66,7 @@ assert_output() {
 assert_line() {
   local expected
   local found=0
-  
+
   if [ "$1" = "--partial" ]; then
     expected="$2"
     while IFS= read -r line; do
@@ -75,7 +75,7 @@ assert_line() {
         break
       fi
     done <<< "$output"
-    
+
     if [ "$found" -eq 0 ]; then
       {
         echo "no line in output contains '$expected'"
@@ -90,7 +90,7 @@ assert_line() {
         break
       fi
     done <<< "$output"
-    
+
     if [ "$found" -eq 0 ]; then
       {
         echo "no line in output matches '$expected'"

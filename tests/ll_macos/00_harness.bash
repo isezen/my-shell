@@ -309,7 +309,7 @@ ll_macos_ref_line() {
   if [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
     name="${name%% -> *}"
   fi
-  
+
   # Strip ./ prefix to match ll_macos behavior
   if [[ "$name" == ./* ]]; then
     name="${name#./}"

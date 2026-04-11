@@ -72,7 +72,7 @@ ll_comparisons=()
 for ll_script in "${ll_scripts[@]}"; do
   _script_name=$(basename "$ll_script")
   _total=0
-  
+
   # Run performance test
   for _ in $(seq 1 $_n); do
     _tsmp=$(( $(date +%s%N)/1000000 ))
@@ -80,12 +80,12 @@ for ll_script in "${ll_scripts[@]}"; do
     _val=$(( $(date +%s%N)/1000000 - _tsmp ))
     _total=$(( _total + _val ))
   done
-  
+
   # Calculate statistics
   _llruntime=$(bc <<< "scale = 3; ($_total/$_n)")
   _ll_perf_per_file=$(bc <<< "scale = 3; ($_llruntime/$_numoffiles)")
   _comp_ll_ls=$(bc <<< "scale = 3; ($_llruntime/$_lsruntime)")
-  
+
   # Store results
   ll_script_names+=("$_script_name")
   ll_runtimes+=("$_llruntime")
@@ -115,7 +115,7 @@ for i in $(seq 0 $((${#ll_script_names[@]} - 1))); do
   _llruntime="${ll_runtimes[$i]}"
   _ll_perf_per_file="${ll_perf_per_file[$i]}"
   _comp_ll_ls="${ll_comparisons[$i]}"
-  
+
   echo "${_color_script}${_script_name}${_color_reset} run time: ${_color_time}${_llruntime} ms${_color_reset}. Perf: ${_color_perf}${_ll_perf_per_file} ms/file${_color_reset}"
   echo "${_color_script}${_script_name}${_color_reset} ${_color_comparison}${_comp_ll_ls} times${_color_reset} slower than ls"
   echo ""

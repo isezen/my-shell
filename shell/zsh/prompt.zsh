@@ -39,4 +39,3 @@ __my_shell_zsh_prompt_command
 
 # Colors (bash.sh color chain Zsh equivalent)
 PS1='%F{cyan}%m%f☘ %F{green}${NEW_PWD}%f [%F{red}%#%f] '
-

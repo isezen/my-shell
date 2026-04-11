@@ -11,4 +11,3 @@ end
 source "$MY_SHELL_ROOT/shell/fish/env.fish"
 source "$MY_SHELL_ROOT/shell/fish/aliases.fish"
 source "$MY_SHELL_ROOT/shell/fish/prompt.fish"
-

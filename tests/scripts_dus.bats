@@ -10,11 +10,11 @@ setup() {
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
   DUS_SCRIPT="$PROJECT_ROOT/scripts/bin/dus"
-  
+
   # Create a test directory with some files
   TEST_DIR_TMP=$(mktemp -d)
   cd "$TEST_DIR_TMP"
-  
+
   # Create test files with some content
   echo "test content 1" > test_file1.txt
   echo "test content 2" > test_file2.txt
@@ -78,4 +78,3 @@ teardown() {
   # Script may succeed or fail depending on implementation
   [ $status -ge 0 ] && [ $status -le 2 ]
 }
-

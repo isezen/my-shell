@@ -6,4 +6,3 @@
 if [ -f "${BATS_TEST_DIRNAME}/bats-assert/load.bash" ]; then
   load "${BATS_TEST_DIRNAME}/bats-assert/load.bash"
 fi
-

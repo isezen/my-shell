@@ -20,10 +20,10 @@ my %mon_to_num = (
 sub parse_bsd_date {
   my ($mon_str, $day, $year_or_time) = @_;
   return undef unless defined($mon_str) && defined($day) && defined($year_or_time);
-  
+
   my $mon = $mon_to_num{$mon_str};
   return undef unless defined($mon);
-  
+
   my ($year, $hour, $min);
   if ($year_or_time =~ /^(\d{1,2}):(\d{2})$/) {
     # Format: HH:MM (recent file, year missing)
@@ -41,7 +41,7 @@ sub parse_bsd_date {
   } else {
     return undef;
   }
-  
+
   my $epoch = eval { timegm(0, $min, $hour, int($day), $mon, $year) };
   return $epoch;
 }
@@ -158,16 +158,16 @@ for my $line (@lines) {
     my $epoch_from_bsd = undef;
     my $date_start_idx = -1;
     my $date_end_pos = -1;
-    
+
     # Find size field (should be numeric after group), then Mon DD YYYY|HH:MM
     for (my $i = 0; $i < @toks - 3; $i++) {
-      if ($toks[$i] =~ /^\d+$/ && 
-          exists($mon_to_num{$toks[$i+1]}) && 
+      if ($toks[$i] =~ /^\d+$/ &&
+          exists($mon_to_num{$toks[$i+1]}) &&
           $toks[$i+2] =~ /^\d+$/ &&
           ($toks[$i+3] =~ /^\d{4}$/ || $toks[$i+3] =~ /^\d{1,2}:\d{2}$/)) {
         $epoch_from_bsd = parse_bsd_date($toks[$i+1], $toks[$i+2], $toks[$i+3]);
         $date_start_idx = $i + 1;
-        
+
         # Find end position of date field in original line
         my $pattern = quotemeta($toks[$i]) . "\\s+" . quotemeta($toks[$i+1]) . "\\s+" . quotemeta($toks[$i+2]) . "\\s+" . quotemeta($toks[$i+3]);
         if ($work =~ /$pattern/) {
@@ -176,22 +176,22 @@ for my $line (@lines) {
         last;
       }
     }
-    
+
     if (defined($epoch_from_bsd) && $date_end_pos > 0) {
       # Extract tail from original line (preserves leading whitespace)
       my $tail = substr($work, $date_end_pos);
-      
+
       my @prefix_toks = @toks[0..$date_start_idx-1];
       my $perms = $prefix_toks[0] // "";
       if ($perms_re && $perms =~ $perms_re) {
         $perms =~ s/[@+]$//;
         $prefix_toks[0] = $perms;
       }
-      
+
       if ($has_human && $prefix_toks[-1] =~ /^\d+$/) {
         $prefix_toks[-1] = $prefix_toks[-1] . "B";
       }
-      
+
       # Normalize blocks column when present
       my $bsd_perm_idx = 0;
       if (@prefix_toks >= 2 && $prefix_toks[0] !~ $perms_re && $prefix_toks[0] =~ $blocks_re) {
@@ -200,12 +200,12 @@ for my $line (@lines) {
       if ($has_blocks && $bsd_perm_idx == 1) {
         $prefix_toks[0] = normalize_blocks_token($prefix_toks[0]);
       }
-      
+
       my ($tprefix, $tnum, $tunit) = rel_parts($epoch_from_bsd);
       $any_future = 1 if $tprefix eq "in";
       $w_tnum = length("$tnum") if length("$tnum") > $w_tnum;
       $w_tunit = length($tunit) if length($tunit) > $w_tunit;
-      
+
       push @rows, {
         has_epoch => 1,
         toks => \@prefix_toks,
@@ -217,7 +217,7 @@ for my $line (@lines) {
       };
       next;
     }
-    
+
     # No epoch and no BSD date pattern: keep raw
     push @rows, { has_epoch => 0, raw => $line };
     next;
@@ -251,12 +251,12 @@ for my $line (@lines) {
   if (@toks >= 2 && $toks[0] !~ $perms_re && $toks[0] =~ $blocks_re) {
     $perm_idx = 1;
   }
-  
+
   # Normalize blocks column when present (perm_idx==1 means toks[0] is blocks)
   if ($has_blocks && $perm_idx == 1) {
     $toks[0] = normalize_blocks_token($toks[0]);
   }
-  
+
   my $perms = $toks[$perm_idx] // "";
 
   push @rows, {

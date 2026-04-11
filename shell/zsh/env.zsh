@@ -31,4 +31,3 @@ export LSCOLORS="ExGxFxDxCxegedabagacad"
 # export LSCOLORS="ExFxBxDxCxegedabagacad"
 # High-contrast variant:
 # export LSCOLORS="HxGxFxDxCxegedabagacad"
-

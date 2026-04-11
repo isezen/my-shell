@@ -488,4 +488,3 @@ directory creation or navigation fails.
 ## Thank You!
 
 Your contributions make this project better. Thank you for taking the time to contribute! 🎉
-

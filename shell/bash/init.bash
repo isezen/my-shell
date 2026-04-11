@@ -12,4 +12,3 @@ source "$MY_SHELL_ROOT/shell/bash/env.bash"
 source "$MY_SHELL_ROOT/shell/bash/aliases.bash"
 # shellcheck disable=SC1091
 source "$MY_SHELL_ROOT/shell/bash/prompt.bash"
-
