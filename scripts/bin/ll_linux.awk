@@ -91,10 +91,12 @@ function parse_line(line,   left, nlt, toks) {
   if (!_find_epoch_span(line)) return 0
 
   # Extract tail (filename + optional symlink target) RAW:
-  # Pattern: ^(PREFIX)(EPOCH)(TAIL)$  where TAIL is everything after epoch_end.
-  # Preserves leading spaces, tabs, unicode, and " -> target" arrows.
+  # _find_epoch_span matches "<space><epoch><space>" so epoch_end points at
+  # the trailing separator space. Everything from (epoch_end + 1) onwards is
+  # the filename (plus optional " -> target" for symlinks), preserving
+  # leading spaces, tabs, unicode and symlink arrows exactly as GNU ls
+  # emitted them.
   name = substr(line, epoch_end + 1)
-  if (name ~ /^[[:space:]]/) name = substr(name, 2)
 
   # Left part: everything before the epoch span. Tokenize by whitespace.
   left = substr(line, 1, epoch_start - 1)

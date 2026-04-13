@@ -1,3 +1,3 @@
-lrwxr-xr-x 1 you wheel 15 0 sec "[38;5;253mlink name.txt" -> "[38;5;253mtarget file.txt"
--rw-r--r-- 1 you wheel  0 0 sec "[38;5;253mtarget file.txt"
+lrwxr-xr-x 1 you wheel 15 0 sec "link name.txt" -> "target file.txt"
+-rw-r--r-- 1 you wheel  0 0 sec "target file.txt"
 total 0

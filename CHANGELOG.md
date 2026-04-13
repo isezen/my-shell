@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ll_common.awk` migration — **Phase 3: cross-driver byte-level parity** (areas: ll/ll_linux/ll_linux.awk/tests). With Phase 3 applied, `ll_linux` and `ll_macos` emit **byte-identical output** across every single fixture case under the baseline env (`LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800`). The migration goal from commit `9a31f16` — "one render contract, two platform drivers" — is met. Details:
+  - `scripts/bin/ll_linux`: GNU `ls` is now called with a color mode picked from `LL_NO_COLOR`. Under `LL_NO_COLOR=1` it is `--color=never`, so GNU ls emits plain filename and symlink-target text. Under `LL_NO_COLOR=0` it is `--color=always` (explicit, not `--color` which is the deprecated "sometimes always" form, nor `--color=auto` which resolves to "never" under command substitution). Behavior change: the `NO_COLOR=1` code path now produces plain filenames matching `ll_macos`; the `NO_COLOR=0` path is unchanged (GNU LS_COLORS injected around filenames as before).
+  - `scripts/bin/ll_linux`: END block now appends the `\e[K\e[0m` erase-in-line + reset suffix when `length(name_out) >= 200`, mirroring `ll_macos` exactly. This is the terminal-line-clear hack that `ll_macos` has carried for long filenames.
+  - `scripts/bin/ll_linux.awk`: `parse_line()`'s post-epoch "strip one leading space" heuristic was removed. It was a latent bug that silently ate the leading space of filenames starting with whitespace under `--color=never` (where the separator space is fully captured by the epoch regex bracket and must NOT be re-stripped). In `--color=always` mode the heuristic was already a no-op because the first char after epoch was `\e` (ESC), not whitespace. Leading-space filename fixture (` file-leading-space.txt`) now renders correctly with its leading space quoted.
+  - `tests/fixtures/ll_baseline/ll_linux/` regenerated one final time. All 52 cases are now byte-for-byte identical to `tests/fixtures/ll_baseline/ll_macos/`.
+  - `tests/ll/20_baseline_snapshot.bats`: new 3rd test `ll parity: tests/fixtures/ll_baseline/ll_linux == tests/fixtures/ll_baseline/ll_macos`. Runs on any host (no driver invocation needed), diffs the two baseline directories directly, and fails loudly if any snapshot drifts away from cross-driver parity. Combined with the per-driver snapshot tests above, we now lock three invariants at once:
+    1. `ll_linux` output matches its own locked baseline (regression guard)
+    2. `ll_macos` output matches its own locked baseline (regression guard)
+    3. Both baselines are identical (cross-driver contract guard)
+  - Green runs: `make baseline-check` 3/3, `make test-ll-common` 10/10, `make test-ll-macos` 7/7, `make test-bats` 91/91, `make lint` clean.
+  - Parity trajectory across the migration (byte-level `ll_linux` vs `ll_macos`):
+    - Phase 0 (start):  2/52
+    - After Phase 2:   13/52  (opt-in cutover landed)
+    - After Phase 3:   **52/52** (this phase)
+
 - `ll_common.awk` migration — **Phase 2: ll_linux single-mode cutover** (areas: ll/ll_linux/tests). The `LL_USE_COMMON_AWK` opt-in flag and the ~450-line inline `AWK_PROG_STANDALONE` duplicate driver are gone; `ll_linux` now chains `ll_common.awk` + `ll_linux.awk` + a single inline driver in every invocation.
   - `scripts/bin/ll_linux`: deleted `AWK_PROG_STANDALONE` (~450 LOC) and the `LL_USE_COMMON_AWK=1` branch; `AWK_PROG_COMMON` was renamed to `AWK_PROG` and is now the only driver. The awk call site collapsed from two ~10-line branches to one. Total script size: 813 → 353 lines.
   - `tests/ll/21_ll_linux_optin_parity.bats` deleted — it existed only to prove "standalone mode and opt-in mode are byte-identical", which is moot now that only one mode survives. The `20_baseline_snapshot.bats` regression lock still guards the surviving path.

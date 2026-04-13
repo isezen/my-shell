@@ -82,3 +82,17 @@ _diff_baseline() {
   _run_snapshot ll_linux
   _diff_baseline ll_linux
 }
+
+# Phase 3 cross-driver parity: after ll_linux was migrated to the shared
+# ll_common.awk render layer and to `ls --color=never` under LL_NO_COLOR=1,
+# both drivers must produce byte-identical output across every fixture case.
+# This test diffs the two baseline directories directly — no driver invocation
+# needed — which means it runs on any host where the repo is checked out, not
+# just macOS or Linux-with-gnubin. A regression here pinpoints which driver's
+# snapshot (above) drifted.
+@test "ll parity: tests/fixtures/ll_baseline/ll_linux == tests/fixtures/ll_baseline/ll_macos" {
+  run diff -ruN \
+    "${PROJECT_ROOT}/tests/fixtures/ll_baseline/ll_linux" \
+    "${PROJECT_ROOT}/tests/fixtures/ll_baseline/ll_macos"
+  assert_success
+}

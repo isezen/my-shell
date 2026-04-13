@@ -93,8 +93,22 @@ else
 fi
 # Always force --time-style=+%s for fast relative time formatting in awk.
 # Keep user's args intact; we only read flags above and still pass "$@" through.
-# Match ll behavior: use --color (auto), so piping/ll-compare doesn't force ANSI.
-ll_res=$("$LS_BIN" --color -l --time-style=+"%s" "$@")
+#
+# LS_COLOR_MODE: pick the GNU ls color flag from LL_NO_COLOR.
+#   LL_NO_COLOR=1 → --color=never : GNU ls emits plain filenames/symlink
+#                                    targets, so the output matches ll_macos
+#                                    byte-for-byte under the baseline env.
+#   otherwise     → --color=auto  : GNU ls injects LS_COLORS around
+#                                    filenames as before (interactive path).
+if [ "${LL_NO_COLOR:-0}" = "1" ]; then
+  LS_COLOR_MODE="--color=never"
+else
+  # Force always (not auto) because ls output is captured into a variable;
+  # with auto, stdout isn't a tty and GNU ls falls back to never, which
+  # silently breaks the interactive colored path.
+  LS_COLOR_MODE="--color=always"
+fi
+ll_res=$("$LS_BIN" "$LS_COLOR_MODE" -l --time-style=+"%s" "$@")
 
 # Extract total line if present (same as ll script)
 ll_total=""
@@ -340,7 +354,12 @@ END {
     t_colored = llc_color_reltime(t_raw, a_tunit[i], a_tfuture[i])
     out = out t_colored " "
 
-    out = out format_name_raw(a_name[i], a_perms[i])
+    name_out = format_name_raw(a_name[i], a_perms[i])
+    # Match ll_macos: append erase-in-line + reset for very long names so
+    # the terminal line is cleared past the right edge. Same >=200 threshold.
+    name_suffix = ""
+    if (length(name_out) >= 200) name_suffix = sprintf("%c[K%s", 27, creset)
+    out = out name_out name_suffix
 
     print out
   }
