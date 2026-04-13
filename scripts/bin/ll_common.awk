@@ -421,6 +421,31 @@ function llc_strip_colors(s) {
   return s
 }
 
+function llc_strip_leading_resets(s) {
+  # Function docstring:
+  #   Strip redundant leading SGR reset sequences (e.g. GNU ls emits
+  #   "\033[0m\033[0m..." chains).
+  while (s ~ /^\033\[0m/) sub(/^\033\[0m/, "", s)
+  return s
+}
+
+function llc_strip_trailing_resets(s) {
+  # Function docstring:
+  #   Strip redundant trailing SGR reset sequences.
+  while (s ~ /\033\[0m$/) sub(/\033\[0m$/, "", s)
+  return s
+}
+
+function llc_has_nonreset_sgr(s,    t) {
+  # Function docstring:
+  #   Return 1 if 's' contains at least one SGR sequence that is not a plain
+  #   reset (\033[0m). Used to decide whether a rendered field actually
+  #   carries color and therefore needs a trailing reset.
+  t = s
+  gsub(/\033\[0m/, "", t)
+  return (t ~ /\033\[[0-9;]*m/)
+}
+
 function llc_lpad(s, w,    raw_len, n, out) {
   # Function docstring:
   #   Left-pad string 's' to visual width 'w' (ANSI sequences ignored).

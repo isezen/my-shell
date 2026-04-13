@@ -210,15 +210,38 @@ fi
 # ------------------------------
 # Common awk library include
 # ------------------------------
+# In opt-in mode (LL_USE_COMMON_AWK=1) we chain three awk programs:
+#   1) ll_common.awk   — BSD-safe shared render/format/color helpers
+#   2) ll_linux.awk    — GNU ls -l ingress parser + format_name_raw
+#   3) AWK_PROG_DRIVER — driver BEGIN/row/END logic (below, inline)
+# This avoids the fragile sed-surgery approach that was briefly used to
+# strip duplicated helpers from the standalone program. In default mode
+# (LL_USE_COMMON_AWK unset or 0) the full standalone program is used with
+# no external includes, preserving long-standing behavior until Phase 2
+# flips the flag unconditionally.
 _self_dir_linux="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 LL_COMMON_AWK="${LL_COMMON_AWK:-${_self_dir_linux}/ll_common.awk}"
+LL_LINUX_AWK="${LL_LINUX_AWK:-${_self_dir_linux}/ll_linux.awk}"
 AWK_COMMON_ARGS=()
 if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
   if [ ! -r "$LL_COMMON_AWK" ]; then
     echo "ll_linux: missing common awk library: $LL_COMMON_AWK" >&2
     exit 1
   fi
-  AWK_COMMON_ARGS=(-f "$LL_COMMON_AWK")
+  if [ ! -r "$LL_LINUX_AWK" ]; then
+    echo "ll_linux: missing linux awk library: $LL_LINUX_AWK" >&2
+    exit 1
+  fi
+  AWK_COMMON_ARGS=(-f "$LL_COMMON_AWK" -f "$LL_LINUX_AWK")
+fi
+
+# NOW_EPOCH: pass through LL_NOW_EPOCH; fall back to wall clock (matches
+# ll_macos). common's time_calc() wrapper passes this value straight to
+# llc_time_calc; leaving it empty would cause an arithmetic division on
+# an uninitialised value when running under LL_USE_COMMON_AWK=1.
+LL_LINUX_NOW_EPOCH="${LL_NOW_EPOCH:-}"
+if [[ ! "$LL_LINUX_NOW_EPOCH" =~ ^[0-9]+$ ]]; then
+  LL_LINUX_NOW_EPOCH="$(date +%s)"
 fi
 
 # Print using a single awk program (stores lines once; computes widths; prints).
@@ -676,22 +699,127 @@ END {
 }
 '
 
-# Set AWK_PROG based on LL_USE_COMMON_AWK
-if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
-  AWK_PROG=$(printf '%s\n' "$AWK_PROG_STANDALONE" | sed '/^function quote_if_needed/,/^function color_reltime_by_lbl/d')
-  AWK_PROG=$(printf '%s\n' "$AWK_PROG" | sed 's/BEGIN {/BEGIN {\n  ll_common_init()/')
-  AWK_PROG=$(printf '%s\n' "$AWK_PROG" | sed 's/color_reltime_by_lbl/color_reltime/g')
-else
-  AWK_PROG="$AWK_PROG_STANDALONE"
-fi
+# ----------------------------------------------------------------------------
+# Opt-in driver (LL_USE_COMMON_AWK=1): BEGIN calls ll_common_init() which
+# installs all helpers / color tables / constants from ll_common.awk, and the
+# row/END blocks reference the llc_* helpers (strip_colors, lpad, rpad,
+# color_perm, size_color_numeric, color_size_human, color_reltime) plus
+# ll_linux.awk's parse_line / format_name_raw. No helper definitions live
+# here — this driver is intentionally small so Phase 2 can delete
+# AWK_PROG_STANDALONE and rename this to the sole driver.
+# shellcheck disable=SC2016
+AWK_PROG_COMMON='
+BEGIN {
+  ll_common_init()
+}
+
+{
+  if (!parse_line($0)) next
+
+  n++
+  a_blocks[n] = blocks
+  a_perms[n]  = perms
+  a_links[n]  = links
+  a_owner[n]  = owner
+  a_group[n]  = group
+  a_size[n]   = size
+  a_epoch[n]  = epoch
+  a_name[n]   = name
+  time_calc(epoch + 0)
+  a_tprefix[n] = time_prefix
+  a_tnum[n] = time_num
+  a_tunit[n] = time_unit
+  a_tfuture[n] = time_future
+  if (time_future) any_future = 1
+  if (length(time_prefix) > w_tprefix) w_tprefix = length(time_prefix)
+  tnum_s = sprintf("%d", time_num)
+  if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
+  if (length(time_unit) > w_tunit) w_tunit = length(time_unit)
+
+  if (ASIZE) {
+    bcalc = blocks
+    if (HUMANREADABLE && bcalc ~ /^[0-9]+$/) bcalc = bcalc "B"
+    if (length(bcalc) > w_blocks) w_blocks = length(bcalc)
+  }
+  if (length(perms) > w_perms) w_perms = length(perms)
+  if (length(links) > w_links) w_links = length(links)
+
+  if (OWNER) {
+    o = owner
+    if (!NUMERICUIDGID && USERNAME != "" && o == USERNAME) o = "you"
+    if (length(o) > w_owner) w_owner = length(o)
+  }
+  if (GROUPNAME && length(group) > w_group) w_group = length(group)
+  size_raw = llc_strip_colors(size)
+  if (HUMANREADABLE && size_raw ~ /^[0-9]+$/) size_raw = size_raw "B"
+  if (length(size_raw) > w_size) w_size = length(size_raw)
+}
+
+END {
+  for (i=1; i<=n; i++) {
+    out = ""
+
+    if (ASIZE) {
+      b = a_blocks[i]
+      if (HUMANREADABLE) {
+        b_colored = llc_color_size_human(b)
+        out = out llc_lpad(b_colored, w_blocks) " "
+      } else {
+        out = out cb llc_lpad(b, w_blocks) creset " "
+      }
+    }
+
+    p = a_perms[i]
+    out = out llc_rpad(llc_color_perm(p), w_perms) " "
+
+    out = out llc_lpad(a_links[i], w_links) " "
+
+    if (OWNER) {
+      o = a_owner[i]
+      if (!NUMERICUIDGID && USERNAME != "" && o == USERNAME) o = "you"
+      if (o == "you") o = cusr o creset
+      else if (o == "root") o = croot o creset
+      out = out llc_rpad(o, w_owner) " "
+    }
+
+    if (GROUPNAME) {
+      g = a_group[i]
+      out = out llc_rpad(g, w_group) " "
+    }
+
+    s = a_size[i]
+    if (HUMANREADABLE) {
+      s_colored = llc_color_size_human(s)
+      out = out llc_lpad(s_colored, w_size) " "
+    } else {
+      c = llc_size_color_numeric(s + 0)
+      s_colored = c s creset
+      out = out llc_lpad(s_colored, w_size) " "
+    }
+
+    num_s = sprintf("%d", a_tnum[i])
+    unit_s = llc_rpad(a_tunit[i], w_tunit)
+    value_width = any_future ? (w_tnum + 3) : w_tnum
+    value_core = a_tfuture[i] ? ("in " num_s) : num_s
+    value_field = llc_lpad(value_core, value_width)
+    t_raw = value_field " " unit_s
+    t_colored = llc_color_reltime(t_raw, a_tunit[i], a_tfuture[i])
+    out = out t_colored " "
+
+    out = out format_name_raw(a_name[i], a_perms[i])
+
+    print out
+  }
+}
+'
 
 # Disable colors for testing (matches ll_macos behavior)
 NO_COLOR="${LL_NO_COLOR:-0}"
 
 if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
-  "$AWK_BIN" "${AWK_COMMON_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+  "$AWK_BIN" "${AWK_COMMON_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG_COMMON") -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
-    -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
+    -v NOW_EPOCH="$LL_LINUX_NOW_EPOCH" \
     -v NUMERICUIDGID="$NUMERICUIDGID" \
     -v OWNER="$OWNER" \
     -v GROUPNAME="$GROUPNAME" \
@@ -699,9 +827,9 @@ if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
     -v USERNAME="$USERNAME" \
     -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
 else
-  "$AWK_BIN" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+  "$AWK_BIN" -f <(printf '%s\n' "$AWK_PROG_STANDALONE") -v ASIZE="$ASIZE" \
     -v HUMANREADABLE="$HUMANREADABLE" \
-    -v NOW_EPOCH="${LL_NOW_EPOCH:-}" \
+    -v NOW_EPOCH="$LL_LINUX_NOW_EPOCH" \
     -v NUMERICUIDGID="$NUMERICUIDGID" \
     -v OWNER="$OWNER" \
     -v GROUPNAME="$GROUPNAME" \
