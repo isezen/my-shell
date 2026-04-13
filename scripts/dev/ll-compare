@@ -24,6 +24,7 @@ KEEP_DIR=0
 SIDE_BY_SIDE=0
 ONLY_TESTS=()
 ONLY_MODE=0
+SNAPSHOT_DIR=""
 
 # shellcheck disable=SC2034  # Variables set for future use
 while [ $# -gt 0 ]; do
@@ -34,11 +35,13 @@ while [ $# -gt 0 ]; do
     --side-by-side) SIDE_BY_SIDE=1; shift ;;
     --only) ONLY_MODE=1; ONLY_TESTS+=("$2"); shift 2 ;;
     --only=*) ONLY_MODE=1; ONLY_TESTS+=("${1#--only=}"); shift ;;
+    --snapshot) SNAPSHOT_DIR="$2"; shift 2 ;;
+    --snapshot=*) SNAPSHOT_DIR="${1#--snapshot=}"; shift ;;
     --help|-h)
       cat <<'EOF'
-Usage: ll-compare [OPTIONS] <script1> <script2> [script3 ...]
+Usage: ll-compare [OPTIONS] <script1> [script2 ...]
 
-Compare ll script outputs. At least two scripts are required for comparison.
+Compare ll script outputs, or capture baseline snapshots.
 
 OPTIONS:
   --help, -h              Show this help message and exit
@@ -47,11 +50,14 @@ OPTIONS:
   --keep-dir              Do not delete test directory after tests complete
   --side-by-side          Display outputs side-by-side format
   --only <TEST>           Run only specific test case(s)
+  --snapshot <DIR>        Write raw per-case outputs to DIR/<script>/NNN_<slug>.out
+                          (skips PASS/FAIL comparison; single-script invocation ok)
 
 EXAMPLES:
   ll-compare ll_linux ll_macos
   ll-compare --fail-only ll_linux ll_macos
   ll-compare --side-by-side ll_linux ll_macos
+  ll-compare --snapshot tests/fixtures/ll_baseline ll_linux ll_macos
 EOF
       exit 0
       ;;
@@ -60,7 +66,18 @@ EOF
   esac
 done
 
-if [ $# -lt 2 ]; then
+# In snapshot mode a single script is enough; in compare mode we still need ≥2.
+if [ -n "$SNAPSHOT_DIR" ]; then
+  if [ $# -lt 1 ]; then
+    echo "Usage: $0 --snapshot <DIR> <script1> [script2 ...]" >&2
+    exit 1
+  fi
+  # Resolve to an absolute path BEFORE the ll-compare script cd's into its
+  # temp fixture directory, otherwise relative --snapshot paths land inside
+  # the temp dir and vanish on cleanup.
+  mkdir -p "$SNAPSHOT_DIR" || { echo "Error: cannot create $SNAPSHOT_DIR" >&2; exit 1; }
+  SNAPSHOT_DIR="$(cd "$SNAPSHOT_DIR" && pwd)"
+elif [ $# -lt 2 ]; then
   echo "Usage: $0 [OPTIONS] <script1> <script2> [script3 ...]" >&2
   echo "At least two scripts are required for comparison." >&2
   exit 1
@@ -442,6 +459,26 @@ print_test_header() {
   echo "----------------------------------"
 }
 
+# Slugify a test case name into a filesystem-safe token:
+# lowercase, non-alnum → "_", collapse runs, trim edges.
+slugify() {
+  local s="$1"
+  s="$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')"
+  s="$(printf '%s' "$s" | sed -E 's/[^a-z0-9]+/_/g; s/^_+//; s/_+$//')"
+  printf '%s' "${s:-case}"
+}
+
+# Prepare snapshot output directories (per script) and fail fast if unwritable.
+if [ -n "$SNAPSHOT_DIR" ]; then
+  mkdir -p "$SNAPSHOT_DIR" || { echo "Error: cannot create $SNAPSHOT_DIR" >&2; exit 1; }
+  for script_name in "${script_names[@]}"; do
+    mkdir -p "$SNAPSHOT_DIR/$script_name" || {
+      echo "Error: cannot create $SNAPSHOT_DIR/$script_name" >&2; exit 1;
+    }
+  done
+  echo "Snapshot directory: $SNAPSHOT_DIR"
+fi
+
 global_index=0
 for test_case in "${test_cases[@]}"; do
   # Parse structured test case: NAME|||ARGV
@@ -500,7 +537,9 @@ for test_case in "${test_cases[@]}"; do
 
   outputs=()
 
-  for script_path in "${script_paths[@]}"; do
+  for script_idx in $(seq 0 $((${#script_paths[@]} - 1))); do
+    script_path="${script_paths[$script_idx]}"
+    script_name="${script_names[$script_idx]}"
     output_file=$(mktemp)
     # Nounset-safe array expansion for Bash 3.2:
     # If tc_argv is unset (possible edge w/ -u), expand to nothing.
@@ -508,9 +547,24 @@ for test_case in "${test_cases[@]}"; do
     (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" \
       ${tc_argv[@]+"${tc_argv[@]}"} >"$output_file" 2>&1 || true)
     output="$(cat "$output_file")"
+
+    if [ -n "$SNAPSHOT_DIR" ]; then
+      slug="$(slugify "$test_name")"
+      snap_file="$(printf '%s/%s/%03d_%s.out' "$SNAPSHOT_DIR" "$script_name" "$global_index" "$slug")"
+      cp "$output_file" "$snap_file"
+    fi
+
     rm -f "$output_file"
     outputs+=("$output")
   done
+
+  # In snapshot mode, just write and move on. Skip PASS/FAIL comparison.
+  if [ -n "$SNAPSHOT_DIR" ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      printf '  %03d %s\n' "$global_index" "$test_name"
+    fi
+    continue
+  fi
 
   # Check if all outputs are identical (after ANSI strip)
   all_match=true
@@ -566,7 +620,11 @@ if [ "$FAIL_ONLY" -eq 0 ]; then
   echo ""
   echo "=================================="
 fi
-echo "Results: $passed passed, $errors failed"
+if [ -n "$SNAPSHOT_DIR" ]; then
+  echo "Snapshots written: $global_index case(s) × ${#script_names[@]} script(s)"
+else
+  echo "Results: $passed passed, $errors failed"
+fi
 
 # ============================================================================
 # CLEANUP

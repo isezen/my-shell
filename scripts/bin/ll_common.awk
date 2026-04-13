@@ -289,6 +289,11 @@ function llc_color_reltime(s, unit, is_future){
 }
 
 function ll_common_init(){
+  # Time/size constants must be initialized BEFORE the NO_COLOR early-return,
+  # otherwise llc_time_calc() and llc_color_size_human() divide by zero.
+  llc_init_size_constants()
+  llc_init_time_constants()
+
   if (NO_COLOR == "1") {
     esc = ""
     creset = ""
@@ -356,8 +361,7 @@ function ll_common_init(){
 
   delete perm_col_cache
   llc_init_ansi()
-  llc_init_size_constants()
-  llc_init_time_constants()
+  # size/time constants already initialized above, before NO_COLOR early-return
 }
 
 # ----------------------------

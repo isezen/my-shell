@@ -4,6 +4,8 @@
 ├── docs
 │   ├── issues
 │   │   └── fish-non-interactive-breakage.md
+│   ├── plans
+│   │   └── ll-common-awk-migration.md
 │   ├── ACTIVATION_SPECIFICATION.md
 │   ├── LL_SPECS.md
 │   ├── proj_summary.md
@@ -47,10 +49,119 @@
 │   │   └── prompt.zsh
 │   └── aliases.yml
 ├── tests
+│   ├── fixtures
+│   │   └── ll_baseline
+│   │       ├── ll_linux
+│   │       │   ├── 001_default.out
+│   │       │   ├── 002_d.out
+│   │       │   ├── 003_directory.out
+│   │       │   ├── 004_d.out
+│   │       │   ├── 005_g.out
+│   │       │   ├── 006_g.out
+│   │       │   ├── 007_o.out
+│   │       │   ├── 008_no_group.out
+│   │       │   ├── 009_g_g.out
+│   │       │   ├── 010_s.out
+│   │       │   ├── 011_size.out
+│   │       │   ├── 012_h.out
+│   │       │   ├── 013_human_readable.out
+│   │       │   ├── 014_si.out
+│   │       │   ├── 015_n.out
+│   │       │   ├── 016_numeric_uid_gid.out
+│   │       │   ├── 017_s_h.out
+│   │       │   ├── 018_s_si.out
+│   │       │   ├── 019_n_h.out
+│   │       │   ├── 020_n_si.out
+│   │       │   ├── 021_s_g.out
+│   │       │   ├── 022_s_h_g_g.out
+│   │       │   ├── 023_file_then_no_group.out
+│   │       │   ├── 024_file_then_g.out
+│   │       │   ├── 025_no_group_then_file.out
+│   │       │   ├── 026_h_file1_txt.out
+│   │       │   ├── 027_no_group_file2_txt.out
+│   │       │   ├── 028_space_filename.out
+│   │       │   ├── 029_leading_space_filename.out
+│   │       │   ├── 030_tab_filename.out
+│   │       │   ├── 031_unicode_filename.out
+│   │       │   ├── 032_symlink.out
+│   │       │   ├── 033_broken_symlink.out
+│   │       │   ├── 034_fifo.out
+│   │       │   ├── 035_setuid_file.out
+│   │       │   ├── 036_setgid_file.out
+│   │       │   ├── 037_setgid_dir.out
+│   │       │   ├── 038_sticky_dir.out
+│   │       │   ├── 039_mtime_now_1s.out
+│   │       │   ├── 040_mtime_now_119s.out
+│   │       │   ├── 041_mtime_now_120s.out
+│   │       │   ├── 042_mtime_now_3599s.out
+│   │       │   ├── 043_mtime_now_3600s.out
+│   │       │   ├── 044_mtime_now_2days.out
+│   │       │   ├── 045_mtime_now_3yr.out
+│   │       │   ├── 046_mtime_now_35yr.out
+│   │       │   ├── 047_mtime_now_125yr.out
+│   │       │   ├── 048_symlink_target_space.out
+│   │       │   ├── 049_symlink_target_tab.out
+│   │       │   ├── 050_symlink_all_in_one_dir.out
+│   │       │   ├── 051_future_only.out
+│   │       │   └── 052_mixed_time_width.out
+│   │       └── ll_macos
+│   │           ├── 001_default.out
+│   │           ├── 002_d.out
+│   │           ├── 003_directory.out
+│   │           ├── 004_d.out
+│   │           ├── 005_g.out
+│   │           ├── 006_g.out
+│   │           ├── 007_o.out
+│   │           ├── 008_no_group.out
+│   │           ├── 009_g_g.out
+│   │           ├── 010_s.out
+│   │           ├── 011_size.out
+│   │           ├── 012_h.out
+│   │           ├── 013_human_readable.out
+│   │           ├── 014_si.out
+│   │           ├── 015_n.out
+│   │           ├── 016_numeric_uid_gid.out
+│   │           ├── 017_s_h.out
+│   │           ├── 018_s_si.out
+│   │           ├── 019_n_h.out
+│   │           ├── 020_n_si.out
+│   │           ├── 021_s_g.out
+│   │           ├── 022_s_h_g_g.out
+│   │           ├── 023_file_then_no_group.out
+│   │           ├── 024_file_then_g.out
+│   │           ├── 025_no_group_then_file.out
+│   │           ├── 026_h_file1_txt.out
+│   │           ├── 027_no_group_file2_txt.out
+│   │           ├── 028_space_filename.out
+│   │           ├── 029_leading_space_filename.out
+│   │           ├── 030_tab_filename.out
+│   │           ├── 031_unicode_filename.out
+│   │           ├── 032_symlink.out
+│   │           ├── 033_broken_symlink.out
+│   │           ├── 034_fifo.out
+│   │           ├── 035_setuid_file.out
+│   │           ├── 036_setgid_file.out
+│   │           ├── 037_setgid_dir.out
+│   │           ├── 038_sticky_dir.out
+│   │           ├── 039_mtime_now_1s.out
+│   │           ├── 040_mtime_now_119s.out
+│   │           ├── 041_mtime_now_120s.out
+│   │           ├── 042_mtime_now_3599s.out
+│   │           ├── 043_mtime_now_3600s.out
+│   │           ├── 044_mtime_now_2days.out
+│   │           ├── 045_mtime_now_3yr.out
+│   │           ├── 046_mtime_now_35yr.out
+│   │           ├── 047_mtime_now_125yr.out
+│   │           ├── 048_symlink_target_space.out
+│   │           ├── 049_symlink_target_tab.out
+│   │           ├── 050_symlink_all_in_one_dir.out
+│   │           ├── 051_future_only.out
+│   │           └── 052_mixed_time_width.out
 │   ├── ll
 │   │   ├── fixtures
 │   │   │   └── ll_stub_impl.bash
-│   │   └── 10_wrapper_stub.bats
+│   │   ├── 10_wrapper_stub.bats
+│   │   └── 20_baseline_snapshot.bats
 │   ├── ll_linux
 │   │   ├── 00_harness.bash
 │   │   ├── 00_harness.bash.bak
@@ -100,5 +211,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-20 directories, 79 files
+25 directories, 185 files
 ```
