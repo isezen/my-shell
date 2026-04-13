@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Resolve sibling modules in `shell/{bash,zsh,fish}/init.*` relative to the init file's own directory instead of `$MY_SHELL_ROOT/shell/<shell>/` (areas: shell/init). Behavior change: init files now work both in the repo layout (`<repo>/shell/<shell>/`) and the installed layout (`~/.my-shell/<shell>/`). Previously the installed copy computed `MY_SHELL_ROOT=$HOME` and then tried to source `$HOME/shell/<shell>/env.*`, which does not exist — so `install.sh --settings-only` produced an init file that could not find its siblings. `MY_SHELL_ROOT` is still exported for downstream consumers but is no longer used for sibling resolution.
 - Guard `shell/fish/aliases.fish` and `shell/fish/prompt.fish` behind `status is-interactive` in `shell/fish/init.fish` (areas: fish/init). Behavior change: non-interactive fish invocations (`fish -c`, SSH command runs, scripts) no longer load interactive command overrides (`head`/`tail` wrappers calling `tput cols`, colorised `grep`, `ll`, `htop`, etc.), which previously broke on missing `$TERM`. `env.fish` still loads unconditionally so PATH/CLICOLOR/LSCOLORS remain available. Fixes the breakage documented in `docs/issues/fish-non-interactive-breakage.md`.
 
 ### Added
