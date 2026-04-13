@@ -1,9 +1,9 @@
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;230m    12 day[0m [38;5;253mday.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;39min 242 yr [0m [38;5;253mfuture-1000yr.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;39min 125 yr [0m [38;5;253mfuture-125yr.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;39m in 35 yr [0m [38;5;253mfuture-35yr.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;39m  in 3 yr [0m [38;5;253mfuture-3yr.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;196m     3 hrs[0m [38;5;253mhrs.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;151m     4 mon[0m [38;5;253mmon.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel [38;5;240m0[0m [38;5;124m     5 sec[0m [38;5;253msec.txt[0m
+-rw-r--r-- 1 you wheel 0     12 day [38;5;253mday.txt
+-rw-r--r-- 1 you wheel 0 in 242 yr  [38;5;253mfuture-1000yr.txt
+-rw-r--r-- 1 you wheel 0 in 125 yr  [38;5;253mfuture-125yr.txt
+-rw-r--r-- 1 you wheel 0  in 35 yr  [38;5;253mfuture-35yr.txt
+-rw-r--r-- 1 you wheel 0   in 3 yr  [38;5;253mfuture-3yr.txt
+-rw-r--r-- 1 you wheel 0      3 hrs [38;5;253mhrs.txt
+-rw-r--r-- 1 you wheel 0      4 mon [38;5;253mmon.txt
+-rw-r--r-- 1 you wheel 0      5 sec [38;5;253msec.txt
 total 0

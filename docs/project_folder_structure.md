@@ -162,8 +162,7 @@
 │   │   ├── fixtures
 │   │   │   └── ll_stub_impl.bash
 │   │   ├── 10_wrapper_stub.bats
-│   │   ├── 20_baseline_snapshot.bats
-│   │   └── 21_ll_linux_optin_parity.bats
+│   │   └── 20_baseline_snapshot.bats
 │   ├── ll_linux
 │   │   ├── 00_harness.bash
 │   │   ├── 00_harness.bash.bak
@@ -213,5 +212,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-25 directories, 187 files
+25 directories, 186 files
 ```

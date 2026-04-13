@@ -1,14 +1,14 @@
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel  [38;5;240m0[0m [38;5;124m0 sec[0m [38;5;253mfile1.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel  [38;5;240m0[0m [38;5;124m0 sec[0m [38;5;208;1mfile2.txt[0m
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel  [38;5;240m3[0m [38;5;124m0 sec[0m "l	i" -> "t	a"
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel [38;5;240m15[0m [38;5;124m0 sec[0m "[38;5;253mlink space.txt" -> "[38;5;253mtarget file.txt"[0m
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel [38;5;240m14[0m [38;5;124m0 sec[0m [48;5;196;38;5;232;1mlink-broken -> [48;5;196;38;5;232;1mdoes-not-exist[0m
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel [38;5;240m10[0m [38;5;124m0 sec[0m [38;5;30mlink-dir -> [38;5;30mtarget-dir[0m
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel  [38;5;240m9[0m [38;5;124m0 sec[0m [38;5;208;1mlink-exe -> [38;5;208;1mfile2.txt[0m
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel [38;5;240m10[0m [38;5;124m0 sec[0m link-good -> [38;5;253mtarget.txt[0m
-[38;5;190ml[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 1 [38;5;66myou[0m wheel  [38;5;240m9[0m [38;5;124m0 sec[0m symlink-to-file1 -> [38;5;253mfile1.txt[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel  [38;5;240m0[0m [38;5;124m0 sec[0m "t	a"
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel  [38;5;240m0[0m [38;5;124m0 sec[0m "[38;5;253mtarget file.txt"[0m
-[38;5;122md[0m[38;5;119mr[0m[38;5;216mw[0m[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m[38;5;119mr[0m-[38;5;124mx[0m 2 [38;5;66myou[0m wheel [38;5;240m64[0m [38;5;124m0 sec[0m [38;5;30mtarget-dir[0m
--[38;5;119mr[0m[38;5;216mw[0m-[38;5;119mr[0m--[38;5;119mr[0m-- 1 [38;5;66myou[0m wheel  [38;5;240m0[0m [38;5;124m0 sec[0m [38;5;253mtarget.txt[0m
+-rw-r--r-- 1 you wheel  0 0 sec [38;5;253mfile1.txt
+-rwxr-xr-x 1 you wheel  0 0 sec [38;5;208;1mfile2.txt
+lrwxr-xr-x 1 you wheel  3 0 sec "l	i" -> "t	a"
+lrwxr-xr-x 1 you wheel 15 0 sec "[38;5;253mlink space.txt" -> "[38;5;253mtarget file.txt"
+lrwxr-xr-x 1 you wheel 14 0 sec [48;5;196;38;5;232;1mlink-broken -> [48;5;196;38;5;232;1mdoes-not-exist
+lrwxr-xr-x 1 you wheel 10 0 sec [38;5;30mlink-dir -> [38;5;30mtarget-dir
+lrwxr-xr-x 1 you wheel  9 0 sec [38;5;208;1mlink-exe -> [38;5;208;1mfile2.txt
+lrwxr-xr-x 1 you wheel 10 0 sec link-good -> [38;5;253mtarget.txt
+lrwxr-xr-x 1 you wheel  9 0 sec symlink-to-file1 -> [38;5;253mfile1.txt
+-rw-r--r-- 1 you wheel  0 0 sec "t	a"
+-rw-r--r-- 1 you wheel  0 0 sec "[38;5;253mtarget file.txt"
+drwxr-xr-x 2 you wheel 64 0 sec [38;5;30mtarget-dir
+-rw-r--r-- 1 you wheel  0 0 sec [38;5;253mtarget.txt
 total 0

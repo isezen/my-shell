@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ll_common.awk` migration — **Phase 2: ll_linux single-mode cutover** (areas: ll/ll_linux/tests). The `LL_USE_COMMON_AWK` opt-in flag and the ~450-line inline `AWK_PROG_STANDALONE` duplicate driver are gone; `ll_linux` now chains `ll_common.awk` + `ll_linux.awk` + a single inline driver in every invocation.
+  - `scripts/bin/ll_linux`: deleted `AWK_PROG_STANDALONE` (~450 LOC) and the `LL_USE_COMMON_AWK=1` branch; `AWK_PROG_COMMON` was renamed to `AWK_PROG` and is now the only driver. The awk call site collapsed from two ~10-line branches to one. Total script size: 813 → 353 lines.
+  - `tests/ll/21_ll_linux_optin_parity.bats` deleted — it existed only to prove "standalone mode and opt-in mode are byte-identical", which is moot now that only one mode survives. The `20_baseline_snapshot.bats` regression lock still guards the surviving path.
+  - `tests/fixtures/ll_baseline/ll_linux/` regenerated. 50 of 52 case snapshots changed because `ll_linux` now honors `LL_NO_COLOR=1` for the perm/links/owner/group/size/time columns (the common-awk path has always done this; the inline standalone path silently ignored it). The filename/target columns still carry GNU `ls --color`-injected LS_COLORS bytes — closing that gap is Phase 3's job.
+  - `ll_macos` baselines are unchanged — Phase 2 only touches `ll_linux`.
+  - Cross-driver parity measurement after the flag removal:
+    - ANSI-stripped: **52/52 identical** (unchanged from Phase 0 — semantic parity was already complete)
+    - Byte-level: **13/52 identical**, up from 2/52 before Phase 2 — the 39 remaining byte diffs are exactly the pre-colored GNU `ls` LS_COLORS sequences around filenames/targets that Phase 3 will normalise
+  - Green runs: `make baseline-check` 2/2, `make test-ll-common` 9/9 (the opt-in parity test is gone; down from 10), `make test-ll-macos` 7/7, `make test-bats` 90/90, `make lint` clean.
+
 - `ll_common.awk` migration — **Phase 1: common scope expansion + ll_linux.awk ingress split** (areas: ll/common-awk/ll_linux). No behavior change to any driver's default-mode output; Phase 1 is purely additive infrastructure preparing Phase 2's flag removal. Details:
   - `ll_common.awk` gained three ANSI render helpers lifted out of `ll_linux`'s inline program: `llc_strip_leading_resets`, `llc_strip_trailing_resets`, `llc_has_nonreset_sgr`. All three are BSD-safe (no 3-arg match, no gawk-only features); they live alongside `llc_strip_colors` and can be reused by `ll_macos` when it needs to preserve GNU-ls-style pre-coloured text.
   - `scripts/bin/ll_linux.awk` (new, ~200 lines) — dedicated ingress library for `ll_linux`. Hosts the GNU `ls --color -l --time-style=+%s` parser (`_is_epoch`, `_find_epoch_span`, `parse_line`) and the pre-coloured-tail renderer (`format_name_raw`). Intentionally gawk-scoped so the "ingress layer" can use 3-arg `match()` without polluting `ll_common.awk`'s BSD-compat surface.

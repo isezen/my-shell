@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/bin/ll_linux
-# Linux-specific implementation of ll command
-# NOTE: ll_common.awk include is optional via LL_USE_COMMON_AWK=1 (safe mode uses -f <(…) to avoid awk concat issues)
-# Uses scripts/bin/ll_common.awk as shared awk library (included with -f)
-# (patched) Normalize ls reset placement for quoted names / symlink targets (tab case)
-# Uses GNU coreutils (ls, awk, date) for Linux compatibility
+# Linux-specific implementation of ll command.
+# Uses scripts/bin/ll_common.awk (BSD-safe shared render/format/color
+# helpers) and scripts/bin/ll_linux.awk (GNU `ls -l` ingress parser and
+# pre-colored-tail renderer); both are chained with -f.
+# Requires GNU coreutils (ls, awk, date) with --time-style=+%s support.
 # Usage: ll_linux [OPTIONS] [FILES...]
 # sezenismail@gmail.com
 # 2014-11-24 (optimized 2026-01-05)
@@ -208,507 +208,41 @@ if ! "$AWK_BIN" 'BEGIN{ if (match("1", /[0-9]+/, a)) exit 0; exit 1 }' </dev/nul
 fi
 
 # ------------------------------
-# Common awk library include
+# Awk library chain
 # ------------------------------
-# In opt-in mode (LL_USE_COMMON_AWK=1) we chain three awk programs:
+# Every run chains three awk programs:
 #   1) ll_common.awk   — BSD-safe shared render/format/color helpers
-#   2) ll_linux.awk    — GNU ls -l ingress parser + format_name_raw
-#   3) AWK_PROG_DRIVER — driver BEGIN/row/END logic (below, inline)
-# This avoids the fragile sed-surgery approach that was briefly used to
-# strip duplicated helpers from the standalone program. In default mode
-# (LL_USE_COMMON_AWK unset or 0) the full standalone program is used with
-# no external includes, preserving long-standing behavior until Phase 2
-# flips the flag unconditionally.
+#   2) ll_linux.awk    — GNU `ls -l` ingress parser + format_name_raw
+#   3) AWK_PROG        — driver BEGIN/row/END (inline below)
+# Both libraries must be readable alongside this script; the pre-Phase-2
+# LL_USE_COMMON_AWK opt-in flag and the duplicated inline standalone
+# program have been removed.
 _self_dir_linux="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 LL_COMMON_AWK="${LL_COMMON_AWK:-${_self_dir_linux}/ll_common.awk}"
 LL_LINUX_AWK="${LL_LINUX_AWK:-${_self_dir_linux}/ll_linux.awk}"
-AWK_COMMON_ARGS=()
-if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
-  if [ ! -r "$LL_COMMON_AWK" ]; then
-    echo "ll_linux: missing common awk library: $LL_COMMON_AWK" >&2
-    exit 1
-  fi
-  if [ ! -r "$LL_LINUX_AWK" ]; then
-    echo "ll_linux: missing linux awk library: $LL_LINUX_AWK" >&2
-    exit 1
-  fi
-  AWK_COMMON_ARGS=(-f "$LL_COMMON_AWK" -f "$LL_LINUX_AWK")
+if [ ! -r "$LL_COMMON_AWK" ]; then
+  echo "ll_linux: missing common awk library: $LL_COMMON_AWK" >&2
+  exit 1
 fi
+if [ ! -r "$LL_LINUX_AWK" ]; then
+  echo "ll_linux: missing linux awk library: $LL_LINUX_AWK" >&2
+  exit 1
+fi
+AWK_LIB_ARGS=(-f "$LL_COMMON_AWK" -f "$LL_LINUX_AWK")
 
-# NOW_EPOCH: pass through LL_NOW_EPOCH; fall back to wall clock (matches
-# ll_macos). common's time_calc() wrapper passes this value straight to
-# llc_time_calc; leaving it empty would cause an arithmetic division on
-# an uninitialised value when running under LL_USE_COMMON_AWK=1.
+# NOW_EPOCH: honor LL_NOW_EPOCH; fall back to wall clock (matches ll_macos).
+# common's time_calc() wrapper passes this value straight to llc_time_calc;
+# leaving it empty would cause arithmetic on an uninitialised value.
 LL_LINUX_NOW_EPOCH="${LL_NOW_EPOCH:-}"
 if [[ ! "$LL_LINUX_NOW_EPOCH" =~ ^[0-9]+$ ]]; then
   LL_LINUX_NOW_EPOCH="$(date +%s)"
 fi
 
-# Print using a single awk program (stores lines once; computes widths; prints).
+# Driver program: BEGIN calls ll_common_init() to install all colors,
+# constants, and helpers from ll_common.awk; row/END reference llc_*
+# helpers and the ingress functions from ll_linux.awk.
 # shellcheck disable=SC2016
-AWK_PROG_STANDALONE='
-BEGIN {
-  # ANSI reset
-  creset = sprintf("%c[0m", 27)
-
-  # Permission colors
-  cd    = sprintf("%c[38;5;122m", 27)
-  cl    = sprintf("%c[38;5;190m", 27)
-  cr    = sprintf("%c[38;5;119m", 27)
-  cw    = sprintf("%c[38;5;216m", 27)
-  cx    = sprintf("%c[38;5;124m", 27)
-  cplus = sprintf("%c[38;5;129m", 27)
-
-  # User colors
-  cusr  = sprintf("%c[38;5;66m", 27)
-  croot = sprintf("%c[38;5;160m", 27)
-
-  # Size colors
-  cb = sprintf("%c[38;5;240m", 27)
-  ck = sprintf("%c[38;5;250m", 27)
-  cm = sprintf("%c[38;5;117m", 27)
-  cg = sprintf("%c[38;5;208m", 27)
-  ct = sprintf("%c[38;5;160m", 27)
-
-  # Size label colors (bold)
-  clT = sprintf("%c[1;38;5;167m", 27)
-  clG = sprintf("%c[1;38;5;220m", 27)
-  clM = sprintf("%c[1;38;5;123m", 27)
-  clK = sprintf("%c[1;38;5;107m", 27)
-  clB = sprintf("%c[1;38;5;248m", 27)
-
-  # Time colors
-  csec = sprintf("%c[38;5;124m", 27)
-  cmin = sprintf("%c[38;5;215m", 27)
-  chrs = sprintf("%c[38;5;196m", 27)
-  cday = sprintf("%c[38;5;230m", 27)
-  cmon = sprintf("%c[38;5;151m", 27)
-  cyr  = sprintf("%c[38;5;241m", 27)
-  cfut = sprintf("%c[38;5;39m", 27)
-
-  # Constants
-  SIZE_KB = 1024
-  SIZE_MB = 1048576
-  SIZE_GB = 1073741824
-  SIZE_TB = 1099511627776
-
-  TIME_MIN   = 60
-  TIME_2MIN  = 120
-  TIME_HOUR  = 3600
-  TIME_DAY   = 86400
-  TIME_2DAYS = 172800
-  TIME_30DAYS= 2592000
-  TIME_45DAYS= 3888000
-  TIME_YEAR  = 31536000
-
-  lsec="sec"; lmin="min"; lhrs="hrs"; lday="day"; lmon="mon"; lyr="yr"
-}
-
-# Remove ANSI color codes for length calculation
-function strip_colors(s) {
-  gsub(/\033\[[0-9;]*m/, "", s)
-  return s
-}
-
-function lpad(s, w,   n, out, raw_len) {
-  raw_len = length(strip_colors(s))
-  n = w - raw_len
-  if (n <= 0) return s
-  out = ""
-  while (n--) out = out " "
-  return out s
-}
-function rpad(s, w,   n, out, raw_len) {
-  raw_len = length(strip_colors(s))
-  n = w - raw_len
-  if (n <= 0) return s
-  out = ""
-  while (n--) out = out " "
-  return s out
-}
-
-function quote_if_needed(s) {
-  return (index(s, " ") > 0 || index(s, "\t") > 0) ? "\"" s "\"" : s
-}
-
-function strip_leading_resets(s) {
-  # Remove redundant leading SGR resets produced by ls (e.g. "\033[0m\033[0m...")
-  while (s ~ /^\033\[0m/) sub(/^\033\[0m/, "", s)
-  return s
-}
-
-function strip_trailing_resets(s) {
-  while (s ~ /\033\[0m$/) sub(/\033\[0m$/, "", s)
-  return s
-}
-
-function has_nonreset_sgr(s,   t) {
-  t = s
-  gsub(/\033\[0m/, "", t)
-  return (t ~ /\033\[[0-9;]*m/)
-}
-
-function format_name(raw, perms,   arrow_pos, name, target) {
-  raw = strip_leading_resets(strip_trailing_resets(raw))
-  colored = has_nonreset_sgr(raw)
-
-  if (perms ~ /^l/ && (arrow_pos = index(raw, " -> ")) > 0) {
-    name = substr(raw, 1, arrow_pos - 1)
-    target = substr(raw, arrow_pos + 4)
-
-    name = strip_leading_resets(strip_trailing_resets(name))
-    target = strip_leading_resets(strip_trailing_resets(target))
-
-    # If it contains only resets (no real color), drop them completely
-    if (!has_nonreset_sgr(name)) gsub(/\033\[0m/, "", name)
-    if (!has_nonreset_sgr(target)) gsub(/\033\[0m/, "", target)
-
-    out = quote_if_needed(name) " -> " quote_if_needed(target)
-    # Put reset OUTSIDE quotes only if we actually have a non-reset SGR
-    return colored ? (out creset) : out
-  }
-
-  if (!colored) gsub(/\033\[0m/, "", raw)
-  out = quote_if_needed(raw)
-  return colored ? (out creset) : out
-}
-
-function color_perm(p,   i,ch,out) {
-  out=""
-  for (i=1; i<=length(p); i++) {
-    ch = substr(p,i,1)
-    if      (ch=="d") out = out cd ch creset
-    else if (ch=="l") out = out cl ch creset
-    else if (ch=="r") out = out cr ch creset
-    else if (ch=="w") out = out cw ch creset
-    else if (ch=="x") out = out cx ch creset
-    else if (ch=="+") out = out cplus ch creset
-    else              out = out ch
-  }
-  return out
-}
-
-function size_color_numeric(x,   c) {
-  if (x < SIZE_KB) return cb
-  if (x < SIZE_MB) return ck
-  if (x < SIZE_GB) return cm
-  if (x < SIZE_TB) return cg
-  return ct
-}
-
-function color_size_human(s,   num, suf, out, prgx) {
-  # Expect things like: 123, 1.2K, 234M, 5G, 1T, maybe no suffix.
-  # Also allow trailing "B" (we add it if missing and it is pure number).
-  prgx="^[0-9]+(\\.[0-9]+)?"
-  if (s ~ /^[0-9]+$/) s = s "B"
-  num = s
-  suf = ""
-  if (match(s, /^[0-9]+(\.[0-9]+)?/, m)) {
-    num = m[0]
-    suf = substr(s, length(num)+1, 1)
-  }
-
-  if      (suf=="T") out = ct num creset clT suf creset
-  else if (suf=="G") out = cg num creset clG suf creset
-  else if (suf=="M") out = cm num creset clM suf creset
-  else if (suf=="K") out = ck num creset clK suf creset
-  else if (suf=="B") out = cb num creset clB suf creset
-  else               out = cb s creset
-
-  return out
-}
-
-function time_calc(epoch,   dt, v, lbl, now, prefix, epoch_num) {
-  now = systime()
-  if (NOW_EPOCH ~ /^[0-9]+$/) now = NOW_EPOCH + 0
-  epoch_num = epoch + 0
-  dt = int(now - epoch_num)
-  if (dt < 0) { prefix = "in"; dt = -dt } else { prefix = "" }
-  if      (dt < TIME_2MIN)   { v=dt;                 lbl=lsec }
-  else if (dt < TIME_HOUR)   { v=int(dt/TIME_MIN);   lbl=lmin }
-  else if (dt < TIME_2DAYS)  { v=int(dt/TIME_HOUR);  lbl=lhrs }
-  else if (dt < TIME_45DAYS) { v=int(dt/TIME_DAY);   lbl=lday }
-  else if (dt < TIME_YEAR)   { v=int(dt/TIME_30DAYS);lbl=lmon }
-  else                       { v=int(dt/TIME_YEAR);  lbl=lyr  }
-  time_prefix = prefix
-  time_num = v
-  time_unit = lbl
-  time_future = (prefix != "")
-}
-function color_reltime_by_lbl(s, lbl, is_future,   out) {
-  if (is_future)      out = cfut s creset
-  else if (lbl==lsec) out = csec s creset
-  else if (lbl==lmin) out = cmin s creset
-  else if (lbl==lhrs) out = chrs s creset
-  else if (lbl==lday) out = cday s creset
-  else if (lbl==lmon) out = cmon s creset
-  else if (lbl==lyr ) out = cyr  s creset
-  else                out = s
-  return out
-}
-
-# New parse_line(): non-regex, position-based parser using epoch position
-function _is_epoch(tok) {
-  # We force --time-style=+%s, so epoch is a 9+ digit integer.
-  return (tok ~ /^[0-9]{9,}$/)
-}
-
-# Find the last occurrence of: <space><9+digits><space>
-# Returns 1 on success and sets globals: epoch, epoch_start, epoch_end (inclusive)
-function _find_epoch_span(line,   tmp, off, best_s, best_e, s, e, digits) {
-  tmp = line
-  off = 0
-  best_s = 0
-  best_e = 0
-
-  while (match(tmp, /[[:space:]][0-9]{9,}[[:space:]]/)) {
-    s = off + RSTART
-    e = off + RSTART + RLENGTH - 1
-    best_s = s
-    best_e = e
-
-    # Keep the trailing space so the next match can see the following digits.
-    off = off + RSTART + RLENGTH - 2
-    tmp = substr(line, off + 1)
-  }
-
-  if (best_s == 0) return 0
-
-  # Extract digits inside the matched span
-  digits = substr(line, best_s, best_e - best_s + 1)
-  gsub(/^[[:space:]]+/, "", digits)
-  gsub(/[[:space:]]+$/, "", digits)
-
-  if (!_is_epoch(digits)) return 0
-
-  epoch = digits
-  epoch_start = best_s
-  epoch_end = best_e
-  return 1
-}
-
-# Parse ls -l line in a way that is robust to spaces in filenames and leading spaces.
-# Works across OWNER/GROUPNAME/ASIZE combinations because size+epoch are always adjacent
-# when using --time-style=+%s.
-function parse_line(line,   left, right, nlt, i, t, toks, tail_start) {
-  # Skip total/toplam lines
-  if (line ~ /^(total|toplam)[[:space:]]+/) return 0
-
-  if (!_find_epoch_span(line)) return 0
-
-  # Extract tail (filename + symlink target if any) safely:
-  # CRITICAL: Use "tail" approach - never tokenize the filename part.
-  #
-  # Pattern: ^(PREFIX)(EPOCH)(TAIL)$
-  # where TAIL = everything after epoch (including any leading whitespace, tabs, unicode, symlink arrows)
-  #
-  # IMPORTANT: We preserve:
-  # - Leading spaces in filenames (e.g., " file-leading-space.txt")
-  # - Tabs in filenames (e.g., "a\tb.txt")
-  # - Spaces in filenames (e.g., "a b.txt")
-  # - Unicode characters (e.g., "İçerik-ğüşöç.txt")
-  # - Symlink arrows (" -> target")
-  #
-  # Strategy: epoch_end points to the last character of the epoch.
-  # Everything from (epoch_end + 1) onwards is the tail, which we preserve RAW.
-  # We do NOT skip any whitespace - the first character after epoch might be:
-  # - A separator space (normal case)
-  # - Part of the filename (if filename starts with space)
-  # Both cases are handled correctly by taking everything as-is.
-
-  # Extract tail: everything after epoch_end (inclusive of epoch_end+1)
-  # This preserves ALL whitespace, tabs, and content exactly as-is
-  name = substr(line, epoch_end + 1)
-  if (name ~ /^[[:space:]]/) name = substr(name, 2)
-
-  # left part: everything before the epoch span
-  left = substr(line, 1, epoch_start - 1)
-  gsub(/^[[:space:]]+/, "", left)
-
-  # Tokenize left by whitespace; this is safe because we only need fixed fields
-  # that do not contain spaces.
-  nlt = split(left, toks, /[[:space:]]+/)
-  if (nlt < 3) return 0
-
-  # If ASIZE, first token is blocks
-  if (ASIZE) {
-    blocks = toks[1]
-    perms  = toks[2]
-    links  = toks[3]
-
-    # Remaining tokens after perms+links depend on OWNER/GROUPNAME.
-    if (OWNER && GROUPNAME) {
-      if (nlt < 6) return 0
-      owner = toks[4]
-      group = toks[5]
-      size  = toks[nlt]
-    } else if (!OWNER && GROUPNAME) {
-      if (nlt < 5) return 0
-      owner = ""
-      group = toks[4]
-      size  = toks[nlt]
-    } else if (OWNER && !GROUPNAME) {
-      if (nlt < 5) return 0
-      owner = toks[4]
-      group = ""
-      size  = toks[nlt]
-    } else {
-      # !OWNER && !GROUPNAME
-      if (nlt < 3) return 0
-      owner = ""
-      group = ""
-      size  = toks[nlt]
-    }
-  } else {
-    blocks = ""
-    perms  = toks[1]
-    links  = toks[2]
-
-    if (OWNER && GROUPNAME) {
-      # Format: perms links owner group size
-      # So we need at least 5 tokens: toks[1]=perms, toks[2]=links, toks[3]=owner, toks[4]=group, toks[5]=size
-      if (nlt < 5) return 0
-      owner = toks[3]
-      group = toks[4]
-      size  = toks[nlt]
-    } else if (!OWNER && GROUPNAME) {
-      if (nlt < 4) return 0
-      owner = ""
-      group = toks[3]
-      size  = toks[nlt]
-    } else if (OWNER && !GROUPNAME) {
-      if (nlt < 4) return 0
-      owner = toks[3]
-      group = ""
-      size  = toks[nlt]
-    } else {
-      # !OWNER && !GROUPNAME
-      if (nlt < 2) return 0
-      owner = ""
-      group = ""
-      size  = toks[nlt]
-    }
-  }
-
-  return 1
-}
-
-{
-  if (!parse_line($0)) next
-
-  n++
-  a_blocks[n] = blocks
-  a_perms[n]  = perms
-  a_links[n]  = links
-  a_owner[n]  = owner
-  a_group[n]  = group
-  a_size[n]   = size
-  a_epoch[n]  = epoch
-  a_name[n]   = name
-  time_calc(epoch + 0)
-  a_tprefix[n] = time_prefix
-  a_tnum[n] = time_num
-  a_tunit[n] = time_unit
-  a_tfuture[n] = time_future
-  if (time_future) any_future = 1
-  if (length(time_prefix) > w_tprefix) w_tprefix = length(time_prefix)
-  tnum_s = sprintf("%d", time_num)
-  if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
-  if (length(time_unit) > w_tunit) w_tunit = length(time_unit)
-
-  # widths (raw, without color) - use strip_colors for accurate width calculation
-  if (ASIZE) {
-    bcalc = blocks
-    if (HUMANREADABLE && bcalc ~ /^[0-9]+$/) bcalc = bcalc "B"
-    if (length(bcalc) > w_blocks) w_blocks = length(bcalc)
-  }
-  if (length(perms) > w_perms) w_perms = length(perms)
-  if (length(links) > w_links) w_links = length(links)
-
-  if (OWNER) {
-    # replace $USER with "you" only for width calc if we will do it
-    o = owner
-    if (!NUMERICUIDGID && USERNAME != "" && o == USERNAME) o = "you"
-    if (length(o) > w_owner) w_owner = length(o)
-  }
-  if (GROUPNAME && length(group) > w_group) w_group = length(group)
-  # For size, we need to calculate width without color codes (same as ll script uses wc -L)
-  size_raw = strip_colors(size)
-  if (HUMANREADABLE && size_raw ~ /^[0-9]+$/) size_raw = size_raw "B"
-  if (length(size_raw) > w_size) w_size = length(size_raw)
-}
-
-END {
-  for (i=1; i<=n; i++) {
-    out = ""
-
-    if (ASIZE) {
-      b = a_blocks[i]
-      if (HUMANREADABLE) {
-        b_colored = color_size_human(b)
-        out = out lpad(b_colored, w_blocks) " "
-      } else {
-        # Numeric blocks: keep it dim (byte color) and right-aligned
-        out = out cb lpad(b, w_blocks) creset " "
-      }
-    }
-
-    p = a_perms[i]
-    out = out rpad(color_perm(p), w_perms) " "
-
-    out = out lpad(a_links[i], w_links) " "
-
-    if (OWNER) {
-      o = a_owner[i]
-      if (!NUMERICUIDGID && USERNAME != "" && o == USERNAME) o = "you"
-      # colorize owner
-      if (o == "you") o = cusr o creset
-      else if (o == "root") o = croot o creset
-      out = out rpad(o, w_owner) " "
-    }
-
-    if (GROUPNAME) {
-      g = a_group[i]
-      out = out rpad(g, w_group) " "
-    }
-
-    s = a_size[i]
-    if (HUMANREADABLE) {
-      s_colored = color_size_human(s)
-      out = out lpad(s_colored, w_size) " "
-    } else {
-      # numeric bytes: color by tier; right align
-      c = size_color_numeric(s + 0)
-      s_colored = c s creset
-      out = out lpad(s_colored, w_size) " "
-    }
-
-    num_s = sprintf("%d", a_tnum[i])
-    unit_s = rpad(a_tunit[i], w_tunit)
-    value_width = any_future ? (w_tnum + 3) : w_tnum
-    value_core = a_tfuture[i] ? ("in " num_s) : num_s
-    value_field = lpad(value_core, value_width)
-    t_raw = value_field " " unit_s
-    t_colored = color_reltime_by_lbl(t_raw, a_tunit[i], a_tfuture[i])
-    out = out t_colored " "
-
-    out = out format_name(a_name[i], a_perms[i])
-
-    print out
-  }
-}
-'
-
-# ----------------------------------------------------------------------------
-# Opt-in driver (LL_USE_COMMON_AWK=1): BEGIN calls ll_common_init() which
-# installs all helpers / color tables / constants from ll_common.awk, and the
-# row/END blocks reference the llc_* helpers (strip_colors, lpad, rpad,
-# color_perm, size_color_numeric, color_size_human, color_reltime) plus
-# ll_linux.awk's parse_line / format_name_raw. No helper definitions live
-# here — this driver is intentionally small so Phase 2 can delete
-# AWK_PROG_STANDALONE and rename this to the sole driver.
-# shellcheck disable=SC2016
-AWK_PROG_COMMON='
+AWK_PROG='
 BEGIN {
   ll_common_init()
 }
@@ -816,27 +350,15 @@ END {
 # Disable colors for testing (matches ll_macos behavior)
 NO_COLOR="${LL_NO_COLOR:-0}"
 
-if [ "${LL_USE_COMMON_AWK:-0}" = "1" ]; then
-  "$AWK_BIN" "${AWK_COMMON_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG_COMMON") -v ASIZE="$ASIZE" \
-    -v HUMANREADABLE="$HUMANREADABLE" \
-    -v NOW_EPOCH="$LL_LINUX_NOW_EPOCH" \
-    -v NUMERICUIDGID="$NUMERICUIDGID" \
-    -v OWNER="$OWNER" \
-    -v GROUPNAME="$GROUPNAME" \
-    -v LISTDIRECTORY="$LISTDIRECTORY" \
-    -v USERNAME="$USERNAME" \
-    -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
-else
-  "$AWK_BIN" -f <(printf '%s\n' "$AWK_PROG_STANDALONE") -v ASIZE="$ASIZE" \
-    -v HUMANREADABLE="$HUMANREADABLE" \
-    -v NOW_EPOCH="$LL_LINUX_NOW_EPOCH" \
-    -v NUMERICUIDGID="$NUMERICUIDGID" \
-    -v OWNER="$OWNER" \
-    -v GROUPNAME="$GROUPNAME" \
-    -v LISTDIRECTORY="$LISTDIRECTORY" \
-    -v USERNAME="$USERNAME" \
-    -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
-fi
+"$AWK_BIN" "${AWK_LIB_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+  -v HUMANREADABLE="$HUMANREADABLE" \
+  -v NOW_EPOCH="$LL_LINUX_NOW_EPOCH" \
+  -v NUMERICUIDGID="$NUMERICUIDGID" \
+  -v OWNER="$OWNER" \
+  -v GROUPNAME="$GROUPNAME" \
+  -v LISTDIRECTORY="$LISTDIRECTORY" \
+  -v USERNAME="$USERNAME" \
+  -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
 
 # Print total line if present (same as ll script)
 if [ -n "$ll_total" ]; then
