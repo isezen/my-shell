@@ -4,8 +4,6 @@
 ├── docs
 │   ├── issues
 │   │   └── fish-non-interactive-breakage.md
-│   ├── plans
-│   │   └── ll-common-awk-migration.md
 │   ├── ACTIVATION_SPECIFICATION.md
 │   ├── LL_SPECS.md
 │   ├── proj_summary.md
@@ -212,5 +210,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-25 directories, 186 files
+24 directories, 185 files
 ```

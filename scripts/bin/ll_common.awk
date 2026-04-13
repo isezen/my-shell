@@ -1,15 +1,33 @@
 ###############################################################################
 # scripts/bin/ll_common.awk
-# Shared awk helpers for ll_* implementations (macOS + linux).
-# BSD awk compatible (no nested function defs, no gawk-only features).
+#
+# Shared awk render/format/color layer for ll_linux and ll_macos. This file
+# is MANDATORY (not optional) for both drivers; each one chains it via
+# `awk -f ll_common.awk ...` on every invocation.
+#
+# Parity contract:
+#   tests/ll/20_baseline_snapshot.bats locks ll_linux and ll_macos to
+#   byte-identical output under the baseline env
+#   (LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800). Any edit in
+#   this file that changes rendered output needs `make baseline-regen` and
+#   a review of the resulting diff — DO NOT regenerate silently.
+#
+# BSD awk compatibility (STRICT):
+#   This file runs under /usr/bin/awk on macOS (BSD awk) AND gawk on Linux.
+#   It MUST NOT use gawk-only features: no nested function defs, no
+#   3-argument match(str, re, array), no gensub(), no and/or/xor, no
+#   strtonum, no ENVIRON["..."] assignment, no length(array), no asorti().
+#   Gawk-only patterns belong in ll_linux.awk (GNU ls ingress layer).
 #
 # Expected vars (passed via -v):
 #   DEC_SEP, USERNAME, NUMERIC, NOW_EPOCH, SI
-#   (optional) ENVIRON["LS_COLORS"]
+#   (optional) ENVIRON["LS_COLORS"] (read-only)
 #
-# Provides:
+# Top-level entry point:
 #   ll_common_init()
-#   plus many helper functions used by ll_macos drivers.
+#     installs size/time constants, ANSI palettes, LS_COLORS parse results,
+#     and every llc_* helper the drivers call from their BEGIN/row/END.
+#     Must be called once from each driver's BEGIN block.
 
 function max(a,b){ return (a>b)?a:b }
 function sp(n){ if (n<=0) return ""; return sprintf("%*s", n, "") }

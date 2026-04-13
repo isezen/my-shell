@@ -663,25 +663,47 @@ When a directory operand cannot be read (permission denied):
 
 ### 9.1 Common Contract
 
-Tests assert that the following behaviors are identical across both implementations:
-- Color palette (same ANSI codes) - directly tested
-- Time bucket thresholds and labels - directly tested
-- Filename quoting rules - directly tested
-- Owner "you" substitution - directly tested
-- Permission color mapping - directly tested
+`ll_linux` and `ll_macos` SHALL produce **byte-identical** output for every
+supported fixture case under the baseline environment:
+
+```
+LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800
+```
+
+This is enforced by a three-invariant regression lock in
+`tests/ll/20_baseline_snapshot.bats`:
+
+1. `ll_linux` output MUST equal its locked baseline in
+   `tests/fixtures/ll_baseline/ll_linux/` (per-driver self-regression)
+2. `ll_macos` output MUST equal its locked baseline in
+   `tests/fixtures/ll_baseline/ll_macos/` (per-driver self-regression)
+3. The two baseline directories MUST be byte-identical to each other
+   (cross-driver parity)
+
+The shared render/format/color layer is `scripts/bin/ll_common.awk`, which
+BOTH drivers load unconditionally via `awk -f`. `ll_linux`'s GNU `ls -l`
+ingress parsing lives in `scripts/bin/ll_linux.awk` (gawk-only; kept out
+of the common library because `ll_common.awk` must stay BSD-awk compatible
+for `ll_macos`).
+
+Behaviors that are therefore locked across both implementations:
+
+- Column layout and widths (perms, links, owner, group, size, time, name)
+- Color palette (identical ANSI SGR codes) — emitted only when `LL_NO_COLOR!=1`
+- Time bucket thresholds and labels
+- Filename quoting rules (spaces, tabs → double quotes)
+- Symlink arrow rendering (`name -> target`)
+- Owner "you" substitution
+- Permission color mapping
+- Size tier color mapping (numeric + human-readable)
+- Very-long-name terminal clear suffix (`\e[K\e[0m` at `length(name_out) >= 200`)
+- Total line placement and formatting
 
 **Traceability:**
-- Test: `tests/ll_linux/40_color.bats`, `tests/ll_macos/10_core.bats` - color parity assertions
-- Test: `tests/ll_linux/30_edge.bats`, `tests/ll_macos/10_core.bats` - time bucket tests
-- Test: `tests/ll_linux/20_paths.bats`, `tests/ll_macos/10_core.bats` - filename handling tests
-
-**UNSPECIFIED:**
-- Column order and formatting parity (verified via tooling canonicalization, not direct test assertions)
-- Relative time calculation logic parity (verified via tooling, not direct test assertions)
-
-**Implementation Detail (Non-Normative):**
-- Tooling (`scripts/dev/ll-compare`) compares outputs across platforms, suggesting parity
-- However, cross-platform parity is primarily verified via canonicalization comparison, not direct test assertions
+- `tests/ll/20_baseline_snapshot.bats` — three-invariant cross-driver lock
+- `tests/fixtures/ll_baseline/{ll_linux,ll_macos}/` — 52 locked snapshots each
+- `scripts/dev/ll-compare --snapshot` — snapshot capture tool
+- `make baseline-check` / `make baseline-regen` — operator entry points
 
 ### 9.2 Linux Implementation Requirements
 
@@ -695,15 +717,16 @@ Tests assert that the following behaviors are identical across both implementati
 - Test harness detects GNU ls at `tests/ll_linux/00_harness.bash` lines 22-29
 - These are implementation and test environment details, not user-visible contract requirements
 
-#### 9.2.2 Test Environment Notes
-
-**UNSPECIFIED:**
-- Exact `ls` invocation flags (not part of user-visible contract)
+#### 9.2.2 GNU `ls` Invocation
 
 **Implementation Detail (Non-Normative):**
-- `ll_linux` invokes `ls` with `--color -l --time-style=+%s` at `scripts/bin/ll_linux` line 112
-- Test harness uses same flags at `tests/ll_linux/00_harness.bash` line 211
-- These are implementation details, not user-visible contract requirements
+- `ll_linux` invokes GNU `ls` with `--time-style=+%s -l` plus a color flag
+  picked from `LL_NO_COLOR`:
+  - `LL_NO_COLOR=1` → `--color=never` (plain filenames, matches `ll_macos`)
+  - otherwise → `--color=always` (explicit — `--color=auto` resolves to
+    "never" under command substitution and would silently disable colors)
+- The output is fed through `ll_linux.awk`'s `parse_line()` and then
+  rendered by the driver END block using `ll_common.awk` helpers.
 
 ### 9.3 macOS Implementation Requirements
 

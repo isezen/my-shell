@@ -36,11 +36,24 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 ## Behavior Contract
 
 The `ll` family (`ll`, `ll_linux`, `ll_macos`) follows a **test-locked behavior contract**:
-- Behavior is documented and locked by existing tests as a current-state specification
-- Untested behaviors are explicitly marked as **UNSPECIFIED** and not guaranteed
-- The specification documents what is tested and required, not what should be or could be
 
-For complete behavior documentation, see [`docs/LL_SPECIFICATIONS.md`](docs/LL_SPECIFICATIONS.md).
+- `ll_linux` and `ll_macos` share a single render/format/color layer in
+  `scripts/bin/ll_common.awk` (BSD-awk compatible, mandatory for both
+  drivers). `ll_linux`'s GNU `ls -l` ingress parser lives in
+  `scripts/bin/ll_linux.awk`.
+- **Cross-driver parity is byte-level locked.** Under the baseline
+  environment (`LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800`),
+  `ll_linux` and `ll_macos` produce byte-identical output for every
+  supported fixture case. `tests/ll/20_baseline_snapshot.bats` enforces
+  three invariants simultaneously: each driver matches its own locked
+  baseline, and the two baselines match each other.
+- Behavior is documented and locked by existing tests as a current-state
+  specification; untested behaviors are explicitly marked as
+  **UNSPECIFIED** and not guaranteed.
+- Snapshot captures live under `tests/fixtures/ll_baseline/`. Regenerate
+  intentionally with `make baseline-regen`, verify with `make baseline-check`.
+
+For complete behavior documentation, see [`docs/LL_SPECS.md`](docs/LL_SPECS.md).
 
 ## Installation
 
