@@ -21,7 +21,7 @@ load './00_harness.bash'
   "${LL_GNU_TOUCH}" -d "${f1_str}" f1.txt
   "${LL_GNU_TOUCH}" -d "${f2_str}" f2.txt
 
-  run "${LL_SCRIPT}" .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" .
   assert_success
 
   local esc=$'\033'
@@ -47,7 +47,7 @@ load './00_harness.bash'
   "${LL_GNU_TOUCH}" -d "@$((now - 120 * 86400))" mon.txt
   "${LL_GNU_TOUCH}" -d "@$((now - 400 * 86400))" yr.txt
 
-  run "${LL_SCRIPT}" .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" .
   assert_success
 
   esc=$'\033'
@@ -70,7 +70,7 @@ load './00_harness.bash'
   chmod 755 xfile
   ln -s xfile lnk 2>/dev/null || true
 
-  run "${LL_SCRIPT}" .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" .
   assert_success
 
   esc=$'\033'
@@ -118,7 +118,7 @@ load './00_harness.bash'
     skip "ACL marker '+' not present"
   fi
 
-  run "${LL_SCRIPT}" .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" .
   assert_success
 
   esc=$'\033'
@@ -133,7 +133,7 @@ load './00_harness.bash'
   ll_mk_testdir
   touch youfile
 
-  run "${LL_SCRIPT}" .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" .
   assert_success
 
   esc=$'\033'
@@ -148,6 +148,13 @@ load './00_harness.bash'
   local chown_ok
   local wheel_ok
 
+  # When the test runner itself is root (e.g. a CI container), ll_linux's
+  # "you" substitution replaces owner=root with "you" and colors it with
+  # cusr, never reaching the croot branch. Skip in that case — the colored
+  # root case can only be exercised by a non-root user.
+  if [ "$(id -u)" = "0" ]; then
+    skip "test runner is root; 'you' substitution hides the croot color path"
+  fi
   if ! command -v sudo >/dev/null 2>&1; then
     skip "sudo not available"
   fi
@@ -194,7 +201,7 @@ load './00_harness.bash'
     skip "sudo chown not supported"
   fi
 
-  run "${LL_SCRIPT}" .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" .
   assert_success
 
   esc=$'\033'
@@ -234,7 +241,7 @@ load './00_harness.bash'
     skip "truncate failed for tfile"
   fi
 
-  run "${LL_SCRIPT}" -- bfile kfile mfile gfile tfile
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" -- bfile kfile mfile gfile tfile
   assert_success
 
   assert_output --regexp "${esc}\\[38;5;240m[[:space:]]*512${esc}\\[0m.*bfile"
@@ -263,7 +270,7 @@ load './00_harness.bash'
     skip "truncate failed"
   fi
 
-  run "${LL_SCRIPT}" -h .
+  LL_NO_COLOR=0 run "${LL_SCRIPT}" -h .
   assert_success
 
   esc=$'\033'

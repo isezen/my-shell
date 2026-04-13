@@ -75,6 +75,20 @@ _diff_baseline() {
 }
 
 @test "ll baseline: ll_linux snapshot matches tests/fixtures/ll_baseline/ll_linux" {
+  # The baseline snapshots are captured on macOS+gnubin. They cannot match
+  # bit-for-bit on a real Linux host because of filesystem/userland semantics
+  # that GNU `ls -l` surfaces differently from APFS vs ext4:
+  #   - default group for new files (wheel/staff on macOS, root on Linux CI)
+  #   - symlink mode bits (APFS preserves; ext4 reports 0777 always)
+  #   - directory inode blocks (APFS → 64, ext4 → 4096)
+  #   - `total N` line (APFS → 0, ext4 → 4 for a non-empty dir)
+  #   - `touch +Nyr` clamping (BSD touch and GNU touch disagree past ~2038/292yr)
+  # None of these are migration regressions; they are intrinsic host differences.
+  # On Linux, `make test-ll-linux` (tests/ll_linux/*.bats) exercises ll_linux
+  # directly against real GNU coreutils, which is the canonical coverage.
+  if [ "$(uname -s)" != "Darwin" ]; then
+    skip "ll_linux baseline is captured on macOS+gnubin; Linux hosts run tests/ll_linux/ suite instead"
+  fi
   if ! _ll_linux_available; then
     skip "GNU coreutils not available (install coreutils for macOS or run on Linux)"
   fi
