@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v shellcheck >/dev/null 2>&1; then
+  echo "ShellCheck not found. Install with: brew install shellcheck" >&2
+  exit 1
+fi
+if ! command -v git >/dev/null 2>&1; then
+  echo "git not found; cannot select tracked files" >&2
+  exit 1
+fi
+
+list_only=0
+if [ "${1:-}" = "--list" ]; then
+  list_only=1
+  shift
+fi
+
+files=()
+
+while IFS= read -r -d '' file; do
+  case "$file" in
+    *.sh|*.bash)
+      files+=("$file")
+      continue
+      ;;
+    *.zsh|*.fish)
+      continue
+      ;;
+  esac
+
+  if [ ! -f "$file" ]; then
+    continue
+  fi
+
+  first_line="$(head -n 1 "$file" 2>/dev/null || true)"
+  case "$first_line" in
+    '#!'*)
+      if [[ "$first_line" == *zsh* ]] || [[ "$first_line" == *fish* ]]; then
+        continue
+      fi
+      if [[ "$first_line" == *bash* ]] || [[ "$first_line" == *ksh* ]] || [[ "$first_line" == *' sh'* ]] || [[ "$first_line" == */sh* ]]; then
+        files+=("$file")
+      fi
+      ;;
+  esac
+  done < <(git ls-files -z)
+
+if [ "${#files[@]}" -eq 0 ]; then
+  echo "No shell scripts found for ShellCheck" >&2
+  exit 0
+fi
+
+if [ "$list_only" -eq 1 ]; then
+  printf '%s\n' "${files[@]}"
+  exit 0
+fi
+
+# Allow callers (e.g., pre-commit) to set flags via SHELLCHECK_OPTS.
+# shellcheck disable=SC2086
+shellcheck ${SHELLCHECK_OPTS:-} "${files[@]}"

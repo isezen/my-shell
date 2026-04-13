@@ -1,0 +1,691 @@
+#!/bin/bash
+# scripts/dev/ls-compare
+# Test script to compare ls -l output with ll script implementations
+# Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
+# Baseline is ALWAYS GNU ls (-l --time-style=+%s --color=always) for both ll_linux and ll_macos.
+
+set -euo pipefail
+
+export LC_ALL=C
+export TZ=UTC
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN_DIR="$PROJECT_ROOT/scripts/bin"
+
+# ============================================================================
+# PARSE COMMAND LINE ARGUMENTS
+# ============================================================================
+
+SHOW_ANSI=0
+STRIP_ANSI=0
+FAIL_ONLY=0
+KEEP_DIR=0
+SIDE_BY_SIDE=0
+ONLY_TESTS=()
+ONLY_MODE=0
+
+# shellcheck disable=SC2034  # Variables set for future use
+while [ $# -gt 0 ]; do
+  case "${1:-}" in
+    --show-ansi) SHOW_ANSI=1; shift ;;
+    --strip-ansi) STRIP_ANSI=1; shift ;;
+    --fail-only) FAIL_ONLY=1; shift ;;
+    --keep-dir) KEEP_DIR=1; shift ;;
+    --side-by-side) SIDE_BY_SIDE=1; shift ;;
+    --only) ONLY_MODE=1; ONLY_TESTS+=("$2"); shift 2 ;;
+    --only=*) ONLY_MODE=1; ONLY_TESTS+=("${1#--only=}"); shift ;;
+    --help|-h)
+      cat <<'EOF'
+Usage: ls-compare [OPTIONS] <ll_linux|ll_macos>
+
+Compare GNU ls -l output with ll implementation (baseline is GNU ls for both ll_linux and ll_macos).
+
+OPTIONS:
+  --help, -h              Show this help message and exit
+  --show-ansi             Make ANSI/control characters visible in diff output
+  --strip-ansi            Strip ANSI codes for comparison (debugging only)
+  --fail-only             Only print failing tests (still shows summary)
+  --keep-dir              Do not delete test directory after tests complete
+  --side-by-side          Display outputs side-by-side format
+  --only <TEST>           Run only specific test case(s)
+
+EXAMPLES:
+  ls-compare ll_linux
+  ls-compare ll_macos
+  ls-compare --fail-only ll_macos
+EOF
+      exit 0
+      ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+
+if [ $# -ne 1 ]; then
+  echo "Error: exactly one script argument required (ll_linux or ll_macos)" >&2
+  exit 1
+fi
+
+SCRIPT_NAME="$1"
+case "$SCRIPT_NAME" in
+  ll_linux|ll_macos) : ;;
+  *) echo "Error: script must be ll_linux or ll_macos" >&2; exit 1 ;;
+esac
+
+# --------------------------------------------------------------------------
+# BASELINE LS (ALWAYS GNU LS)
+# --------------------------------------------------------------------------
+# We intentionally use GNU ls for both ll_linux and ll_macos, because ll_macos
+# now matches ll_linux's output semantics and formatting.
+if command -v gls >/dev/null 2>&1; then
+  LS_BIN="$(command -v gls)"
+elif ls --color -l --time-style="+%s" . >/dev/null 2>&1; then
+  LS_BIN="ls"
+elif [ -x /opt/local/libexec/gnubin/ls ]; then
+  LS_BIN="/opt/local/libexec/gnubin/ls"
+else
+  echo "Error: GNU ls required (gls/coreutils). Baseline is GNU ls for both ll_linux and ll_macos." >&2
+  exit 1
+fi
+LS_FLAGS=("--color=always" "-l" "--time-style=+%s")
+
+# ============================================================================
+# SETUP TEST ENVIRONMENT
+# ============================================================================
+
+TEST_DIR="/tmp/ls-compare-test-$$"
+mkdir -p "$TEST_DIR"
+echo "Test directory: $TEST_DIR"
+cd "$TEST_DIR" || exit 1
+
+# Create test files
+touch file1.txt file2.txt
+mkdir dir1
+chmod 755 file1.txt
+chmod 644 file2.txt
+
+# Extra filename edge cases
+printf '' > "a b.txt"
+printf '' > " file-leading-space.txt"
+printf '' > $'a\tb.txt'
+printf '' > "İçerik-ğüşöç.txt"
+# Very long name (0 bytes as per requirement)
+_long_name="$(printf 'a%.0s' {1..210}).txt"
+printf '' > "$_long_name"
+
+# Extra file types
+ln -s "file1.txt" "symlink-to-file1" 2>/dev/null || true
+ln -s "does-not-exist" "broken-symlink" 2>/dev/null || true
+mkfifo "fifo1" 2>/dev/null || true
+
+# Permissions edge cases
+cp "file1.txt" "setuid-file" 2>/dev/null || true
+chmod 4755 "setuid-file" 2>/dev/null || true
+cp "file1.txt" "setgid-file" 2>/dev/null || true
+chmod 2755 "setgid-file" 2>/dev/null || true
+mkdir -p "setgid-dir" 2>/dev/null || true
+chmod 2755 "setgid-dir" 2>/dev/null || true
+mkdir -p "sticky-dir" 2>/dev/null || true
+chmod 1777 "sticky-dir" 2>/dev/null || true
+
+# Make mtimes deterministic (Jan 1, 2020 00:00:00 local time)
+touch -t 202001010000.00 \
+  file1.txt file2.txt dir1 \
+  "a b.txt" " file-leading-space.txt" $'a\tb.txt' "İçerik-ğüşöç.txt" \
+  "$_long_name" symlink-to-file1 broken-symlink \
+  fifo1 setuid-file setgid-file setgid-dir sticky-dir 2>/dev/null || true
+
+# Set LL_NOW_EPOCH if not already set
+if [ -z "${LL_NOW_EPOCH:-}" ]; then
+  export LL_NOW_EPOCH=1577836800
+fi
+
+# Helper: convert an epoch (seconds) into a touch -t timestamp
+epoch_to_touch_ts() {
+  local epoch="${1:?epoch required}"
+  if date -r "$epoch" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -r "$epoch" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  if date -d "@${epoch}" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -d "@${epoch}" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  return 1
+}
+
+# Create timestamp boundary fixtures relative to LL_NOW_EPOCH
+create_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((LL_NOW_EPOCH - delta))
+  local ts
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
+}
+
+create_future_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((LL_NOW_EPOCH + delta))
+  local ts
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
+}
+
+create_mtime_fixture "mtime-now-1s" 1
+create_mtime_fixture "mtime-now-119s" 119
+create_mtime_fixture "mtime-now-120s" 120
+create_mtime_fixture "mtime-now-3599s" 3599
+create_mtime_fixture "mtime-now-3600s" 3600
+create_mtime_fixture "mtime-now-2days" 172800
+create_future_mtime_fixture "mtime-now-3yr" $((3 * 31536000))
+create_future_mtime_fixture "mtime-now-35yr" $((35 * 31536000))
+create_future_mtime_fixture "mtime-now-125yr" $((125 * 31536000))
+
+# Symlink target with space
+mkdir -p "case-symlink-target-space"
+printf '' > "case-symlink-target-space/target file.txt"
+ln -s "target file.txt" "case-symlink-target-space/link name.txt" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-space/target file.txt" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-target-space/link name.txt" 2>/dev/null || true
+
+# Symlink target with tab
+mkdir -p "case-symlink-target-tab"
+_tab_target=$'t\ta'
+_tab_link=$'l\ti'
+printf '' > "case-symlink-target-tab/$_tab_target"
+ln -s "$_tab_target" "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-tab/$_tab_target" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+
+# Future-only listing
+mkdir -p "case-future-only"
+printf '' > "case-future-only/f1.txt"
+printf '' > "case-future-only/f2.txt"
+_f1_epoch=$((LL_NOW_EPOCH + 2 * 24 * 3600))
+_f2_epoch=$((LL_NOW_EPOCH + 12 * 24 * 3600))
+_f1_ts=$(epoch_to_touch_ts "$_f1_epoch") || _f1_ts=""
+_f2_ts=$(epoch_to_touch_ts "$_f2_epoch") || _f2_ts=""
+if [ -n "$_f1_ts" ]; then
+  touch -t "$_f1_ts" "case-future-only/f1.txt" 2>/dev/null || true
+fi
+if [ -n "$_f2_ts" ]; then
+  touch -t "$_f2_ts" "case-future-only/f2.txt" 2>/dev/null || true
+fi
+
+# Mixed units and time widths
+mkdir -p "case-mixed-time-width"
+printf '' > "case-mixed-time-width/sec.txt"
+printf '' > "case-mixed-time-width/hrs.txt"
+printf '' > "case-mixed-time-width/day.txt"
+printf '' > "case-mixed-time-width/mon.txt"
+printf '' > "case-mixed-time-width/future-3yr.txt"
+printf '' > "case-mixed-time-width/future-35yr.txt"
+printf '' > "case-mixed-time-width/future-125yr.txt"
+printf '' > "case-mixed-time-width/future-1000yr.txt"
+_sec_epoch=$((LL_NOW_EPOCH - 5))
+_hrs_epoch=$((LL_NOW_EPOCH - 3 * 3600))
+_day_epoch=$((LL_NOW_EPOCH - 12 * 24 * 3600))
+_mon_epoch=$((LL_NOW_EPOCH - 120 * 24 * 3600))
+_yr3_epoch=$((LL_NOW_EPOCH + 3 * 31536000))
+_yr35_epoch=$((LL_NOW_EPOCH + 35 * 31536000))
+_yr125_epoch=$((LL_NOW_EPOCH + 125 * 31536000))
+_yr1000_epoch=$((LL_NOW_EPOCH + 1000 * 31536000))
+_sec_ts=$(epoch_to_touch_ts "$_sec_epoch") || _sec_ts=""
+_hrs_ts=$(epoch_to_touch_ts "$_hrs_epoch") || _hrs_ts=""
+_day_ts=$(epoch_to_touch_ts "$_day_epoch") || _day_ts=""
+_mon_ts=$(epoch_to_touch_ts "$_mon_epoch") || _mon_ts=""
+_yr3_ts=$(epoch_to_touch_ts "$_yr3_epoch") || _yr3_ts=""
+_yr35_ts=$(epoch_to_touch_ts "$_yr35_epoch") || _yr35_ts=""
+_yr125_ts=$(epoch_to_touch_ts "$_yr125_epoch") || _yr125_ts=""
+_yr1000_ts=$(epoch_to_touch_ts "$_yr1000_epoch") || _yr1000_ts=""
+if [ -n "$_sec_ts" ]; then
+  touch -t "$_sec_ts" "case-mixed-time-width/sec.txt" 2>/dev/null || true
+fi
+if [ -n "$_hrs_ts" ]; then
+  touch -t "$_hrs_ts" "case-mixed-time-width/hrs.txt" 2>/dev/null || true
+fi
+if [ -n "$_day_ts" ]; then
+  touch -t "$_day_ts" "case-mixed-time-width/day.txt" 2>/dev/null || true
+fi
+if [ -n "$_mon_ts" ]; then
+  touch -t "$_mon_ts" "case-mixed-time-width/mon.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr3_ts" ]; then
+  touch -t "$_yr3_ts" "case-mixed-time-width/future-3yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr35_ts" ]; then
+  touch -t "$_yr35_ts" "case-mixed-time-width/future-35yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr125_ts" ]; then
+  touch -t "$_yr125_ts" "case-mixed-time-width/future-125yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr1000_ts" ]; then
+  touch -t "$_yr1000_ts" "case-mixed-time-width/future-1000yr.txt" 2>/dev/null || true
+fi
+
+# ============================================================================
+# TEST CASES
+# ============================================================================
+
+test_case_names=(
+  "default"
+  "-d"
+  "--directory"
+  "-d ."
+  "-g"
+  "-G"
+  "-o"
+  "--no-group"
+  "-g -G"
+  "-s"
+  "--size"
+  "-h"
+  "--human-readable"
+  "--si"
+  "-n"
+  "--numeric-uid-gid"
+  "-s -h"
+  "-s --si"
+  "-n -h"
+  "-n --si"
+  "-s -g"
+  "-s -h -g -G"
+  "file then --no-group"
+  "file then -G"
+  "--no-group then file"
+  "-h file1.txt"
+  "--no-group file2.txt"
+  "-- a b.txt"
+  "--  file-leading-space.txt"
+  "-- a\\tb.txt"
+  "-- İçerik-ğüşöç.txt"
+  "-- symlink-to-file1"
+  "-- broken-symlink"
+  "-- fifo1"
+  "-- setuid-file"
+  "-- setgid-file"
+  "-- setgid-dir"
+  "-- sticky-dir"
+  "mtime now-1s"
+  "mtime now-119s"
+  "mtime now-120s"
+  "mtime now-3599s"
+  "mtime now-3600s"
+  "mtime now-2days"
+  "mtime now-3yr"
+  "mtime now-35yr"
+  "mtime now-125yr"
+  "symlink target space"
+  "symlink target tab"
+  "future-only"
+  "mixed time width"
+)
+
+test_case_argv=(
+  ""
+  "-d"
+  "--directory"
+  "-d ."
+  "-g"
+  "-G"
+  "-o"
+  "--no-group"
+  "-g -G"
+  "-s"
+  "--size"
+  "-h"
+  "--human-readable"
+  "--si"
+  "-n"
+  "--numeric-uid-gid"
+  "-s -h"
+  "-s --si"
+  "-n -h"
+  "-n --si"
+  "-s -g"
+  "-s -h -g -G"
+  "file1.txt --no-group"
+  "file1.txt -G"
+  "--no-group file1.txt"
+  "-h file1.txt"
+  "--no-group file2.txt"
+  "-- \"a b.txt\""
+  "-- \" file-leading-space.txt\""
+  "-- \$'a\\tb.txt'"
+  "-- \"İçerik-ğüşöç.txt\""
+  "-- symlink-to-file1"
+  "-- broken-symlink"
+  "-- fifo1"
+  "-- setuid-file"
+  "-- setgid-file"
+  "-- setgid-dir"
+  "-- sticky-dir"
+  "mtime-now-1s"
+  "mtime-now-119s"
+  "mtime-now-120s"
+  "mtime-now-3599s"
+  "mtime-now-3600s"
+  "mtime-now-2days"
+  "mtime-now-3yr"
+  "mtime-now-35yr"
+  "mtime-now-125yr"
+  "case-symlink-target-space"
+  "case-symlink-target-tab"
+  "case-future-only"
+  "case-mixed-time-width"
+)
+
+if [ "${#test_case_names[@]}" -ne "${#test_case_argv[@]}" ]; then
+  echo "Internal error: test_case_names and test_case_argv length mismatch" >&2
+  exit 2
+fi
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+strip_ansi_and_controls() {
+  local text="$1"
+  text=$(printf '%s' "$text" | perl -pe '
+    s/\e\[[0-9;?]*[ -\/]*[@-~]//g;
+    s/\e\][^\a]*(\a|\e\\)//g;
+    s/\e[P^_].*?(\e\\)//gs;
+    s/\e[()#][0-9A-Za-z]//g;
+    s/\e[\x40-\x5F]//g;
+    s/\x1b\[[0-9;]*K//g;
+    s/\r//g;
+  ')
+  text=$(printf '%s' "$text" | tr -d '\v')
+  printf '%s' "$text"
+}
+
+# Set environment variables for canonicalization based on flags
+set_compare_env() {
+  local arg
+
+  LS_COMPARE_HAS_BLOCKS=0
+  LS_COMPARE_HAS_HUMAN=0
+  LS_COMPARE_HAS_SI=0
+
+  for arg in "$@"; do
+    case "$arg" in
+      -s|--size)
+        LS_COMPARE_HAS_BLOCKS=1
+        ;;
+      -h|--human-readable)
+        LS_COMPARE_HAS_HUMAN=1
+        ;;
+      --si)
+        LS_COMPARE_HAS_HUMAN=1
+        LS_COMPARE_HAS_SI=1
+        ;;
+      *)
+        ;;
+    esac
+  done
+
+  export LS_COMPARE_HAS_BLOCKS
+  export LS_COMPARE_HAS_HUMAN
+  export LS_COMPARE_HAS_SI
+}
+
+# Canonicalize output for comparison using Perl scripts
+# Normalizes both ls and script output into comparable format
+canonicalize_output() {
+  local output="$1"
+  local is_script="${2:-0}"
+
+  # Strip ANSI codes first
+  output=$(strip_ansi_and_controls "$output")
+
+  # Drop total/toplam lines
+  output=$(printf '%s\n' "$output" | perl -ne 'print unless /^\s*(toplam|total)\b/i')
+
+  # Ensure environment variables are set
+  export LS_COMPARE_NOW_EPOCH="${LL_NOW_EPOCH:-$(date +%s)}"
+  export LS_COMPARE_USER="${USER}"
+
+  # Use appropriate canonicalization script
+  if [ "$is_script" -eq 1 ]; then
+    # Canonicalize script output (ll_linux, ll_macos)
+    printf '%s\n' "$output" | perl "${PROJECT_ROOT}/scripts/dev/ls-compare-canon-script.pl"
+  else
+    # Canonicalize ls output (gls, /bin/ls)
+    printf '%s\n' "$output" | perl "${PROJECT_ROOT}/scripts/dev/ls-compare-canon-ls.pl"
+  fi
+}
+
+# Compare canonicalized outputs
+print_comparison() {
+  # Compare ls output with script output using canonicalization
+  # This allows format differences (times, usernames) to be normalized before comparison
+  local ls_output="$1"
+  local script_output="$2"
+
+  local ls_canon
+  local script_canon
+
+  # Canonicalize both outputs
+  ls_canon=$(canonicalize_output "$ls_output" 0)
+  script_canon=$(canonicalize_output "$script_output" 1)
+
+  # Compare canonicalized outputs
+  if [ "$ls_canon" = "$script_canon" ]; then
+    return 0
+  fi
+  return 1
+}
+
+print_header() {
+  local color_magenta=$'\033[35m'
+  local color_yellow=$'\033[33m'
+  local color_reset=$'\033[0m'
+
+  local test_num_colored="${color_magenta}Test #${actual_test_num}${color_reset}"
+  local display_test_name="${color_yellow}${test_name}${color_reset}"
+
+  echo "${test_num_colored}: ${display_test_name}"
+  echo "----------------------------------"
+}
+
+# ============================================================================
+# RUN TESTS
+# ============================================================================
+
+errors=0
+passed=0
+
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo "Testing ls vs ll implementation"
+  echo "=================================="
+  echo ""
+fi
+
+for idx in "${!test_case_names[@]}"; do
+  test_name="${test_case_names[$idx]}"
+  test_argv_snippet="${test_case_argv[$idx]}"
+
+  actual_test_num=$((idx + 1))
+
+  if [ "$ONLY_MODE" -eq 1 ]; then
+    matched=0
+    for only in "${ONLY_TESTS[@]}"; do
+      if [[ "$only" =~ ^[0-9]+$ ]]; then
+        if [ "$only" -eq "$actual_test_num" ]; then
+          matched=1
+          break
+        fi
+      else
+        if [ "$only" = "$test_name" ]; then
+          matched=1
+          break
+        fi
+      fi
+    done
+    if [ "$matched" -eq 0 ]; then
+      continue
+    fi
+  fi
+
+  # Build argv array from bash snippet
+  tc_argv=()
+  if [ -n "$test_argv_snippet" ]; then
+    # shellcheck disable=SC2086
+    eval "tc_argv=($test_argv_snippet)"
+  fi
+
+  # Strip leading -- from argv for display (it's only for safe parsing)
+  tc_argv_clean=()
+  for i in "${!tc_argv[@]}"; do
+    arg="${tc_argv[$i]}"
+    # Skip the first "--" if present
+    if [ "$i" -eq 0 ] && [ "$arg" = "--" ]; then
+      continue
+    fi
+    tc_argv_clean+=("$arg")
+  done
+
+  # Separate options from operands (ls needs options before operands)
+  ls_opts=()
+  ls_operands=()
+  outcome=""
+  # shellcheck disable=SC2034
+  skip_reason=""
+
+  if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
+    for a in "${tc_argv_clean[@]}"; do
+      case "$a" in
+        -d|--directory|-g|-G|-o|--no-group|-s|--size|-h|--human-readable|--si|-n|--numeric-uid-gid)
+          # Baseline is GNU ls for both scripts: pass flags unchanged (no BSD mapping, no skips).
+          ls_opts+=("$a")
+          ;;
+        *)
+          ls_operands+=("$a")
+          ;;
+      esac
+    done
+  fi
+
+  # Build final command arrays for execution (exactly as will be run)
+  # Initialize arrays if empty to avoid unbound variable errors
+  ls_cmd_array=("$LS_BIN" "${LS_FLAGS[@]}")
+  if [ "${#ls_opts[@]}" -gt 0 ]; then
+    ls_cmd_array+=("${ls_opts[@]}")
+  fi
+  if [ "${#ls_operands[@]}" -gt 0 ]; then
+    ls_cmd_array+=("${ls_operands[@]}")
+  fi
+  script_cmd_array=("$SCRIPT_NAME")
+  if [ "${#tc_argv[@]}" -gt 0 ]; then
+    script_cmd_array+=("${tc_argv[@]}")
+  fi
+
+  # Build command display strings (exact arrays joined by single space)
+  ls_cmd_display="${ls_cmd_array[*]}"
+  script_cmd_display="${script_cmd_array[*]}"
+
+  # Run ls with exact command array
+  ls_stdout_file=$(mktemp)
+  ls_stderr_file=$(mktemp)
+  (cd "$TEST_DIR" && "${ls_cmd_array[@]}" >"$ls_stdout_file" 2>"$ls_stderr_file" || true)
+  ls_stdout="$(cat "$ls_stdout_file")"
+  ls_stderr="$(cat "$ls_stderr_file")"
+  rm -f "$ls_stdout_file" "$ls_stderr_file"
+
+  # If no stdout but there's stderr, this is likely an error - use empty stdout
+  if [ -z "$ls_stdout" ] && [ -n "$ls_stderr" ]; then
+    ls_stdout="[ERROR] $ls_stderr"
+  fi
+
+  # Run ll implementation
+  script_path="$BIN_DIR/$SCRIPT_NAME"
+  if [ ! -f "$script_path" ] || [ ! -x "$script_path" ]; then
+    echo "Error: Script '$script_path' not found or not executable" >&2
+    exit 1
+  fi
+
+  script_stdout_file=$(mktemp)
+  if [ "${#tc_argv[@]}" -gt 0 ]; then
+    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" "${tc_argv[@]}" >"$script_stdout_file" 2>/dev/null || true)
+  else
+    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" >"$script_stdout_file" 2>/dev/null || true)
+  fi
+  script_stdout="$(cat "$script_stdout_file")"
+  rm -f "$script_stdout_file"
+
+  # Set environment variables for canonicalization based on test flags
+  if [ "${#tc_argv_clean[@]}" -gt 0 ]; then
+    set_compare_env "${tc_argv_clean[@]}"
+  else
+    set_compare_env
+  fi
+
+  # Compare outputs
+  if print_comparison "$ls_stdout" "$script_stdout"; then
+    outcome="PASS"
+  else
+    outcome="FAIL"
+  fi
+
+  # Determine if we should print this test's output
+  should_print=0
+  if [ "$FAIL_ONLY" -eq 0 ]; then
+    should_print=1
+  elif [ "$outcome" = "FAIL" ] || [ "$outcome" = "SKIP" ]; then
+    should_print=1
+  fi
+
+  if [ "$should_print" -eq 1 ]; then
+    print_header
+    echo "$outcome"
+    echo "  ls command: $ls_cmd_display"
+    echo "  ls output ($(echo -n "$ls_stdout" | wc -c) bytes):"
+    if [ -z "$ls_stdout" ]; then
+      echo "    (empty)"
+    else
+      # shellcheck disable=SC2001
+      echo "$ls_stdout" | sed 's/^/    /'
+    fi
+    echo "  script command: $script_cmd_display"
+    echo "  script output ($(echo -n "$script_stdout" | wc -c) bytes):"
+    if [ -z "$script_stdout" ]; then
+      echo "    (empty)"
+    else
+      # shellcheck disable=SC2001
+      echo "$script_stdout" | sed 's/^/    /'
+    fi
+  fi
+
+  if [ "$outcome" = "PASS" ]; then
+    ((passed++))
+  elif [ "$outcome" = "FAIL" ]; then
+    ((errors++))
+  fi
+
+  if [ "$should_print" -eq 1 ]; then
+    echo ""
+  fi
+done
+
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo ""
+  echo "=================================="
+fi
+echo "Results: $passed passed, $errors failed"
+
+# ============================================================================
+# CLEANUP
+# ============================================================================
+
+cd /tmp || exit 1
+if [ "$KEEP_DIR" -eq 0 ]; then
+  rm -rf "$TEST_DIR"
+else
+  echo "Test directory kept: $TEST_DIR"
+fi
+
+exit "$errors"

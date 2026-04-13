@@ -22,25 +22,36 @@ _myos="$(__get_os)"
 
 # Clear terminal
 if __my_shell_has clear; then
+  # clear terminal
   c() { command clear; }
 fi
 
 # ============================================================================
 # Directory Navigation
 # ============================================================================
-
+# Go to Home
 cdh() { cd ~/"$1" 2>/dev/null || cd ~ || return; echo "You are at $HOME"; }
 
+# Up 1 level
 ..() { builtin cd .. "${@}"; }
+# Up 2 levels
 ...() { builtin cd ../.. "${@}"; }
+# Up 3 levels
 ....() { builtin cd ../../.. "${@}"; }
+# Up 4 levels
 .....() { builtin cd ../../../.. "${@}"; }
+# Up 5 levels
 ......() { builtin cd ../../../../.. "${@}"; }
 
+# Up 1 level
 .1() { .. "$@"; }
+# Up 2 levels
 .2() { ... "$@"; }
+# Up 3 levels
 .3() { .... "$@"; }
+# Up 4 levels
 .4() { ..... "$@"; }
+# Up 5 levels
 .5() { ...... "$@"; }
 
 # ============================================================================
@@ -49,6 +60,7 @@ cdh() { cd ~/"$1" 2>/dev/null || cd ~ || return; echo "You are at $HOME"; }
 
 # ls wrapper (keeps original behavior, best-effort)
 if __my_shell_has ls && __my_shell_has getopt; then
+  # list files
   ls() {
     local -a param
     param=()
@@ -75,12 +87,15 @@ fi
 
 # ll wrapper: if an external ll exists, prefer it; else fallback to ls -lh
 if __my_shell_has ll; then
+  # long list
   ll() { command ll -hGg --group-directories-first "$@"; }
 else
+  # long list
   ll() { command ls -lh "$@"; }
 fi
 
 if __my_shell_has dir; then
+  # list entries by columns
   dir() {
     local -a param
     param=()
@@ -96,13 +111,16 @@ if __my_shell_has dir; then
     command dir "${param[@]}" "$@"
   }
 else
+  # list entries by columns
   dir() { command ls -C -b "$@"; }
 fi
 
 # Prefer external "ll" if available; else prefer "vdir" if available; else fallback
 if __my_shell_has ll; then
+  # vertical directory listing
   vdir() { command ll -hGg "$@"; }
 elif __my_shell_has vdir; then
+  # vertical directory listing
   vdir() {
     local -a param
     param=()
@@ -112,16 +130,22 @@ elif __my_shell_has vdir; then
     command vdir "${param[@]}" "$@"
   }
 else
+  # vertical directory listing
   vdir() { command ls -l -b "$@"; }
 fi
 
 # Basic listing aliases
+# jobs list
 j() { jobs -l "$@"; }
+# list entries by columns
 l() { ls -CF "$@"; }
+# list regular + hidden
 la() { ls -AF "$@"; }
+# typo correction for ls
 sl() { ls "$@"; }
 
 # Advanced listing functions
+# list regular+hidden files
 laf() {
   local -a param
   param=()
@@ -130,9 +154,9 @@ laf() {
   fi
   command find . -maxdepth 1 -type f -print0 | sed -e 's:^\./::g' | xargs -0 -r ls "${param[@]}" "$@"
 }
-
+# list regular directories
 ld() { ls -d -- * "$@"; }
-
+# list regular files
 lf() {
   local -a param
   param=()
@@ -141,10 +165,11 @@ lf() {
   fi
   command find . -maxdepth 1 -type f ! -iname '.*' -print0 | sed -e 's:^\./::g' | xargs -0 -r ls "${param[@]}" "$@"
 }
-
+# list hidden items
 lh()  { ls -Ad .* "$@"; }
+# list hidden directories
 lhd() { ls -d .*/ "$@"; }
-
+# list hidden files
 lhf() {
   local -a param
   param=()
@@ -153,7 +178,7 @@ lhf() {
   fi
   command find . -maxdepth 1 -type f -iname '.*' -print0 | sed -e 's:^\./::g' | xargs -0 -r ls "${param[@]}" "$@"
 }
-
+# list all directories
 lad() {
   local -a param
   param=()
@@ -164,20 +189,27 @@ lad() {
 }
 
 # Long listing functions
+# long list all
 lla() { ll -A "$@"; }
+# long list regular directories
 lld() { ll -dhGg */ "$@"; }
+# long list hidden
 llh() { ll -hGgAd .* "$@"; }
+# long list hidden directories
 llhd() { ll -dhGg .*/ "$@"; }
-
+# long list regular files
 llf()  { command find . -maxdepth 1 -type f ! -iname '.*' -print0 | sed -e 's:^\./::g' | xargs -0 -r ll -hGd "$@"; }
+# long list all directories
 llad() { command find . -maxdepth 1 -type d ! -iname '.'   -print0 | sed -e 's:^\./::g' | xargs -0 -r ll -hGd "$@"; }
+# long list all files + hidden
 llaf() { command find . -maxdepth 1 -type f               -print0 | sed -e 's:^\./::g' | xargs -0 -r ll -hGd "$@"; }
+# long list only hidden files
 llhf() { command find . -maxdepth 1 -type f -iname '.*'   -print0 | sed -e 's:^\./::g' | xargs -0 -r ll -hGgd "$@"; }
 
 # ============================================================================
 # File Operations & Search
 # ============================================================================
-
+# find files by name pattern
 FindFiles() {
   if (( $# == 0 )); then
     echo "Usage: FindFiles <pattern>" >&2
@@ -186,7 +218,7 @@ FindFiles() {
   local searchfile="$1"
   command find . -type f -name "*${searchfile}*"
 }
-
+# find in current directory
 fhere() { command find . -name "$@"; }
 
 # ============================================================================
@@ -195,25 +227,30 @@ fhere() { command find . -name "$@"; }
 
 if __my_shell_has du; then
   if command du --version >/dev/null 2>&1; then
-    # GNU du
+    # disk usage
     du()  { command du -k -d 1 -- "$@" 2>/dev/null; }
+      # disk usage current directory
     du.() { command du -k -d 0 -- "$@" 2>/dev/null; }
   else
-    # BSD du (macOS)
+    # disk usage
     du()  { command du -k -d 1 "$@" 2>/dev/null; }
+      # disk usage current directory
     du.() { command du -k -d 0 "$@" 2>/dev/null; }
   fi
 
   if __my_shell_has ncdu; then
+    # interactive disk usage
     du2() { command ncdu "$@"; }
   fi
 else
   if __my_shell_has ncdu; then
+    # disk usage
     du() { command ncdu "$@"; }
   fi
 fi
 
 if __my_shell_has du && __my_shell_has find && __my_shell_has awk; then
+  # disk usage of hidden files
   dushf() {
     echo "Calculating disk usage of hidden files in $PWD"
     command find . -path './.git' -prune -o -type f -name '.*' -print0 |
@@ -232,7 +269,7 @@ fi
 
 if __my_shell_has du && __my_shell_has mktemp && __my_shell_has sort && __my_shell_has wc && \
    __my_shell_has awk && __my_shell_has find && __my_shell_has tr; then
-
+  # disk usage of files by extension
   dufiles() {
     local ext="${1:-}"
     if [[ -z "$ext" ]]; then
@@ -263,7 +300,7 @@ if __my_shell_has du && __my_shell_has mktemp && __my_shell_has sort && __my_she
 
     rm -f -- "$tmp"
   }
-
+  # disk usage of directories
   dusd() {
     local tmp
     tmp="$(mktemp)" || { echo "mktemp failed" >&2; return 1; }
@@ -291,8 +328,10 @@ fi
 
 # df wrapper
 if __my_shell_has dfc; then
+  # dfc if available
   df() { command dfc "$@"; }
 else
+  # dfc if available
   df() { command df "$@"; }
 fi
 
@@ -301,21 +340,26 @@ fi
 # ============================================================================
 
 if __my_shell_has grep; then
+  # colorize grep
   grep() { command grep --color=auto "$@"; }
 fi
 if __my_shell_has fgrep; then
+  # colorize fgrep
   fgrep() { command fgrep --color=auto "$@"; }
 elif __my_shell_has grep; then
+  # colorize fgrep
   fgrep() { command grep -F --color=auto "$@"; }
 fi
 if __my_shell_has egrep; then
+  # colorize egrep
   egrep() { command egrep --color=auto "$@"; }
 elif __my_shell_has grep; then
+  # colorize egrep
   egrep() { command grep -E --color=auto "$@"; }
 fi
 
 if __my_shell_has ccze; then
-  # head wrapper with optional colorizers
+  # head with column width
   head() {
     local x
     x="$(tput cols 2>/dev/null || echo 80)"
@@ -324,7 +368,7 @@ if __my_shell_has ccze; then
     cmd="$cmd | command ccze -A"
     eval "$cmd"
   }
-  # tail wrapper with optional colorizers
+  # tail with column width
   tail() {
     local x
     x="$(tput cols 2>/dev/null || echo 80)"
@@ -334,7 +378,7 @@ if __my_shell_has ccze; then
     eval "$cmd"
   }
 elif __my_shell_has grc; then
-  # head wrapper with optional colorizers
+  # head with column width
   head() {
     local x
     x="$(tput cols 2>/dev/null || echo 80)"
@@ -343,7 +387,7 @@ elif __my_shell_has grc; then
     cmd="grc $cmd"
     eval "$cmd"
   }
-  # tail wrapper with optional colorizers
+  # tail with column width
   tail() {
     local x
     x="$(tput cols 2>/dev/null || echo 80)"
@@ -357,10 +401,11 @@ fi
 # ============================================================================
 # History
 # ============================================================================
-
+# history
 h() { history "$@"; }
 
 # Zsh cannot "history --clear" like fish; emulate with fc builtin.
+# history clear
 hc() {
   # Clear in-memory history (best-effort)
   fc -p
@@ -369,11 +414,12 @@ hc() {
 }
 
 if __my_shell_has grep; then
+  # search history
   hg() { fc -l 1 | command grep "$@"; }
 fi
-
+# clear history
 clhist() { hc; exit; }
-
+# statistics of history
 hs() {
   fc -l 1 | awk '{CMD[$2]++;count++;} END { for (a in CMD) print CMD[a] " " CMD[a]/count*100 "% " a; }' |
     command grep -v "./" |
@@ -390,6 +436,7 @@ hs() {
 # macOS memory helper (vm_stat/system_profiler)
 if __my_shell_has vm_stat && __my_shell_has system_profiler && __my_shell_has grep && \
    __my_shell_has awk && __my_shell_has sed; then
+  # show free memory amount
   mem() {
     local FREE_BLOCKS INACTIVE_BLOCKS SPECULATIVE_BLOCKS TOTALRAM FREE INACTIVE TOTAL
     FREE_BLOCKS="$(vm_stat | grep free | awk '{ print $3 }' | sed 's/\.//')"
@@ -412,8 +459,10 @@ fi
 
 # Define free only if dependencies exist (per your preference)
 if __my_shell_has free; then
+  # free memory
   free() { command free -mt "$@"; }
 elif [[ "$_myos" == "Darwin" ]] && __my_shell_has vm_stat && __my_shell_has perl; then
+  # free memory
   free() {
     command vm_stat | perl -ne '
       /page size of (\d+)/ and $size=$1;
@@ -424,6 +473,7 @@ fi
 
 # macOS internal IP (en0)
 if __my_shell_has ifconfig && __my_shell_has grep && __my_shell_has cut; then
+  # show internal ip
   internalip() {
     ifconfig en0 | grep inet | grep -v inet6 | cut -d ' ' -f2
   }
@@ -431,17 +481,22 @@ fi
 
 # Public IP helper (curl preferred; fallbacks)
 if __my_shell_has curl; then
+  # show my ip
   myip() { command curl -fsS https://api.ipify.org; echo; }
 elif __my_shell_has wget; then
+  # show my ip
   myip() { command wget -qO- https://api.ipify.org; echo; }
 elif __my_shell_has fetch; then
+  # show my ip
   myip() { command fetch -qo - https://api.ipify.org; echo; }
 fi
-
+# current time
 now()     { date +"%Y-%m-%d %T"; }
+# current time
 nowtime() { date +"%T"; }
+# current date
 nowdate() { date +"%Y-%m-%d"; }
-
+# show PATH
 showpath() { printf "%s\n" "$PATH"; }
 
 # ============================================================================
@@ -449,35 +504,45 @@ showpath() { printf "%s\n" "$PATH"; }
 # ============================================================================
 
 if __my_shell_has grc; then
+  # ping with count
   ping() { command grc ping -c 10 "$@"; }
+  # process status
   ps()   { command grc ps aux "$@"; }
 else
+  # ping with count
   ping() { command ping -c 10 "$@"; }
+  # process status
   ps()   { command ps aux "$@"; }
 fi
-
+# searchable process table
 psg() { command ps aux | command grep -v grep | command grep -i -e VSZ -e "$@"; }
-
+# find process
 pfind() {
   command ps aux | grep "$*" | command head -1 | cut -d " " -f 5
 }
 
 if __my_shell_has htop; then
+  #
   top()   { command htop -s PERCENT_CPU "$@"; }
+  # top for current user
   topme() { command htop -u "$USER" "$@"; }
 fi
 
 # ports (define only if tools exist; per your preference)
 if [[ "$_myos" == "Linux" ]]; then
   if __my_shell_has ss; then
+    # netstat
     ports() { command ss -tulpn "$@"; }
   elif __my_shell_has netstat; then
+    # netstat
     ports() { command netstat -tulanp "$@"; }
   fi
 elif [[ "$_myos" == "Darwin" ]]; then
   if __my_shell_has lsof; then
+    # netstat
     ports() { command lsof -nP -iTCP -sTCP:LISTEN "$@"; }
   elif __my_shell_has netstat; then
+    # netstat
     ports() { command netstat -anv -p tcp "$@"; }
   fi
 fi
@@ -487,17 +552,21 @@ fi
 # ============================================================================
 
 if __my_shell_has wget; then
+  # continue download in case of interruption
   wget() { command wget -c "$@"; }
 fi
 
 # ============================================================================
 # File Management
 # ============================================================================
-
+# mkdir a directory and move into that directory
 mcd() { command mkdir -p "$1" && builtin cd "$1" || return; }
+# mkdir with parent directories and verbose output
 mkd() { command mkdir -pv "$@" && builtin cd "$1" || return; }
+# mkdir with parent directories
 mkdir() { command mkdir -p "$@"; }
 
+  # permanently delete command
 rm!() { command rm -rf -- "$@"; }
 
 # ============================================================================
@@ -507,22 +576,29 @@ rm!() { command rm -rf -- "$@"; }
 # Update function definition based on system
 if [[ "$_myos" == "Linux" ]]; then
   if __my_shell_has apt-get; then
+    # sudo apt-get install
     sagi() { command sudo apt-get install "$@"; }
+    # update Linux/macports
     update() { command sudo apt-get update && command sudo apt-get upgrade; }
   else
+    # update Linux/macports
     update() { echo "install apt-get" >&2; return 127; }
   fi
 elif [[ "$_myos" == "Darwin" ]]; then
   if __my_shell_has port; then
+    # update Linux/macports
     update() { command sudo port selfupdate && command sudo port upgrade outdated "$@"; }
   else
     if __my_shell_has brew; then
+      # update Linux/macports
       update() { command brew update; }
     else
+      # update Linux/macports
       update() { echo "install MacPorts or Homebrew" >&2; return 127; }
     fi
   fi
 else
+  # update Linux/macports
   update() { echo "unsupported system (${_myos})" >&2; return 1; }
 fi
 
@@ -531,7 +607,9 @@ fi
 # ============================================================================
 
 if __my_shell_has nginx; then
+  # test nginx config
   nginxtest() { command sudo nginx -t "$@"; }
+  # reload nginx
   nginxreload() { command sudo nginx -s reload "$@"; }
 fi
 
@@ -540,6 +618,7 @@ fi
 # ============================================================================
 
 if __my_shell_has mogrify; then
+  # resize images for web
   webify() { command mogrify -resize '690>' *.png "$@"; }
 fi
 
@@ -548,9 +627,10 @@ fi
 # ============================================================================
 
 if __my_shell_has radian; then
+  # radian
   r() { command radian "$@"; }
 fi
-
+# source profile/config
 sourceme() {
   if [ -f ~/.zshrc ]; then
     source ~/.zshrc

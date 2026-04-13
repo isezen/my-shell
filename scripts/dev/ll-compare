@@ -1,0 +1,640 @@
+#!/bin/bash
+# scripts/dev/ll-compare
+# Test script to compare ll script outputs
+# NOTE: --fail-only prints ONLY failing cases (with details) + summary.
+# NOTE: compare is strict; use --show-ansi to make escapes visible when printing
+# Tests various parameter combinations
+# Usage: ll-compare [OPTIONS] <script1> <script2> [script3 ...]
+
+set -euo pipefail
+
+export LC_ALL=C
+export TZ=UTC
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN_DIR="$PROJECT_ROOT/scripts/bin"
+
+# ============================================================================
+# PARSE COMMAND LINE ARGUMENTS
+# ============================================================================
+
+SHOW_ANSI=0
+FAIL_ONLY=0
+KEEP_DIR=0
+SIDE_BY_SIDE=0
+ONLY_TESTS=()
+ONLY_MODE=0
+SNAPSHOT_DIR=""
+
+# shellcheck disable=SC2034  # Variables set for future use
+while [ $# -gt 0 ]; do
+  case "${1:-}" in
+    --show-ansi) SHOW_ANSI=1; shift ;;
+    --fail-only) FAIL_ONLY=1; shift ;;
+    --keep-dir) KEEP_DIR=1; shift ;;
+    --side-by-side) SIDE_BY_SIDE=1; shift ;;
+    --only) ONLY_MODE=1; ONLY_TESTS+=("$2"); shift 2 ;;
+    --only=*) ONLY_MODE=1; ONLY_TESTS+=("${1#--only=}"); shift ;;
+    --snapshot) SNAPSHOT_DIR="$2"; shift 2 ;;
+    --snapshot=*) SNAPSHOT_DIR="${1#--snapshot=}"; shift ;;
+    --help|-h)
+      cat <<'EOF'
+Usage: ll-compare [OPTIONS] <script1> [script2 ...]
+
+Compare ll script outputs, or capture baseline snapshots.
+
+OPTIONS:
+  --help, -h              Show this help message and exit
+  --show-ansi             Make ANSI/control characters visible in diff output
+  --fail-only             Only print failing tests (still shows summary)
+  --keep-dir              Do not delete test directory after tests complete
+  --side-by-side          Display outputs side-by-side format
+  --only <TEST>           Run only specific test case(s)
+  --snapshot <DIR>        Write raw per-case outputs to DIR/<script>/NNN_<slug>.out
+                          (skips PASS/FAIL comparison; single-script invocation ok)
+
+EXAMPLES:
+  ll-compare ll_linux ll_macos
+  ll-compare --fail-only ll_linux ll_macos
+  ll-compare --side-by-side ll_linux ll_macos
+  ll-compare --snapshot tests/fixtures/ll_baseline ll_linux ll_macos
+EOF
+      exit 0
+      ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+
+# In snapshot mode a single script is enough; in compare mode we still need ≥2.
+if [ -n "$SNAPSHOT_DIR" ]; then
+  if [ $# -lt 1 ]; then
+    echo "Usage: $0 --snapshot <DIR> <script1> [script2 ...]" >&2
+    exit 1
+  fi
+  # Resolve to an absolute path BEFORE the ll-compare script cd's into its
+  # temp fixture directory, otherwise relative --snapshot paths land inside
+  # the temp dir and vanish on cleanup.
+  mkdir -p "$SNAPSHOT_DIR" || { echo "Error: cannot create $SNAPSHOT_DIR" >&2; exit 1; }
+  SNAPSHOT_DIR="$(cd "$SNAPSHOT_DIR" && pwd)"
+elif [ $# -lt 2 ]; then
+  echo "Usage: $0 [OPTIONS] <script1> <script2> [script3 ...]" >&2
+  echo "At least two scripts are required for comparison." >&2
+  exit 1
+fi
+
+# Store script names and validate they exist
+script_names=()
+script_paths=()
+for script_name in "$@"; do
+  script_path="$BIN_DIR/$script_name"
+  if [ ! -f "$script_path" ] || [ ! -x "$script_path" ]; then
+    echo "Error: Script '$script_name' not found or not executable in $BIN_DIR" >&2
+    exit 1
+  fi
+  script_names+=("$script_name")
+  script_paths+=("$script_path")
+done
+
+# ============================================================================
+# SETUP TEST ENVIRONMENT
+# ============================================================================
+
+TEST_DIR="/tmp/ll-compare-test-$$"
+mkdir -p "$TEST_DIR"
+echo "Test directory: $TEST_DIR"
+cd "$TEST_DIR" || exit 1
+
+# Create test files (baseline)
+touch file1.txt file2.txt
+mkdir dir1
+chmod 755 file1.txt
+chmod 755 file2.txt
+
+# Additional filename fixtures
+printf '' > $'a b.txt'
+printf '' > $' file-leading-space.txt'
+printf '' > $'a\tb.txt'
+printf '' > $'İçerik-ğüşöç.txt'
+# Very long name (0 bytes as per requirement)
+_long_name="$(printf 'a%.0s' {1..210}).txt"
+printf '' > "$_long_name"
+
+# Symlink fixtures
+ln -s file1.txt symlink-to-file1
+ln -s does-not-exist broken-symlink
+
+# FIFO fixture (may fail on some FS; ignore errors)
+mkfifo fifo1 2>/dev/null || true
+
+# Permission edge cases
+printf '' > setuid-file
+chmod 755 setuid-file
+chmod u+s setuid-file 2>/dev/null || true
+printf '' > setgid-file
+chmod 755 setgid-file
+chmod 2755 setgid-file 2>/dev/null || true
+
+mkdir -p setgid-dir sticky-dir
+chmod 2755 setgid-dir 2>/dev/null || true
+chmod 1777 sticky-dir 2>/dev/null || true
+
+# Timestamp fixtures: deterministic + boundary coverage
+# Make baseline mtimes deterministic (Jan 1, 2020 00:00:00 local time)
+touch -t 202001010000.00 file1.txt file2.txt dir1 \
+  $'a b.txt' $' file-leading-space.txt' $'a\tb.txt' $'İçerik-ğüşöç.txt' \
+  "$_long_name" symlink-to-file1 broken-symlink \
+  fifo1 setuid-file setgid-file setgid-dir sticky-dir 2>/dev/null || true
+
+# All symlink variants in a single directory (one listing to cover all cases)
+mkdir -p "case-symlink-all"
+printf '' > "case-symlink-all/target.txt"
+printf '' > "case-symlink-all/file1.txt"
+printf '' > "case-symlink-all/file2.txt"
+chmod 755 "case-symlink-all/file2.txt" 2>/dev/null || true
+mkdir -p "case-symlink-all/target-dir"
+printf '' > "case-symlink-all/target file.txt"
+_all_tab_target=$'t\ta'
+printf '' > "case-symlink-all/$_all_tab_target"
+
+ln -s "target.txt"            "case-symlink-all/link-good" 2>/dev/null || true
+ln -s "does-not-exist"        "case-symlink-all/link-broken" 2>/dev/null || true
+ln -s "file1.txt"             "case-symlink-all/symlink-to-file1" 2>/dev/null || true
+ln -s "file2.txt"             "case-symlink-all/link-exe" 2>/dev/null || true
+ln -s "target file.txt"       "case-symlink-all/link space.txt" 2>/dev/null || true
+_all_tab_link=$'l\ti'
+ln -s "$_all_tab_target"      "case-symlink-all/$_all_tab_link" 2>/dev/null || true
+ln -s "target-dir"            "case-symlink-all/link-dir" 2>/dev/null || true
+
+touch -t 202001010000.00 "case-symlink-all/target.txt" "case-symlink-all/file1.txt" "case-symlink-all/file2.txt" "case-symlink-all/target file.txt" \
+  "case-symlink-all/$_all_tab_target" "case-symlink-all/target-dir" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-all/link-good" "case-symlink-all/link-broken" "case-symlink-all/symlink-to-file1" \
+  "case-symlink-all/link-exe" "case-symlink-all/link space.txt" "case-symlink-all/$_all_tab_link" "case-symlink-all/link-dir" 2>/dev/null || true
+
+# Symlink target with space
+mkdir -p "case-symlink-target-space"
+printf '' > "case-symlink-target-space/target file.txt"
+ln -s "target file.txt" "case-symlink-target-space/link name.txt" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-space/target file.txt" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-target-space/link name.txt" 2>/dev/null || true
+
+# Symlink target with tab
+mkdir -p "case-symlink-target-tab"
+_tab_target=$'t\ta'
+_tab_link=$'l\ti'
+printf '' > "case-symlink-target-tab/$_tab_target"
+ln -s "$_tab_target" "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+touch -t 202001010000.00 "case-symlink-target-tab/$_tab_target" 2>/dev/null || true
+touch -h -t 202001010000.00 "case-symlink-target-tab/$_tab_link" 2>/dev/null || true
+
+# Set LL_NOW_EPOCH if not already set (DEFAULT to 1577836800 if NOT set)
+if [ -z "${LL_NOW_EPOCH:-}" ]; then
+  export LL_NOW_EPOCH=1577836800
+fi
+
+# Helper: convert an epoch (seconds) into a touch -t timestamp
+epoch_to_touch_ts() {
+  local epoch="${1:?epoch required}"
+  if date -r "$epoch" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -r "$epoch" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  if date -d "@${epoch}" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+    date -d "@${epoch}" +%Y%m%d%H%M.%S
+    return 0
+  fi
+  return 1
+}
+
+# Create timestamp boundary fixtures relative to LL_NOW_EPOCH
+create_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((LL_NOW_EPOCH - delta))
+  local ts
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
+}
+
+create_future_mtime_fixture() {
+  local name="${1:?name required}"
+  local delta="${2:?delta seconds required}"
+  local target_epoch=$((LL_NOW_EPOCH + delta))
+  local ts
+  ts=$(epoch_to_touch_ts "$target_epoch") || return 0
+  printf '' > "$name"
+  touch -t "$ts" "$name" 2>/dev/null || true
+}
+
+create_mtime_fixture "mtime-now-1s" 1
+create_mtime_fixture "mtime-now-119s" 119
+create_mtime_fixture "mtime-now-120s" 120
+create_mtime_fixture "mtime-now-3599s" 3599
+create_mtime_fixture "mtime-now-3600s" 3600
+create_mtime_fixture "mtime-now-2days" 172800
+create_future_mtime_fixture "mtime-now-3yr" $((3 * 31536000))
+create_future_mtime_fixture "mtime-now-35yr" $((35 * 31536000))
+create_future_mtime_fixture "mtime-now-125yr" $((125 * 31536000))
+
+# Future-only listing
+mkdir -p "case-future-only"
+printf '' > "case-future-only/f1.txt"
+printf '' > "case-future-only/f2.txt"
+_f1_epoch=$((LL_NOW_EPOCH + 2 * 24 * 3600))
+_f2_epoch=$((LL_NOW_EPOCH + 12 * 24 * 3600))
+_f1_ts=$(epoch_to_touch_ts "$_f1_epoch") || _f1_ts=""
+_f2_ts=$(epoch_to_touch_ts "$_f2_epoch") || _f2_ts=""
+if [ -n "$_f1_ts" ]; then
+  touch -t "$_f1_ts" "case-future-only/f1.txt" 2>/dev/null || true
+fi
+if [ -n "$_f2_ts" ]; then
+  touch -t "$_f2_ts" "case-future-only/f2.txt" 2>/dev/null || true
+fi
+
+# Mixed units and time widths
+mkdir -p "case-mixed-time-width"
+printf '' > "case-mixed-time-width/sec.txt"
+printf '' > "case-mixed-time-width/hrs.txt"
+printf '' > "case-mixed-time-width/day.txt"
+printf '' > "case-mixed-time-width/mon.txt"
+printf '' > "case-mixed-time-width/future-3yr.txt"
+printf '' > "case-mixed-time-width/future-35yr.txt"
+printf '' > "case-mixed-time-width/future-125yr.txt"
+printf '' > "case-mixed-time-width/future-1000yr.txt"
+_sec_epoch=$((LL_NOW_EPOCH - 5))
+_hrs_epoch=$((LL_NOW_EPOCH - 3 * 3600))
+_day_epoch=$((LL_NOW_EPOCH - 12 * 24 * 3600))
+_mon_epoch=$((LL_NOW_EPOCH - 120 * 24 * 3600))
+_yr3_epoch=$((LL_NOW_EPOCH + 3 * 31536000))
+_yr35_epoch=$((LL_NOW_EPOCH + 35 * 31536000))
+_yr125_epoch=$((LL_NOW_EPOCH + 125 * 31536000))
+_yr1000_epoch=$((LL_NOW_EPOCH + 1000 * 31536000))
+_sec_ts=$(epoch_to_touch_ts "$_sec_epoch") || _sec_ts=""
+_hrs_ts=$(epoch_to_touch_ts "$_hrs_epoch") || _hrs_ts=""
+_day_ts=$(epoch_to_touch_ts "$_day_epoch") || _day_ts=""
+_mon_ts=$(epoch_to_touch_ts "$_mon_epoch") || _mon_ts=""
+_yr3_ts=$(epoch_to_touch_ts "$_yr3_epoch") || _yr3_ts=""
+_yr35_ts=$(epoch_to_touch_ts "$_yr35_epoch") || _yr35_ts=""
+_yr125_ts=$(epoch_to_touch_ts "$_yr125_epoch") || _yr125_ts=""
+_yr1000_ts=$(epoch_to_touch_ts "$_yr1000_epoch") || _yr1000_ts=""
+if [ -n "$_sec_ts" ]; then
+  touch -t "$_sec_ts" "case-mixed-time-width/sec.txt" 2>/dev/null || true
+fi
+if [ -n "$_hrs_ts" ]; then
+  touch -t "$_hrs_ts" "case-mixed-time-width/hrs.txt" 2>/dev/null || true
+fi
+if [ -n "$_day_ts" ]; then
+  touch -t "$_day_ts" "case-mixed-time-width/day.txt" 2>/dev/null || true
+fi
+if [ -n "$_mon_ts" ]; then
+  touch -t "$_mon_ts" "case-mixed-time-width/mon.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr3_ts" ]; then
+  touch -t "$_yr3_ts" "case-mixed-time-width/future-3yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr35_ts" ]; then
+  touch -t "$_yr35_ts" "case-mixed-time-width/future-35yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr125_ts" ]; then
+  touch -t "$_yr125_ts" "case-mixed-time-width/future-125yr.txt" 2>/dev/null || true
+fi
+if [ -n "$_yr1000_ts" ]; then
+  touch -t "$_yr1000_ts" "case-mixed-time-width/future-1000yr.txt" 2>/dev/null || true
+fi
+
+# ============================================================================
+# TEST CASES
+# ============================================================================
+
+test_cases=(
+  "default|||"
+  "-d|||"
+  "--directory|||"
+  "-d .|||"
+  "-g|||"
+  "-G|||"
+  "-o|||"
+  "--no-group|||"
+  "-g -G|||"
+  "-s|||"
+  "--size|||"
+  "-h|||"
+  "--human-readable|||"
+  "--si|||"
+  "-n|||"
+  "--numeric-uid-gid|||"
+  "-s -h|||"
+  "-s --si|||"
+  "-n -h|||"
+  "-n --si|||"
+  "-s -g|||"
+  "-s -h -g -G|||"
+  "file then --no-group|||file1.txt --no-group|||"
+  "file then -G|||file1.txt -G|||"
+  "--no-group then file|||--no-group file1.txt|||"
+  "-h file1.txt|||"
+  "--no-group file2.txt|||"
+  "space filename|||-- \$'a b.txt'|||"
+  "leading-space filename|||-- \$' file-leading-space.txt'|||"
+  "tab filename|||-- \$'a\tb.txt'|||"
+  "unicode filename|||-- \$'İçerik-ğüşöç.txt'|||"
+  "symlink|||symlink-to-file1|||"
+  "broken symlink|||broken-symlink|||"
+  "fifo|||fifo1|||"
+  "setuid file|||setuid-file|||"
+  "setgid file|||setgid-file|||"
+  "setgid dir|||setgid-dir|||"
+  "sticky dir|||sticky-dir|||"
+  "mtime now-1s|||mtime-now-1s|||"
+  "mtime now-119s|||mtime-now-119s|||"
+  "mtime now-120s|||mtime-now-120s|||"
+  "mtime now-3599s|||mtime-now-3599s|||"
+  "mtime now-3600s|||mtime-now-3600s|||"
+  "mtime now-2days|||mtime-now-2days|||"
+  "mtime now-3yr|||mtime-now-3yr|||"
+  "mtime now-35yr|||mtime-now-35yr|||"
+  "mtime now-125yr|||mtime-now-125yr|||"
+  "symlink target space|||case-symlink-target-space|||"
+  "symlink target tab|||case-symlink-target-tab|||"
+  "symlink all in one dir|||case-symlink-all|||"
+  "future-only|||case-future-only|||"
+  "mixed time width|||case-mixed-time-width|||"
+)
+
+# ============================================================================
+# RUN TESTS
+# ============================================================================
+
+errors=0
+passed=0
+
+color_yellow=$'\033[33m'
+color_magenta=$'\033[35m'
+color_reset=$'\033[0m'
+
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo "Testing comparison: ${script_names[*]}"
+  echo "=================================="
+  echo ""
+fi
+
+ # shellcheck disable=SC2329
+strip_ansi_and_controls() {
+  local text="$1"
+  text=$(printf '%s' "$text" | perl -pe '
+    s/\e\[[0-9;?]*[ -\/]*[@-~]//g;
+    s/\e\][^\a]*(\a|\e\\)//g;
+    s/\e[P^_].*?(\e\\)//gs;
+    s/\e[()#][0-9A-Za-z]//g;
+    s/\e[\x40-\x5F]//g;
+    s/\x1b\[[0-9;]*K//g;
+    s/\r//g;
+  ')
+  text=$(printf '%s' "$text" | tr -d '\v')
+  printf '%s' "$text"
+}
+
+keep_sgr_strip_other_controls() {
+  # Keep only SGR color sequences (CSI ... m).
+  # Strip everything else that can have terminal side-effects (OSC, DCS, CSI K, etc).
+  local text="$1"
+  text=$(printf '%s' "$text" | perl -0777 -pe '
+    # OSC: ESC ] ... (BEL or ST)
+    s/\e\][^\a]*(\a|\e\\)//g;
+    # DCS/PM/APC: ESC P / ESC ^ / ESC _ ... ST
+    s/\e[P^_].*?(\e\\)//gs;
+    # Charset/designate
+    s/\e[()#][0-9A-Za-z]//g;
+    # Strip CSI sequences EXCEPT those ending with "m" (SGR).
+    # Example kept:    ESC [ 38;5;124 m
+    # Example removed: ESC [ K   (erase-to-end-of-line), cursor moves, etc.
+    s/\e\[[0-9;?]*[ -\/]*((?!m)[@-~])//g;
+    # Explicitly strip CSI ... K just in case
+    s/\e\[[0-9;]*K//g;
+    # Remove carriage return
+    s/\r//g;
+  ')
+  # Drop vertical tab
+  text=$(printf '%s' "$text" | tr -d '\v')
+  printf '%s' "$text"
+}
+
+make_visible() {
+  # Print output safely (avoid terminal control side-effects).
+  # --show-ansi: show escapes as \x1b, \r, \t etc.
+  # default: KEEP colors (SGR), strip other control sequences.
+  local text="$1"
+  if [ "$SHOW_ANSI" -eq 1 ]; then
+    python3 - <<'PY' "$text"
+import sys
+s = sys.argv[1]
+# Turn control chars (ESC, TAB, etc.) into visible escape sequences.
+# Keep unicode readable; only escape control bytes.
+bs = s.encode("utf-8", "surrogatepass").decode("utf-8", "surrogatepass")
+out = bs.encode("unicode_escape").decode("ascii")
+sys.stdout.write(out)
+PY
+  else
+    keep_sgr_strip_other_controls "$text"
+  fi
+}
+
+compare_outputs() {
+  # Strict compare (byte-for-byte in bash string terms).
+  # If you later want "ignore only filename color", we can reintroduce a smarter comparer.
+  [ "$1" = "$2" ]
+}
+
+# In nounset mode (-u), expanding an unset array like "${tc_argv[@]}" crashes.
+# Always keep tc_argv declared as an array.
+declare -a tc_argv=()
+
+print_test_header() {
+  local test_num="$1"
+  local name="$2"
+  local test_num_colored="${color_magenta}Test #${test_num}${color_reset}"
+  local display_test_name="${color_yellow}${name}${color_reset}"
+  echo -e "\n${test_num_colored}: ${display_test_name}"
+  echo "----------------------------------"
+}
+
+# Slugify a test case name into a filesystem-safe token:
+# lowercase, non-alnum → "_", collapse runs, trim edges.
+slugify() {
+  local s="$1"
+  s="$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')"
+  s="$(printf '%s' "$s" | sed -E 's/[^a-z0-9]+/_/g; s/^_+//; s/_+$//')"
+  printf '%s' "${s:-case}"
+}
+
+# Prepare snapshot output directories (per script) and fail fast if unwritable.
+if [ -n "$SNAPSHOT_DIR" ]; then
+  mkdir -p "$SNAPSHOT_DIR" || { echo "Error: cannot create $SNAPSHOT_DIR" >&2; exit 1; }
+  for script_name in "${script_names[@]}"; do
+    mkdir -p "$SNAPSHOT_DIR/$script_name" || {
+      echo "Error: cannot create $SNAPSHOT_DIR/$script_name" >&2; exit 1;
+    }
+  done
+  echo "Snapshot directory: $SNAPSHOT_DIR"
+fi
+
+global_index=0
+for test_case in "${test_cases[@]}"; do
+  # Parse structured test case: NAME|||ARGV
+  trim_ws() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+  }
+
+  if [[ "$test_case" == *"|||"* ]]; then
+    test_name="${test_case%%|||*}"
+    rest="${test_case#*|||}"
+    test_argv_str="${rest%%|||*}"
+  else
+    test_name="$test_case"
+    test_argv_str=""
+  fi
+
+  test_name="$(trim_ws "$test_name")"
+  test_argv_str="$(trim_ws "$test_argv_str")"
+
+  test_name="${test_name:-default}"
+  test_argv_str="${test_argv_str:-}"
+
+  global_index=$((global_index + 1))
+  actual_test_num=$global_index
+
+  if [ "$ONLY_MODE" -eq 1 ]; then
+    matched=0
+    for only in "${ONLY_TESTS[@]}"; do
+      if [[ "$only" =~ ^[0-9]+$ ]]; then
+        if [ "$only" -eq "$actual_test_num" ]; then
+          matched=1
+          break
+        fi
+      else
+        if [ "$only" = "$test_name" ]; then
+          matched=1
+          break
+        fi
+      fi
+    done
+    if [ "$matched" -eq 0 ]; then
+      continue
+    fi
+  fi
+
+  # Run all scripts and capture outputs
+  # IMPORTANT: ARGV is a shell-quoted argv string; expand it safely into an array
+  tc_argv=()
+  if [ -n "$test_argv_str" ]; then
+    # shellcheck disable=SC2086
+    eval "tc_argv=($test_argv_str)"
+  fi
+
+  outputs=()
+
+  for script_idx in $(seq 0 $((${#script_paths[@]} - 1))); do
+    script_path="${script_paths[$script_idx]}"
+    script_name="${script_names[$script_idx]}"
+    output_file=$(mktemp)
+    # Nounset-safe array expansion for Bash 3.2:
+    # If tc_argv is unset (possible edge w/ -u), expand to nothing.
+    # If set (even empty), expand normally.
+    (cd "$TEST_DIR" && LL_NOW_EPOCH="$LL_NOW_EPOCH" "$script_path" \
+      ${tc_argv[@]+"${tc_argv[@]}"} >"$output_file" 2>&1 || true)
+    output="$(cat "$output_file")"
+
+    if [ -n "$SNAPSHOT_DIR" ]; then
+      slug="$(slugify "$test_name")"
+      snap_file="$(printf '%s/%s/%03d_%s.out' "$SNAPSHOT_DIR" "$script_name" "$global_index" "$slug")"
+      cp "$output_file" "$snap_file"
+    fi
+
+    rm -f "$output_file"
+    outputs+=("$output")
+  done
+
+  # In snapshot mode, just write and move on. Skip PASS/FAIL comparison.
+  if [ -n "$SNAPSHOT_DIR" ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      printf '  %03d %s\n' "$global_index" "$test_name"
+    fi
+    continue
+  fi
+
+  # Check if all outputs are identical (after ANSI strip)
+  all_match=true
+  first_output="${outputs[0]}"
+  for i in $(seq 1 $((${#outputs[@]} - 1))); do
+    if ! compare_outputs "$first_output" "${outputs[$i]}"; then
+      all_match=false
+      break
+    fi
+  done
+
+  if [ "$all_match" = true ]; then
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      print_test_header "$actual_test_num" "$test_name"
+    fi
+    if [ "$FAIL_ONLY" -eq 0 ]; then
+      echo "PASS"
+      # Show outputs even on PASS (requested behavior)
+      for i in $(seq 0 $((${#script_names[@]} - 1))); do
+        if [ "$i" -gt 0 ]; then
+          echo ""
+        fi
+        echo "  ${script_names[$i]}:"
+        make_visible "${outputs[$i]}" | sed 's/^/    /'
+      done
+    fi
+    ((passed++))
+  else
+    # Print FAIL details:
+    # - normal mode: always print
+    # - --fail-only: print ONLY failing tests (this block)
+    print_test_header "$actual_test_num" "$test_name"
+    echo "FAIL"
+    for i in $(seq 0 $((${#script_names[@]} - 1))); do
+      if [ "$i" -gt 0 ]; then
+        echo ""
+      fi
+      echo "  ${script_names[$i]}:"
+      make_visible "${outputs[$i]}" | sed 's/^/    /'
+    done
+    ((errors++))
+  fi
+
+  # Spacing between printed test blocks:
+  # - normal mode prints every test, so always blank line
+  # - fail-only prints only fails, so blank line only after fails
+  if [ "$FAIL_ONLY" -eq 0 ] || [ "$all_match" = false ]; then
+    echo ""
+  fi
+done
+
+if [ "$FAIL_ONLY" -eq 0 ]; then
+  echo ""
+  echo "=================================="
+fi
+if [ -n "$SNAPSHOT_DIR" ]; then
+  echo "Snapshots written: $global_index case(s) × ${#script_names[@]} script(s)"
+else
+  echo "Results: $passed passed, $errors failed"
+fi
+
+# ============================================================================
+# CLEANUP
+# ============================================================================
+
+cd /tmp || exit 1
+if [ "$KEEP_DIR" -eq 0 ]; then
+  rm -rf "$TEST_DIR"
+else
+  echo "Test directory kept: $TEST_DIR"
+fi
+
+exit "$errors"

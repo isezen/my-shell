@@ -1,7 +1,7 @@
 # Makefile for my-shell project
 # Provides convenient commands for linting, formatting, and testing
 
-.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-act clean
+.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-ll-common test-ll-linux test-ll-macos test-ll test-ll-all test-act clean baseline-check baseline-regen
 
 # Default target
 .DEFAULT_GOAL := help
@@ -27,7 +27,7 @@ lint: lint-bash lint-fish ## Run all linting checks
 lint-bash: ## Check bash/sh scripts with ShellCheck
 	@echo "$(COLOR_GREEN)Checking bash/sh scripts with ShellCheck...$(COLOR_RESET)"
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck $(BASH_SCRIPTS) || exit 1; \
+		scripts/dev/run-shellcheck || exit 1; \
 		echo "$(COLOR_GREEN)✓ All bash scripts passed ShellCheck$(COLOR_RESET)"; \
 	else \
 		echo "$(COLOR_RED)✗ ShellCheck not found. Install with: brew install shellcheck$(COLOR_RESET)"; \
@@ -89,12 +89,62 @@ test: test-bats lint ## Run all tests (BATS tests and linting)
 test-bats: ## Run BATS tests
 	@echo "$(COLOR_GREEN)Running BATS tests...$(COLOR_RESET)"
 	@if command -v bats >/dev/null 2>&1; then \
-		bats tests/*.bats || exit 1; \
+		bats tests/*.bats tests/ll/*.bats || exit 1; \
 		echo "$(COLOR_GREEN)✓ All BATS tests passed$(COLOR_RESET)"; \
 	else \
 		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
 		exit 1; \
 	fi
+
+test-ll-common: ## Run common/wrapper tests
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll-linux: ## Run Linux-specific tests (GNU toolchain)
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll_linux/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll-macos: ## Run macOS-specific tests (BSD toolchain)
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll_macos/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll: ## Run platform-appropriate test suite
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		$(MAKE) test-ll-common test-ll-macos; \
+	else \
+		$(MAKE) test-ll-common test-ll-linux; \
+	fi
+
+test-ll-all: ## Run all test suites (unsuitable ones will soft-skip)
+	@$(MAKE) test-ll-common test-ll-linux test-ll-macos
+
+baseline-check: ## Verify ll_linux/ll_macos outputs match tests/fixtures/ll_baseline
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll/20_baseline_snapshot.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+baseline-regen: ## Regenerate tests/fixtures/ll_baseline snapshots (USE WITH CARE)
+	@echo "$(COLOR_YELLOW)Regenerating baseline snapshots from current code...$(COLOR_RESET)"
+	@rm -rf tests/fixtures/ll_baseline
+	@LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800 \
+		scripts/dev/ll-compare --snapshot tests/fixtures/ll_baseline --fail-only ll_linux ll_macos >/dev/null
+	@echo "$(COLOR_GREEN)✓ Baselines written to tests/fixtures/ll_baseline/$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Review with: git diff tests/fixtures/ll_baseline/$(COLOR_RESET)"
 
 test-act: ## Run GitHub Actions workflow locally with act (Ubuntu only)
 	@echo "$(COLOR_GREEN)Running GitHub Actions workflow locally with act...$(COLOR_RESET)"
@@ -121,4 +171,3 @@ clean: ## Clean temporary files
 	@find . -type f -name "*~" -delete
 	@find . -type f -name "*.bak" -delete
 	@echo "$(COLOR_GREEN)✓ Cleaned$(COLOR_RESET)"
-

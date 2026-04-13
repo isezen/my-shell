@@ -1,3 +1,4 @@
+# tests/test_helper/bats-support/load.bash
 # bats-support is a helper library providing common testing functions for bats
 # This is a minimal implementation for basic functionality
 
@@ -5,4 +6,3 @@
 if [ -f "${BATS_TEST_DIRNAME}/bats-assert/load.bash" ]; then
   load "${BATS_TEST_DIRNAME}/bats-assert/load.bash"
 fi
-

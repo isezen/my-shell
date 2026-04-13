@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# tests/alias.bats
 # Test suite for shell/bash/aliases.bash
 
 load 'test_helper/bats-support/load'
@@ -9,7 +10,7 @@ setup() {
   # Get the directory where this test file is located
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(cd "$TEST_DIR/.." && pwd)"
-  
+
   # Source shell/bash/aliases.bash
   source "$PROJECT_ROOT/shell/bash/aliases.bash"
 }
@@ -39,7 +40,7 @@ setup() {
   # Check if .1 function is created
   run type .1
   assert_success
-  
+
   # Check if .. function is created
   run type ..
   assert_success
@@ -228,17 +229,15 @@ setup() {
 @test "mcd function creates directory" {
   TEST_DIR=$(mktemp -d)
   TEST_SUBDIR="$TEST_DIR/test_subdir"
-  
+
   # mcd is run in a subshell, so we can't check PWD change
   # But we can check if directory is created
   run bash -c "source '$PROJECT_ROOT/shell/bash/aliases.bash' && mcd '$TEST_SUBDIR' && [ -d '$TEST_SUBDIR' ]"
   assert_success
-  
+
   # Verify directory was created
   [ -d "$TEST_SUBDIR" ]
-  
+
   # Cleanup
   rm -rf "$TEST_DIR"
 }
-
-

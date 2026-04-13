@@ -1,0 +1,1113 @@
+#!/usr/bin/env bash
+# scripts/bin/ll_macos
+
+# macOS-specific implementation of ll command
+# (patched) Match ll_linux symlink SGR (ignore LS_COLORS ln=target; use fixed symlink SGR)
+# Uses BSD utilities (ls, awk, stat) for macOS compatibility
+# Usage: ll_macos [OPTIONS] [FILES...]
+# macOS/BSD userland implementation for `ll`.
+#
+# Goals:
+# - Provide a `ll_linux`-compatible *presentation* (colors, relative time buckets, quoting rules)
+# - Use only macOS-default tools (BSD stat/ls/awk), no GNU coreutils required
+# - Best-effort parity for the subset of flags used by the test-suite
+
+set -euo pipefail
+
+# ------------------------------
+# Notes on perf
+# ------------------------------
+# The hot path already uses a single awk render.
+# The general path used to do:
+#   1) build huge bash arrays
+#   2) awk width pass
+#   3) N separate awk renders (per slice/row)
+# This patch keeps the same semantics but collapses the general path into ONE awk run
+# (headers + widths + render), which fixes the 12x slowdown regression.
+
+# ------------------------------
+# Flag scan (subset)
+# ------------------------------
+ASIZE=0
+HUMANREADABLE=0
+SI=0
+NUMERICUIDGID=0
+OWNER=1
+GROUPNAME=1
+LISTDIRECTORY=0
+
+# Robust scan: consider only options before `--`.
+for arg in "$@"; do
+  case "$arg" in
+    --)
+      break
+      ;;
+
+    --directory)
+      LISTDIRECTORY=1
+      ;;
+    --human-readable)
+      HUMANREADABLE=1
+      ;;
+    --si)
+      HUMANREADABLE=1
+      SI=1
+      ;;
+    --numeric-uid-gid)
+      NUMERICUIDGID=1
+      ;;
+    --size)
+      ASIZE=1
+      ;;
+    --no-group)
+      GROUPNAME=0
+      ;;
+
+    -*)
+      [ "$arg" = "-" ] && continue
+      _flags=${arg#-}
+      for ((i=0; i<${#_flags}; i++)); do
+        case "${_flags:i:1}" in
+          d) LISTDIRECTORY=1 ;;
+          h) HUMANREADABLE=1 ;;
+          n) NUMERICUIDGID=1 ;;
+          g) OWNER=0 ;;
+          G) GROUPNAME=0 ;;
+          o) GROUPNAME=0 ;;
+          s) ASIZE=1 ;;
+          *) ;;
+        esac
+      done
+      ;;
+    *)
+      ;;
+  esac
+done
+
+NOW_EPOCH="${LL_NOW_EPOCH:-}"
+if [[ ! "$NOW_EPOCH" =~ ^[0-9]+$ ]]; then
+  NOW_EPOCH="$(date +%s)"
+fi
+
+USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+DELIM=$'\037'
+# NOTE: Filenames with literal newlines are out-of-scope (line-based records).
+
+# Shared awk helpers (ll_common.awk)
+LL_COMMON_AWK="${LL_COMMON_AWK:-}"
+if [ -z "$LL_COMMON_AWK" ]; then
+  # Resolve alongside this script; keep in sync with ll_linux
+  _this_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+  LL_COMMON_AWK="${_this_dir}/ll_common.awk"
+fi
+
+# Disable colors for testing (matches ll_linux behavior)
+NO_COLOR="${LL_NO_COLOR:-0}"
+
+batch_push_rows() {
+  # Batch stat call for multiple paths
+  local paths=("$@")
+  [ "${#paths[@]}" -eq 0 ] && return 0
+
+  # Prepare paths for stat (escape leading dashes)
+  local stat_paths=()
+  for p in "${paths[@]}"; do
+    if [[ "$p" == -* ]]; then
+      stat_paths+=("./$p")
+    else
+      stat_paths+=("$p")
+    fi
+  done
+
+  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
+  local idx=0
+  while IFS= read -r st; do
+    [ "$idx" -ge "${#paths[@]}" ] && break
+    if [ -z "$st" ]; then
+      ((idx++))
+      continue
+    fi
+
+    local b512 perms links su sg uid gid size epoch name linktgt target
+    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name linktgt <<<"$st"
+
+    # Prefer %Y as link target (works for broken symlinks too).
+    target="${linktgt:-}"
+
+    # Backward-compat: if %Y is empty but %N contains "name -> target", split it.
+    if [[ -z "$target" ]] && [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+      target="${name#* -> }"
+      name="${name%% -> *}"
+    fi
+    if [[ "$name" == ./* ]]; then
+      name="${name#./}"
+    fi
+
+    local blocks1k=$(( (b512 + 1) / 2 ))
+
+    local owner group
+    if [ "$NUMERICUIDGID" -eq 1 ]; then
+      owner="$uid"
+      group="$gid"
+    else
+      owner="$su"
+      group="$sg"
+    fi
+
+    local path="${paths[$idx]}"
+    local row_idx=${#rows[@]}
+    # Fields: blocks perms links owner group size epoch name target path is_child
+    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${target}${DELIM}${path}${DELIM}0")
+    # Store mapping from path to row index for O(1) lookup
+    row_index_map["$path"]=$row_idx
+    ((idx++)) || true
+  done < <(/usr/bin/stat -f "$stat_fmt" -- "${stat_paths[@]}" 2>/dev/null)
+}
+
+target_type_from_perms() {
+  local perms="$1"
+  if [ -z "$perms" ]; then
+    printf 'O'
+    return
+  fi
+  local first="${perms:0:1}"
+  if [ "$first" = "d" ]; then
+    printf 'D'
+    return
+  fi
+  if [[ "$perms" == *x* ]]; then
+    printf 'X'
+    return
+  fi
+  printf 'F'
+}
+
+# ------------------------------
+# FAST PATH (single directory operand)
+# ------------------------------
+# ll-perf scenario: one operand, directory, not -d. This is the hot path.
+# Goal: minimize bash work + processes:
+# - no /bin/ls
+# - no readlink
+# - no second awk input (names|paths)
+# - one stat, one awk
+# - parse symlink target from stat %N ("name -> target") when available
+try_fastpath_single_dir() {
+  # PERF NOTE:
+  # This hot-path must stay *very* lean. Avoid per-entry bash loops.
+  # Do: 1 batched stat + tiny symlink-only stat(s) + 1 awk render.
+  # Don't: read entire stat output into bash arrays, mktemp churn, O(n) shell parsing.
+  # Preconditions:
+  # - not --directory / -d
+  # - single operand
+  # - operand is a directory and not a symlink
+  # - no multi-headers complexity
+  if [ "$LISTDIRECTORY" -ne 0 ]; then
+    return 1
+  fi
+  if [ "${#ops[@]}" -ne 1 ]; then
+    return 1
+  fi
+  if [ ! -d "${ops[0]}" ] || [ -L "${ops[0]}" ]; then
+    return 1
+  fi
+
+  # Locale knobs for labels/decimal
+  local locale_hint="${LC_ALL:-${LANG:-}}"
+  local total_label="total"
+  local DEC_SEP="."
+  case "$locale_hint" in
+    tr*|TR*)
+      total_label="toplam"
+      DEC_SEP=","  # Turkish uses comma decimal
+      ;;
+  esac
+  local total_applicable=1
+
+  local d="${ops[0]}"
+
+  # Move into directory so that:
+  # - globbing excludes dotfiles by default (matches current behavior)
+  # - stat %N prints just the entry name (not full path), which is what we want to display
+  # - we avoid /bin/ls entirely
+  (
+    cd "$d" 2>/dev/null || exit 0
+    shopt -s nullglob
+    entries=( * )
+
+    if [ "${#entries[@]}" -eq 0 ]; then
+      if [ "$total_applicable" -eq 1 ]; then
+        printf '%s 0\n' "$total_label"
+      fi
+      exit 0
+    fi
+
+    local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
+    # One stat + one awk:
+    # - Stream stat output directly into the renderer (no mktemp/disk IO).
+    # - If symlinks exist, do a SINGLE batched `stat -L` from inside awk to fetch target perms.
+    #   Broken symlinks can cause missing output lines; we preserve alignment by filling the rest as orphan.
+    LC_ALL=C /usr/bin/stat -f "$stat_fmt" -- "${entries[@]}" 2>/dev/null | LC_ALL=C /usr/bin/awk \
+    -f "$LL_COMMON_AWK" \
+    -v FS="$DELIM" \
+    -v DELIM="$DELIM" \
+    -v ASIZE="$ASIZE" -v OWNER="$OWNER" -v GROUPNAME="$GROUPNAME" -v HUMAN="$HUMANREADABLE" -v SI="$SI" \
+    -v USERNAME="$USERNAME" -v NUMERIC="$NUMERICUIDGID" -v NOW_EPOCH="$NOW_EPOCH" -v DEC_SEP="$DEC_SEP" \
+    -v TOTAL_LABEL="$total_label" -v TOTAL_APPLICABLE="$total_applicable" \
+    -v NO_COLOR="$NO_COLOR" \
+    -f /dev/fd/3 3<<'AWK'
+    BEGIN {
+      ll_common_init()
+      n_syms = 0
+    }
+
+    {
+      # stat fields
+      b512=$1; perms=$2; links=$3; su=$4; sg=$5; uid=$6; gid=$7; size=$8; epoch=$9; nraw=$10; ltarget=$11
+
+      # blocks in 1K
+      blocks1k = int((b512 + 1) / 2)
+
+      # owner/group selection
+      owner = (NUMERIC ? uid : su)
+      group = (NUMERIC ? gid : sg)
+
+      if (!NUMERIC && USERNAME!="" && owner==USERNAME) owner="you"
+
+      # Display name + optional symlink target.
+      n_rows++
+      display = nraw
+      if (substr(display,1,2)=="./") display = substr(display,3)
+      target = ltarget
+
+      # Backward-compat fallback: if %Y empty but %N contains "name -> target", split it.
+      if (target=="" && perms ~ /^l/ && index(display, " -> ")>0) {
+        target = substr(display, index(display, " -> ") + 4)
+        display = substr(display, 1, index(display, " -> ") - 1)
+      }
+
+      rows_blocks[n_rows]=blocks1k
+      rows_perms[n_rows]=perms
+      rows_links[n_rows]=links
+      rows_owner[n_rows]=owner
+      rows_group[n_rows]=group
+      rows_size[n_rows]=size
+      rows_epoch[n_rows]=epoch
+      rows_name[n_rows]=display
+      rows_target[n_rows]=target
+      rows_target_type[n_rows]=""
+      rows_target_perms[n_rows]=""
+
+      # Collect symlink display names for ONE batched stat -L in END.
+      if (perms ~ /^l/) {
+        n_syms++
+        syms_rowidx[n_syms]=n_rows
+        syms_name[n_syms]=display
+      }
+
+      # Precompute expensive derived fields once (reuse in END).
+      # time
+      time_calc(epoch+0)
+      rows_tnum[n_rows]=time_num
+      rows_tunit[n_rows]=time_unit
+      rows_tfut[n_rows]=time_future
+      if (time_future) any_fut=1
+
+      # size label (human)
+      rows_szlab[n_rows]=""
+      if (HUMAN && size ~ /^[0-9]+$/) rows_szlab[n_rows]=human_size(size)
+
+      # widths pass
+      w_perms = max(w_perms, length(perms))
+      w_links = max(w_links, length(links))
+      if (OWNER) w_owner = max(w_owner, length(owner))
+      if (GROUPNAME) w_group = max(w_group, length(group))
+
+      # size label width
+      szlab = rows_szlab[n_rows]
+      if (szlab != "") w_size = max(w_size, length(szlab))
+      else w_size = max(w_size, length(size))
+
+      # blocks label width (only if ASIZE)
+      if (ASIZE) {
+        if (HUMAN && blocks1k ~ /^[0-9]+$/) {
+          blab = blocks_human_label(blocks1k, SI)
+          rows_blab[n_rows]=blab
+          w_blocks = max(w_blocks, length(blab))
+        } else {
+          rows_blab[n_rows]=""
+          w_blocks = max(w_blocks, length(blocks1k ""))
+        }
+      }
+
+      # time widths (use precomputed)
+      w_tnum = max(w_tnum, length(rows_tnum[n_rows] ""))
+      w_tunit = max(w_tunit, length(rows_tunit[n_rows]))
+
+      # totals
+      total_blocks += blocks1k
+    }
+
+    END {
+      # If we have symlinks, fetch target perms with ONE batched stat -L.
+      # Broken symlinks can cause missing output lines; preserve alignment by
+      # treating missing rows as orphan/unknown (O, "").
+      if (n_syms > 0) {
+        cmd = "/usr/bin/stat -f \"%Sp\" -L --"
+        for (k = 1; k <= n_syms; k++) {
+          cmd = cmd " " sh_dquote(syms_name[k])
+        }
+
+        k = 1
+        while ((cmd | getline tp) > 0) {
+          if (k > n_syms) break
+          ri = syms_rowidx[k]
+          if (tp=="" || substr(tp,1,1)=="l") {
+            rows_target_type[ri] = "O"
+            rows_target_perms[ri] = ""
+          } else {
+            rows_target_type[ri] = ttype_from_perms(tp)
+            rows_target_perms[ri] = tp
+          }
+          k++
+        }
+        close(cmd)
+
+        # Fill any remaining symlinks (no output line) as orphan/unknown.
+        while (k <= n_syms) {
+          ri = syms_rowidx[k]
+          rows_target_type[ri] = "O"
+          rows_target_perms[ri] = ""
+          k++
+        }
+      }
+
+      # render
+      for (i=1;i<=n_rows;i++) {
+        blocks=rows_blocks[i]
+        perms=rows_perms[i]
+        links=rows_links[i]
+        owner=rows_owner[i]
+        group=rows_group[i]
+        size=rows_size[i]
+        epoch=rows_epoch[i]
+        name=rows_name[i]
+        target=rows_target[i]
+
+        # perms field
+        perms_col = color_perm(perms)
+        perms_field = perms_col sp(w_perms - length(perms))
+
+        # links field
+        links_field = sp(w_links - length(links)) links
+
+        # owner field
+        owner_field=""
+        if (OWNER) {
+          if (owner=="you") owner_col=cusr owner creset
+          else if (owner=="root") owner_col=croot owner creset
+          else owner_col=owner
+          owner_field = owner_col sp(w_owner - length(owner)) " "
+        }
+
+        # group field
+        group_field=""
+        if (GROUPNAME) {
+          group_field = group sp(w_group - length(group)) " "
+        }
+
+        # size field
+        if (HUMAN && size ~ /^[0-9]+$/) {
+          szlab = rows_szlab[i]
+          szcol = color_size_human(szlab)
+          size_field = sp(w_size - length(szlab)) szcol
+        } else {
+          c = size_color_numeric(size+0)
+          szcol = c size creset
+          size_field = sp(w_size - length(size)) szcol
+        }
+
+        # blocks field
+        blocks_field=""
+        if (ASIZE) {
+          if (HUMAN && blocks ~ /^[0-9]+$/) {
+            blab = rows_blab[i]
+            if (blab == "") blab = blocks_human_label(blocks, SI)
+            bcol = color_size_human(blab)
+            blocks_field = sp(w_blocks - length(blab)) bcol " "
+          } else {
+            blocks_field = cb sp(w_blocks - length(blocks "")) (blocks "") creset " "
+          }
+        }
+
+        # time field
+        tnum = rows_tnum[i]
+        tunit = rows_tunit[i]
+        tfut = rows_tfut[i]
+        num_s = sprintf("%d", tnum)
+        value_width = any_fut ? (w_tnum + 3) : w_tnum
+        value_core = tfut ? ("in " num_s) : num_s
+        value_field = sp(value_width - length(value_core)) value_core
+        unit_field = tunit sp(w_tunit - length(tunit))
+        t_raw = value_field " " unit_field
+        t_col = color_reltime(t_raw, tunit, tfut)
+
+        # name field
+        name_out = format_name(name, perms, target, rows_target_type[i], rows_target_perms[i])
+        name_suffix=""
+        if (length(name_out) >= 200) name_suffix = sprintf("%c[K%s", 27, creset)
+
+        out = ""
+        if (ASIZE) out = out blocks_field
+        out = out perms_field " " links_field " " owner_field group_field size_field " " t_col " " name_out name_suffix
+        print out
+      }
+
+      if (TOTAL_APPLICABLE+0 == 1) {
+        # totals are printed by existing code only when directory listing, single operand, not -d
+        # Keep behavior: print total even for empty already handled above.
+        if (ASIZE+0==1 && HUMAN+0==1) {
+          # reuse blocks_total_label logic roughly (keep simple; matches previous behavior closely)
+          # For -h: rounded; for --si: ceiling; but totals are less performance critical.
+          # We implement minimal, deterministic:
+          #  -h: base=1024, unit K/M/G/T, rounded
+          # --si: base=1000, unit k/M/G/T, ceiling
+          bytes = total_blocks * 1024
+          base = (SI+0) ? 1000 : 1024
+          if (bytes < base) {
+            tlabel = "0"
+          } else if (bytes < base*base) {
+            unit = (SI+0) ? "k" : "K"
+            if (SI+0) val = int((bytes + base - 1)/base)
+            else val = int((bytes/base) + 0.5)
+            tlabel = val unit
+          } else if (bytes < base*base*base) {
+            div = base*base
+            if (SI+0) val = int((bytes + div - 1)/div)
+            else val = int((bytes/div) + 0.5)
+            tlabel = val "M"
+          } else if (bytes < base*base*base*base) {
+            div = base*base*base
+            if (SI+0) val = int((bytes + div - 1)/div)
+            else val = int((bytes/div) + 0.5)
+            tlabel = val "G"
+          } else {
+            div = base*base*base*base
+            if (SI+0) val = int((bytes + div - 1)/div)
+            else val = int((bytes/div) + 0.5)
+            tlabel = val "T"
+          }
+          print TOTAL_LABEL " " tlabel
+        } else {
+          print TOTAL_LABEL " " total_blocks
+        }
+      }
+    }
+AWK
+  )
+
+  return 0
+}
+
+# ------------------------------
+# Collect operands (respect `--`)
+# ------------------------------
+opts=()
+ops=()
+seen_sep=0
+for arg in "$@"; do
+  if [ "$seen_sep" -eq 0 ] && [ "$arg" = "--" ]; then
+    seen_sep=1
+    continue
+  fi
+  if [ "$seen_sep" -eq 0 ] && [[ "$arg" == -* ]] && [ "$arg" != "-" ]; then
+    opts+=("$arg")
+  else
+    ops+=("$arg")
+  fi
+done
+
+# Default operand is "." like ls.
+if [ "${#ops[@]}" -eq 0 ]; then
+  ops=(".")
+fi
+
+# Try hot-path first (ll-perf case).
+try_fastpath_single_dir && exit 0
+
+# Determine if we have multiple operands (for directory headers).
+multiple=0
+if [ "${#ops[@]}" -gt 1 ]; then
+  multiple=1
+fi
+
+total_label="total"
+locale_hint="${LC_ALL:-${LANG:-}}"
+DEC_SEP="."
+case "$locale_hint" in
+  tr*|TR*)
+    total_label="toplam"
+    DEC_SEP=","  # Turkish uses comma decimal
+    ;;
+esac
+
+total_applicable=0
+if [ "$LISTDIRECTORY" -eq 0 ] && [ "$multiple" -eq 0 ] && [ "${#ops[@]}" -eq 1 ]; then
+  if [ -d "${ops[0]}" ] && [ ! -L "${ops[0]}" ]; then
+    total_applicable=1
+  fi
+fi
+
+# ------------------------------
+# Build listing: expand directories (unless -d)
+# ------------------------------
+# Rows stored as US-separated fields to preserve names safely.
+# Fields: blocks perms links owner group size epoch name target path is_child
+rows=()
+# Map from path to row index for O(1) lookup when printing ROW operands
+declare -A row_index_map
+
+row_target_type=()
+row_target_perms=()
+
+list_dir_contents() {
+  local d="$1"
+
+  # Best-effort: mimic ls default (no dotfiles).
+  # Use /bin/ls for enumeration; do not rely on GNU extensions.
+  local ls_dir="$d"
+  if [[ "$ls_dir" == -* ]]; then
+    ls_dir="./$ls_dir"
+  fi
+
+  # Collect entries first, then batch stat
+  local entries=()
+  local entry
+  while IFS= read -r entry; do
+    entries+=("$entry")
+  done < <(/bin/ls -1 "$ls_dir" 2>/dev/null)
+
+  [ "${#entries[@]}" -eq 0 ] && return 0
+
+  # Batch stat all entries
+  local paths=()
+  local display_names=()
+  for entry in "${entries[@]}"; do
+    paths+=("${d%/}/$entry")
+    display_names+=("$entry")
+  done
+
+  local stat_fmt="%b${DELIM}%Sp${DELIM}%l${DELIM}%Su${DELIM}%Sg${DELIM}%u${DELIM}%g${DELIM}%z${DELIM}%m${DELIM}%N${DELIM}%Y"
+  local idx=0
+  while IFS= read -r st; do
+    [ "$idx" -ge "${#paths[@]}" ] && break
+    if [ -z "$st" ]; then
+      ((idx++))
+      continue
+    fi
+
+    local b512 perms links su sg uid gid size epoch name linktgt target
+    IFS="$DELIM" read -r b512 perms links su sg uid gid size epoch name linktgt <<<"$st"
+
+    target="${linktgt:-}"
+
+    # Backward-compat fallback if %Y is empty but %N contains arrow.
+    if [[ -z "$target" ]] && [[ "$perms" == l* ]] && [[ "$name" == *" -> "* ]]; then
+      target="${name#* -> }"
+      name="${name%% -> *}"
+    fi
+    if [[ "$name" == ./* ]]; then
+      name="${name#./}"
+    fi
+
+    local blocks1k=$(( (b512 + 1) / 2 ))
+
+    local owner group
+    if [ "$NUMERICUIDGID" -eq 1 ]; then
+      owner="$uid"
+      group="$gid"
+    else
+      owner="$su"
+      group="$sg"
+    fi
+
+    local display_name="${display_names[$idx]}"
+    local path="${paths[$idx]}"
+    rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${display_name}${DELIM}${target}${DELIM}${path}${DELIM}1")
+    ((idx++)) || true
+  done < <(/usr/bin/stat -f "$stat_fmt" -- "${paths[@]}" 2>/dev/null)
+}
+
+append_target_metadata_to_rows() {
+  # Append: <US><target_type><US><target_perms>
+  # rows fields become:
+  #   blocks perms links owner group size epoch name target path is_child target_type target_perms
+  local idx
+  for idx in "${!rows[@]}"; do
+    rows[idx]="${rows[idx]}${DELIM}${row_target_type[idx]:-}${DELIM}${row_target_perms[idx]:-}"
+  done
+}
+
+attach_symlink_target_metadata() {
+  # For GENERAL PATH rows:
+  # - detect which rows are symlinks (perms starts with 'l')
+  # - stat -L each symlink path to discover target perms
+  # - classify target type: D/X/F, or O for orphan/unknown
+  #
+  # Notes:
+  # - We intentionally do per-symlink stat for correctness: batched -L can drop lines for broken links.
+  # - Filenames with literal newlines are out-of-scope (line-based records).
+
+  # reset arrays
+  row_target_type=()
+  row_target_perms=()
+
+  local row idx perms path st ttype
+  idx=0
+  for row in "${rows[@]}"; do
+    IFS="$DELIM" read -r _blocks perms _links _owner _group _size _epoch _name _target path _child <<<"$row"
+
+    if [[ "${perms:0:1}" == "l" ]]; then
+      # If target missing/broken -> stat fails -> st empty
+      st="$(/usr/bin/stat -f "%Sp" -L -- "$path" 2>/dev/null || true)"
+
+      if [ -z "$st" ] || [[ "${st:0:1}" == "l" ]]; then
+        # unknown/orphan (also treat "still symlink" as unknown)
+        row_target_type[idx]="O"
+        row_target_perms[idx]=""
+      else
+        ttype="$(target_type_from_perms "$st")"
+        row_target_type[idx]="$ttype"
+        row_target_perms[idx]="$st"
+      fi
+    else
+      row_target_type[idx]=""
+      row_target_perms[idx]=""
+    fi
+
+    idx=$((idx + 1))
+  done
+
+  append_target_metadata_to_rows
+}
+
+# Grouped output order: keep operand order, but allow headers for directories when multiple.
+# Grouped output order: files first, then directories (like many ls builds). Keep simple: keep operand order.
+# If operand is a directory and not -d, list its contents.
+# If multiple directories are listed, print a header "dir:" between groups.
+
+groups=()  # stores: "HDR" or "ROW" markers with delimiter
+
+for op in "${ops[@]}"; do
+  if [ "$LISTDIRECTORY" -eq 1 ]; then
+    groups+=("ROW${DELIM}$op")
+    continue
+  fi
+
+  if [ -d "$op" ] && [ ! -L "$op" ]; then
+    groups+=("HDR${DELIM}$op")
+  else
+    groups+=("ROW${DELIM}$op")
+  fi
+done
+
+# Collect rows in group-order.
+# For HDR groups, optionally print headers later; collect rows for that directory.
+# For ROW groups, collect that single path.
+
+dir_markers=() # each marker: dir, delimiter, start_index, delimiter, end_index
+
+# Batch stat calls for ROW operands
+row_paths=()
+for g in "${groups[@]}"; do
+  kind="${g%%"${DELIM}"*}"
+  val="${g#*"${DELIM}"}"
+  if [ "$kind" = "ROW" ]; then
+    row_paths+=("$val")
+  fi
+done
+
+if [ "${#row_paths[@]}" -gt 0 ]; then
+  batch_push_rows "${row_paths[@]}"
+fi
+
+# Process directory groups
+for g in "${groups[@]}"; do
+  kind="${g%%"${DELIM}"*}"
+  val="${g#*"${DELIM}"}"
+
+  if [ "$kind" = "HDR" ]; then
+    # Directory expansion
+    start_idx=${#rows[@]}
+    list_dir_contents "$val"
+    end_idx=${#rows[@]}
+    dir_markers+=("${val}${DELIM}${start_idx}${DELIM}${end_idx}")
+  fi
+done
+
+# If nothing collected, exit cleanly (but keep total for empty dirs).
+if [ "${#rows[@]}" -eq 0 ]; then
+  if [ "$total_applicable" -eq 1 ]; then
+    printf '%s 0\n' "$total_label"
+  fi
+  exit 0
+fi
+
+attach_symlink_target_metadata
+
+
+# ------------------------------
+# Directory slice lookup for render plan
+# ------------------------------
+# dir_markers items are: dir, delimiter, start_index, delimiter, end_index (indices are 0-based)
+# Build maps so render_all_awk can emit D + delimiter + start + delimiter + end quickly.
+declare -A dir_start_index
+declare -A dir_end_index
+for m in "${dir_markers[@]}"; do
+  IFS="$DELIM" read -r _d _s _e <<<"$m"
+  dir_start_index["$_d"]="$_s"
+  dir_end_index["$_d"]="$_e"
+done
+
+# ------------------------------
+# Render (GENERAL PATH): single awk, preserves behavior
+# ------------------------------
+# We stream an "order plan" (headers + row indices) to awk, so awk can:
+# - compute widths in one pass
+# - render in END without re-invoking awk per slice
+# - print headers like ls when multiple operands
+# - print "total" only when it was previously applicable (single dir operand, not -d)
+render_all_awk() {
+  # Build a lightweight plan:
+  #   H + delimiter + dirname         (directory header marker; printed only when MULTI==1)
+  #   D + delimiter + start_1based + delimiter + end_1based_exclusive   (directory slice; always rendered)
+  #   R + delimiter + row_1based      (single operand row; always rendered)
+  # Then provide all rows on stdin via awk-accessible arrays (we pass rows as a second stream).
+  # Implementation trick: we print plan lines first, then a separator line "ROWS", then all rows.
+  {
+    for g in "${groups[@]}"; do
+      kind="${g%%"${DELIM}"*}"
+      val="${g#*"${DELIM}"}"
+      if [ "$kind" = "ROW" ]; then
+        if [ -n "${row_index_map["$val"]:-}" ]; then
+          # row_index_map is 0-based; awk rows are 1-based
+          printf 'R%s%s\n' "$DELIM" "$(( row_index_map["$val"] + 1 ))"
+        fi
+      else
+        # HDR groups were expanded into rows; print the header marker in operand order.
+        printf 'H%s%s\n' "$DELIM" "$val"
+        # Also print the directory slice so awk can render its children.
+        s="${dir_start_index["$val"]:-}"
+        e="${dir_end_index["$val"]:-}"
+        if [ -n "$s" ] && [ -n "$e" ]; then
+          # bash indices are 0-based and end is exclusive.
+          # awk rows are 1-based; end becomes (e + 1) exclusive to cover last row.
+          printf 'D%s%s%s%s\n' "$DELIM" "$(( s + 1 ))" "$DELIM" "$(( e + 1 ))"
+        fi
+      fi
+    done
+    printf 'ROWS\n'
+    printf '%s\n' "${rows[@]}"
+  } | LC_ALL=C /usr/bin/awk \
+    -f "$LL_COMMON_AWK" \
+    -v FS="$DELIM" \
+    -v DELIM="$DELIM" \
+    -v ASIZE="$ASIZE" \
+    -v OWNER="$OWNER" \
+    -v GROUPNAME="$GROUPNAME" \
+    -v HUMAN="$HUMANREADABLE" \
+    -v SI="$SI" \
+    -v USERNAME="$USERNAME" \
+    -v NUMERIC="$NUMERICUIDGID" \
+    -v NOW_EPOCH="$NOW_EPOCH" \
+    -v DEC_SEP="$DEC_SEP" \
+    -v MULTI="$multiple" \
+    -v TOTAL_LABEL="$total_label" \
+    -v TOTAL_APPLICABLE="$total_applicable" \
+    -v NO_COLOR="$NO_COLOR" \
+    -f /dev/fd/3 3<<'AWK'
+
+    BEGIN {
+      ll_common_init()
+
+      in_rows=0
+      n_plan=0
+      n_rows=0
+
+      # widths init
+      w_blocks=0; w_perms=0; w_links=0; w_owner=0; w_group=0; w_size=0; any_fut=0; w_tnum=0; w_tunit=0
+      total_blocks=0
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ----------------------------
+    # Input parsing
+    # ----------------------------
+    $0 == "ROWS" { in_rows=1; next }
+
+    # Plan lines (before ROWS):
+    in_rows==0 {
+      # "H" + delimiter + "dir" or "R" + delimiter + "row_1based" or "D" + delimiter + "start_1based" + delimiter + "end_1based_exclusive"
+      plan_kind[++n_plan] = $1
+      plan_a[n_plan] = $2
+      plan_b[n_plan] = $3
+      next
+    }
+
+    # Row lines (after ROWS):
+    {
+      # Fields: blocks perms links owner group size epoch name target path is_child target_type target_perms
+      n_rows++
+      rows_blocks[n_rows]=$1
+      rows_perms[n_rows]=$2
+      rows_links[n_rows]=$3
+      rows_owner[n_rows]=$4
+      rows_group[n_rows]=$5
+      rows_size[n_rows]=$6
+      rows_epoch[n_rows]=$7
+      rows_name[n_rows]=$8
+      rows_target[n_rows]=$9
+      rows_path[n_rows]=$10
+      rows_child[n_rows]=$11
+      rows_ttype[n_rows]=$12
+      rows_tperms[n_rows]=$13
+
+      owner = rows_owner[n_rows]
+      if (!NUMERIC && USERNAME!="" && owner==USERNAME) owner="you"
+
+      # Precompute time bucket widths (and any_fut)
+      time_calc(rows_epoch[n_rows]+0)
+      tnum=time_num; tunit=time_unit; tfut=time_future
+      rows_tnum[n_rows]=tnum
+      rows_tunit[n_rows]=tunit
+      rows_tfut[n_rows]=tfut
+      if (tfut) any_fut=1
+
+      # Size label (human)
+      rows_szlab[n_rows]=""
+      if (HUMAN && rows_size[n_rows] ~ /^[0-9]+$/) rows_szlab[n_rows]=human_size(rows_size[n_rows])
+
+      # widths
+      w_perms=max(w_perms, length(rows_perms[n_rows]))
+      w_links=max(w_links, length(rows_links[n_rows]))
+      if (OWNER) w_owner=max(w_owner, length(owner))
+      if (GROUPNAME) w_group=max(w_group, length(rows_group[n_rows]))
+
+      if (HUMAN && rows_size[n_rows] ~ /^[0-9]+$/) {
+        w_size=max(w_size, length(rows_szlab[n_rows]))
+      } else {
+        w_size=max(w_size, length(rows_size[n_rows]))
+      }
+
+      if (ASIZE) {
+        if (HUMAN && rows_blocks[n_rows] ~ /^[0-9]+$/) {
+          blab = blocks_human_label(rows_blocks[n_rows], SI)
+          rows_blab[n_rows]=blab
+          w_blocks=max(w_blocks, length(blab))
+        } else {
+          rows_blab[n_rows]=""
+          w_blocks=max(w_blocks, length(rows_blocks[n_rows] ""))
+        }
+      }
+
+      w_tnum=max(w_tnum, length(tnum ""))
+      w_tunit=max(w_tunit, length(tunit))
+
+      # totals (only meaningful for directory listing; original code used blocks in 1K already)
+      if (rows_child[n_rows]+0 == 1) total_blocks += (rows_blocks[n_rows]+0)
+    }
+
+    function render_row(ri,   blocks,perms,links,owner,group,size,epoch,name,target,ttype,tperms, \
+                           perms_col,perms_field,links_field,owner_field,owner_col,group_field, \
+                           szlab,szcol,size_field,blocks_field,blab,bcol, \
+                           tnum,tunit,tfut,num_s,value_width,value_core,value_field,unit_field,t_raw,t_col, \
+                           name_out,name_suffix,out,c) {
+      if (ri <= 0 || ri > n_rows) return
+
+      blocks=rows_blocks[ri]
+      perms=rows_perms[ri]
+      links=rows_links[ri]
+      owner=rows_owner[ri]
+      group=rows_group[ri]
+      size=rows_size[ri]
+      epoch=rows_epoch[ri]
+      name=rows_name[ri]
+      target=rows_target[ri]
+      ttype=rows_ttype[ri]
+      tperms=rows_tperms[ri]
+
+      if (!NUMERIC && USERNAME!="" && owner==USERNAME) owner="you"
+
+      # perms
+      perms_col=color_perm(perms)
+      perms_field = perms_col sp(w_perms - length(perms))
+
+      # links
+      links_field = sp(w_links - length(links)) links
+
+      # owner
+      owner_field=""
+      if (OWNER) {
+        if (owner=="you") owner_col=cusr owner creset
+        else if (owner=="root") owner_col=croot owner creset
+        else owner_col=owner
+        owner_field = owner_col sp(w_owner - length(owner)) " "
+      }
+
+      # group
+      group_field=""
+      if (GROUPNAME) group_field = group sp(w_group - length(group)) " "
+
+      # size
+      if (HUMAN && size ~ /^[0-9]+$/) {
+        szlab=rows_szlab[ri]
+        szcol=color_size_human(szlab)
+        size_field = sp(w_size - length(szlab)) szcol
+      } else {
+        c=size_color_numeric(size+0)
+        szcol=c size creset
+        size_field = sp(w_size - length(size)) szcol
+      }
+
+      # blocks
+      blocks_field=""
+      if (ASIZE) {
+        if (HUMAN && blocks ~ /^[0-9]+$/) {
+          blab = rows_blab[ri]
+          if (blab=="") blab=blocks_human_label(blocks, SI)
+          bcol=color_size_human(blab)
+          blocks_field = sp(w_blocks - length(blab)) bcol " "
+        } else {
+          blocks_field = cb sp(w_blocks - length(blocks "")) (blocks "") creset " "
+        }
+      }
+
+      # time
+      tnum=rows_tnum[ri]; tunit=rows_tunit[ri]; tfut=rows_tfut[ri]
+      num_s=sprintf("%d", tnum)
+      value_width = any_fut ? (w_tnum + 3) : w_tnum
+      value_core = tfut ? ("in " num_s) : num_s
+      value_field = sp(value_width - length(value_core)) value_core
+      unit_field = tunit sp(w_tunit - length(tunit))
+      t_raw = value_field " " unit_field
+      t_col = color_reltime(t_raw, tunit, tfut)
+
+        # name
+        name_out = format_name(name, perms, target, ttype, tperms)
+        name_suffix=""
+        if (length(name_out) >= 200) name_suffix = sprintf("%c[K%s", 27, creset)
+
+      out=""
+      if (ASIZE) out = out blocks_field
+      out = out perms_field " " links_field " " owner_field group_field size_field " " t_col " " name_out name_suffix
+      print out
+    }
+
+    END {
+      printed_any=0
+      last_was_header=0
+
+      for (pi=1; pi<=n_plan; pi++) {
+        kind = plan_kind[pi]
+        a = plan_a[pi]
+        b = plan_b[pi]
+
+        if (kind == "H") {
+          # Only show headers when MULTI==1 (matches original behavior)
+          if (MULTI+0 == 1) {
+            if (printed_any) print ""
+            print a ":"
+            printed_any=1
+          }
+          last_was_header=1
+          continue
+        }
+
+        if (kind == "R") {
+          # Single ROW operand: a is 1-based row index
+          render_row(a + 0)
+          printed_any=1
+          last_was_header=0
+          continue
+        }
+
+        if (kind == "D") {
+          # Directory slice: a=start_1based, b=end_1based_exclusive
+          start = a + 0
+          end = b + 0
+          for (ri = start; ri < end; ri++) {
+            render_row(ri)
+            printed_any=1
+          }
+          last_was_header=0
+          continue
+        }
+      }
+
+      # totals only when original code would print them:
+      # - directory listing, single operand, not -d, and operand is a directory (TOTAL_APPLICABLE==1)
+      if (TOTAL_APPLICABLE+0 == 1) {
+        if (ASIZE+0==1 && HUMAN+0==1) {
+          # deterministic minimal total formatting (same as fastpath block)
+          bytes = total_blocks * 1024
+          base = (SI+0) ? 1000 : 1024
+          if (bytes < base) tlabel="0"
+          else if (bytes < base*base) {
+            unit = (SI+0) ? "k" : "K"
+            if (SI+0) val = int((bytes + base - 1)/base)
+            else val = int((bytes/base) + 0.5)
+            tlabel = val unit
+          } else if (bytes < base*base*base) {
+            div=base*base
+            if (SI+0) val=int((bytes + div - 1)/div)
+            else val=int((bytes/div) + 0.5)
+            tlabel = val "M"
+          } else if (bytes < base*base*base*base) {
+            div=base*base*base
+            if (SI+0) val=int((bytes + div - 1)/div)
+            else val=int((bytes/div) + 0.5)
+            tlabel = val "G"
+          } else {
+            div=base*base*base*base
+            if (SI+0) val=int((bytes + div - 1)/div)
+            else val=int((bytes/div) + 0.5)
+            tlabel = val "T"
+          }
+          print TOTAL_LABEL " " tlabel
+        } else {
+          print TOTAL_LABEL " " total_blocks
+        }
+      }
+    }
+AWK
+}
+
+render_all_awk
+exit 0

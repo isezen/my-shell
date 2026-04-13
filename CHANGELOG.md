@@ -8,6 +8,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`ll_common.awk` migration complete.** After a 4-phase migration spanning commits 9a31f16 (Jan 2026) through Phase 4 (this release), `ll_linux` and `ll_macos` share a single render/format/color layer (`scripts/bin/ll_common.awk`, BSD-awk compatible, mandatory for both) with a platform-specific ingress parser for `ll_linux` (`scripts/bin/ll_linux.awk`, gawk-scoped). Under the baseline env (`LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800`) the two drivers produce byte-identical output across all 52 fixture cases, enforced by a three-invariant regression lock in `tests/ll/20_baseline_snapshot.bats`. Parity trajectory by phase: 2/52 (Phase 0) → 13/52 (Phase 2) → 52/52 (Phase 3). Phase details below (areas: ll/common-awk/ll_linux/ll_macos/tests/docs).
+  - **Phase 4 — cleanup and docs**: `scripts/bin/ll_common.awk` header rewritten to document the MANDATORY parity contract and the BSD-awk safety rule that keeps gawk-only patterns out of the shared layer. `docs/LL_SPECS.md` §9.1 Common Contract rewritten to specify byte-level cross-driver parity and the three-invariant test lock. `README.md` Behavior Contract section refreshed with the same guarantees and a pointer to `make baseline-check`/`baseline-regen`. Plan document `docs/plans/ll-common-awk-migration.md` removed (migration executed in full). `wip/todo.md` backlog entry removed.
+
+- `ll_common.awk` migration — **Phase 3: cross-driver byte-level parity** (areas: ll/ll_linux/ll_linux.awk/tests). With Phase 3 applied, `ll_linux` and `ll_macos` emit **byte-identical output** across every single fixture case under the baseline env (`LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800`). The migration goal from commit `9a31f16` — "one render contract, two platform drivers" — is met. Details:
+  - `scripts/bin/ll_linux`: GNU `ls` is now called with a color mode picked from `LL_NO_COLOR`. Under `LL_NO_COLOR=1` it is `--color=never`, so GNU ls emits plain filename and symlink-target text. Under `LL_NO_COLOR=0` it is `--color=always` (explicit, not `--color` which is the deprecated "sometimes always" form, nor `--color=auto` which resolves to "never" under command substitution). Behavior change: the `NO_COLOR=1` code path now produces plain filenames matching `ll_macos`; the `NO_COLOR=0` path is unchanged (GNU LS_COLORS injected around filenames as before).
+  - `scripts/bin/ll_linux`: END block now appends the `\e[K\e[0m` erase-in-line + reset suffix when `length(name_out) >= 200`, mirroring `ll_macos` exactly. This is the terminal-line-clear hack that `ll_macos` has carried for long filenames.
+  - `scripts/bin/ll_linux.awk`: `parse_line()`'s post-epoch "strip one leading space" heuristic was removed. It was a latent bug that silently ate the leading space of filenames starting with whitespace under `--color=never` (where the separator space is fully captured by the epoch regex bracket and must NOT be re-stripped). In `--color=always` mode the heuristic was already a no-op because the first char after epoch was `\e` (ESC), not whitespace. Leading-space filename fixture (` file-leading-space.txt`) now renders correctly with its leading space quoted.
+  - `tests/fixtures/ll_baseline/ll_linux/` regenerated one final time. All 52 cases are now byte-for-byte identical to `tests/fixtures/ll_baseline/ll_macos/`.
+  - `tests/ll/20_baseline_snapshot.bats`: new 3rd test `ll parity: tests/fixtures/ll_baseline/ll_linux == tests/fixtures/ll_baseline/ll_macos`. Runs on any host (no driver invocation needed), diffs the two baseline directories directly, and fails loudly if any snapshot drifts away from cross-driver parity. Combined with the per-driver snapshot tests above, we now lock three invariants at once:
+    1. `ll_linux` output matches its own locked baseline (regression guard)
+    2. `ll_macos` output matches its own locked baseline (regression guard)
+    3. Both baselines are identical (cross-driver contract guard)
+  - Green runs: `make baseline-check` 3/3, `make test-ll-common` 10/10, `make test-ll-macos` 7/7, `make test-bats` 91/91, `make lint` clean.
+  - Parity trajectory across the migration (byte-level `ll_linux` vs `ll_macos`):
+    - Phase 0 (start):  2/52
+    - After Phase 2:   13/52  (opt-in cutover landed)
+    - After Phase 3:   **52/52** (this phase)
+
+- `ll_common.awk` migration — **Phase 2: ll_linux single-mode cutover** (areas: ll/ll_linux/tests). The `LL_USE_COMMON_AWK` opt-in flag and the ~450-line inline `AWK_PROG_STANDALONE` duplicate driver are gone; `ll_linux` now chains `ll_common.awk` + `ll_linux.awk` + a single inline driver in every invocation.
+  - `scripts/bin/ll_linux`: deleted `AWK_PROG_STANDALONE` (~450 LOC) and the `LL_USE_COMMON_AWK=1` branch; `AWK_PROG_COMMON` was renamed to `AWK_PROG` and is now the only driver. The awk call site collapsed from two ~10-line branches to one. Total script size: 813 → 353 lines.
+  - `tests/ll/21_ll_linux_optin_parity.bats` deleted — it existed only to prove "standalone mode and opt-in mode are byte-identical", which is moot now that only one mode survives. The `20_baseline_snapshot.bats` regression lock still guards the surviving path.
+  - `tests/fixtures/ll_baseline/ll_linux/` regenerated. 50 of 52 case snapshots changed because `ll_linux` now honors `LL_NO_COLOR=1` for the perm/links/owner/group/size/time columns (the common-awk path has always done this; the inline standalone path silently ignored it). The filename/target columns still carry GNU `ls --color`-injected LS_COLORS bytes — closing that gap is Phase 3's job.
+  - `ll_macos` baselines are unchanged — Phase 2 only touches `ll_linux`.
+  - Cross-driver parity measurement after the flag removal:
+    - ANSI-stripped: **52/52 identical** (unchanged from Phase 0 — semantic parity was already complete)
+    - Byte-level: **13/52 identical**, up from 2/52 before Phase 2 — the 39 remaining byte diffs are exactly the pre-colored GNU `ls` LS_COLORS sequences around filenames/targets that Phase 3 will normalise
+  - Green runs: `make baseline-check` 2/2, `make test-ll-common` 9/9 (the opt-in parity test is gone; down from 10), `make test-ll-macos` 7/7, `make test-bats` 90/90, `make lint` clean.
+
+- `ll_common.awk` migration — **Phase 1: common scope expansion + ll_linux.awk ingress split** (areas: ll/common-awk/ll_linux). No behavior change to any driver's default-mode output; Phase 1 is purely additive infrastructure preparing Phase 2's flag removal. Details:
+  - `ll_common.awk` gained three ANSI render helpers lifted out of `ll_linux`'s inline program: `llc_strip_leading_resets`, `llc_strip_trailing_resets`, `llc_has_nonreset_sgr`. All three are BSD-safe (no 3-arg match, no gawk-only features); they live alongside `llc_strip_colors` and can be reused by `ll_macos` when it needs to preserve GNU-ls-style pre-coloured text.
+  - `scripts/bin/ll_linux.awk` (new, ~200 lines) — dedicated ingress library for `ll_linux`. Hosts the GNU `ls --color -l --time-style=+%s` parser (`_is_epoch`, `_find_epoch_span`, `parse_line`) and the pre-coloured-tail renderer (`format_name_raw`). Intentionally gawk-scoped so the "ingress layer" can use 3-arg `match()` without polluting `ll_common.awk`'s BSD-compat surface.
+  - `ll_linux`'s `LL_USE_COMMON_AWK=1` opt-in path is now canonical: it chains `awk -f ll_common.awk -f ll_linux.awk -f <(AWK_PROG_COMMON)` with a minimal driver that calls `ll_common_init()` in `BEGIN` and references `llc_*` helpers in row/END. The previous sed-surgery block (`/^function quote_if_needed/,/^function color_reltime_by_lbl/d` + BEGIN injection + `color_reltime_by_lbl` rename) is removed — it was structurally broken and triggered a `gawk: syntax error` at runtime. The default standalone mode (`AWK_PROG_STANDALONE`) is unchanged; Phase 2 will delete it and flip opt-in to always-on.
+  - `ll_linux` now resolves `NOW_EPOCH` with a `date +%s` fallback in the shell layer (matching `ll_macos`). Previously the opt-in awk path received an empty `NOW_EPOCH` when `LL_NOW_EPOCH` was unset, and `ll_common.awk`'s `time_calc` wrapper would compute `int("" - epoch)`. Tests always set `LL_NOW_EPOCH` so the gap was latent.
+  - `tests/ll/21_ll_linux_optin_parity.bats` — new BATS test proving byte-for-byte equality between `ll_linux` default and `LL_USE_COMMON_AWK=1` modes across all 52 ll-compare fixture cases under `LL_NO_COLOR=0`. Runs through `scripts/dev/ll-compare --snapshot` twice (once per mode) and `diff -ruN`s the output directories. Drift verified: inverting the `" -> "` split marker in `ll_linux.awk` produces a failing diff.
+  - `tests/fixtures/ll_baseline/` is unchanged and still locks the default-mode output. Phase 0 regression check remains green (2/2).
+  - Runs green on this branch: `make baseline-check` 2/2, `make test-ll-common` 10/10 (includes the new parity test), `make test-ll-macos` 7/7, `make lint` clean.
+
+- `ll_common.awk` migration — **Phase 0: baseline fixture lock** (areas: ll/tests/dev-tools). No behavior change to `ll_macos` output contract; new regression infrastructure. Details:
+  - `scripts/dev/ll-compare` gained a `--snapshot <DIR>` mode that writes each test case's raw output to `<DIR>/<script_name>/NNN_<slug>.out`, skips PASS/FAIL compare, and accepts a single-script invocation. Snapshot paths are resolved to absolute paths before the tool `cd`s into its temp fixture dir.
+  - `tests/fixtures/ll_baseline/{ll_linux,ll_macos}/` — 52 × 2 = 104 locked baseline snapshots captured in deterministic env (`LC_ALL=C TZ=UTC LL_NO_COLOR=1 LL_NOW_EPOCH=1577836800`), covering defaults, flag combinations, tricky filenames (spaces, tabs, UTF-8, leading-space, long names), symlinks (broken, dir, exec, with-space-target, with-tab-target), permission edge cases (setuid, setgid, sticky, fifo), time buckets (sec/min/hrs/day/mon/yr + future) and mixed-width scenarios.
+  - `tests/ll/20_baseline_snapshot.bats` — regression lock that regenerates snapshots into a tempdir via `ll-compare --snapshot` and `diff -ruN` asserts byte-for-byte equality against `tests/fixtures/ll_baseline/`. Skips `ll_macos` on non-Darwin hosts; skips `ll_linux` when GNU coreutils are unreachable (auto-probes MacPorts/Homebrew gnubin paths).
+  - `Makefile` targets: `make baseline-check` (read-only BATS verification) and `make baseline-regen` (rebuild snapshots after an intentional behavior change — flagged with `USE WITH CARE`).
+  - `docs/plans/ll-common-awk-migration.md` — detailed phase plan with Phase 0 findings section documenting discovered blockers, semantic parity measurement, and migration path.
+
+### Fixed
+- `scripts/bin/ll_common.awk`: `ll_common_init()` no longer divides by zero in `NO_COLOR=1` mode (areas: ll/common-awk). Behavior change: `llc_init_size_constants()` and `llc_init_time_constants()` now run unconditionally at the top of `ll_common_init()`, before the `NO_COLOR` early-return. Previously these init calls were only reached in color-enabled mode, leaving `llc_TIME_MIN`/`llc_TIME_HOUR`/`llc_TIME_DAY`/`llc_TIME_MONTH`/`llc_TIME_YEAR` at zero under `NO_COLOR`, which caused `llc_time_calc()` to divide by zero and `ll_macos` to fail on every non-empty directory. Latent since commit `7d3cb41` (Jan 11); `make test-bats` did not cover the affected suite so the regression went undetected for ~3 months.
+- `tests/ll_macos/10_core.bats`: three color-assertion tests (`time buckets and colors`, `perms and owner colors`, `size tier colors (numeric)`) now explicitly override `LL_NO_COLOR=0` on their `run` invocations (areas: tests/ll_macos). Behavior change: these tests again exercise the colored output path. The harness's global `export LL_NO_COLOR=1` (introduced in commit `7d3cb41`) had been silently suppressing colors while the assertions still expected color escape sequences — the earlier division-by-zero error masked the assertion mismatch.
+- Resolve sibling modules in `shell/{bash,zsh,fish}/init.*` relative to the init file's own directory instead of `$MY_SHELL_ROOT/shell/<shell>/` (areas: shell/init). Behavior change: init files now work both in the repo layout (`<repo>/shell/<shell>/`) and the installed layout (`~/.my-shell/<shell>/`). Previously the installed copy computed `MY_SHELL_ROOT=$HOME` and then tried to source `$HOME/shell/<shell>/env.*`, which does not exist — so `install.sh --settings-only` produced an init file that could not find its siblings. `MY_SHELL_ROOT` is still exported for downstream consumers but is no longer used for sibling resolution.
+- Guard `shell/fish/aliases.fish` and `shell/fish/prompt.fish` behind `status is-interactive` in `shell/fish/init.fish` (areas: fish/init). Behavior change: non-interactive fish invocations (`fish -c`, SSH command runs, scripts) no longer load interactive command overrides (`head`/`tail` wrappers calling `tput cols`, colorised `grep`, `ll`, `htop`, etc.), which previously broke on missing `$TERM`. `env.fish` still loads unconditionally so PATH/CLICOLOR/LSCOLORS remain available. Fixes the breakage documented in `docs/issues/fish-non-interactive-breakage.md`.
+
+### Added
+- Commit 21: Implement FINAL POLICY for ll-compare and ls-compare dev tools (areas: dev-tools/testing). Behavior change: ll-compare now uses structured comparison (prefix fields compared strictly with ANSI codes, filenames compared after ANSI strip only), allowing color differences while preserving semantic content (spaces, tabs, total/toplam lines); ls-compare respects STRIP_ANSI flag (off by default for byte-for-byte comparison). Both scripts correctly enforce LL_NOW_EPOCH (default 1577836800), LC_ALL=C, TZ=UTC, and preserve tricky filenames. Array variables use `${array[@]:-}` syntax for robustness under strict mode. All 51 ll-compare tests pass, ls-compare runs successfully.
+- Commit 20: Implement `-s -h` and `-s --si` blocks column support in ll_macos (areas: macos/blocks). Behavior change: blocks column now humanized with -h (base-1024, uppercase K/M/G/T, e.g., `4.0K`) and --si (base-1000, lowercase k/M/G/T, e.g., `4.1k`). Total line rounds to nearest integer for -h mode and uses ceiling division for --si mode (matching GNU ls). Data rows show one decimal place. Tests #17 and #18 now pass.
+- Commit 19: Update plan-ll-control with final compliance status (areas: docs/control). No behavior change; docs only.
+- Commit 18: Document newline-in-filename out-of-scope for ll_macos records (areas: macos/tests). No behavior change; docs only.
+- Commit 17: Add Phase 0 baseline snapshot log for ll tests (areas: docs). No behavior change; docs only.
+- Commit 16: Add ll implementation decision record (areas: docs/decision). No behavior change; docs only.
+- Commit 15: Add ll-perf benchmark report (areas: docs/perf). No behavior change; docs only.
+- Commit 14: Make ll-compare deterministic for cross-impl diff and document usage (areas: dev-tools/docs). Behavior change: LL_NOW_EPOCH default fixed; LL_CHATGPT_FAST forced in ll-compare runs.
+- Commit 13: Add BSD-only PATH pruning when LL_BSD_USERLAND/LL_NO_GNUBIN is set (areas: env). Behavior change: gnubin paths are removed during activation.
+- Commit 12: Expand ll_macos suite with MVP parity coverage (fixtures, time buckets, colors, and tricky filenames) (areas: tests). No behavior change; test harness only.
+- Commit 11: Include legacy error substrings in wrapper selector errors to keep wrapper tests stable (areas: wrapper). Behavior change: error text updated.
+- Commit 10: Switch ll_macos internal row delimiter to ASCII Unit Separator (0x1F) to avoid tab-in-filename conflicts (areas: macos). Behavior change: internal parsing delimiter updated.
+- Commit 9: Enforce strict OS dispatch in ll wrapper (no fallback) (areas: wrapper). Behavior change: missing OS target now exits 1.
+- Commit 8: ll_linux preflight soft-skips missing GNU date/touch and drops global gawk gating (areas: tests). No behavior change; test harness only.
+- Commit 7: CI report reads make test-ll output log instead of re-running bats (areas: ci). No behavior change; refactor/test only.
+- Commit 6: Clarified macOS suite preflight warning for non-Darwin hosts (areas: tests). No behavior change; refactor/test only.
+- Commit 5: Hardened ll wrapper dispatch checks for executable files (areas: wrapper). No behavior change; refactor/test only.
+- Commit 4: Update CI report file lists to match per-OS ll suites (areas: ci). No behavior change; refactor/test only.
+- Commit 3: Added test-ll targets and GNU preflight soft-skip for ll_linux suite (areas: makefile/tests). No behavior change; refactor/test only.
+- Commit 2: Added stub-based wrapper tests under `tests/ll` (areas: tests). No behavior change; refactor/test only.
+- Commit 1: Split GNU ll tests into `tests/ll_linux` and add macOS suite skeleton (areas: tests). No behavior change; refactor/test only.
+- Test suite split: Platform-specific test suites for ll implementation
+  - `tests/ll_linux/`: GNU toolchain-based test suite (moved from `tests/ll/`)
+  - `tests/ll_macos/`: BSD-only test suite skeleton with preflight helpers
+  - Tests split by platform to support BSD-only macOS implementation
+- Wrapper test suite: Stub-based platform-independent wrapper contract tests
+  - `tests/ll/10_wrapper_stub.bats`: Tests for wrapper dispatch, override, and arg forwarding
+  - `tests/ll/fixtures/ll_stub_impl.bash`: Stub executable for testing wrapper behavior
+  - Tests verify LL_IMPL_PATH priority, LL_IMPL selection, LL_SCRIPT recursion guard, and exit codes
+- Makefile test targets: Platform-aware test suite targets
+  - `test-ll-common`: Run common/wrapper tests
+  - `test-ll-linux`: Run Linux-specific tests (GNU toolchain)
+  - `test-ll-macos`: Run macOS-specific tests (BSD toolchain)
+  - `test-ll`: Run platform-appropriate test suite (auto-detects OS)
+  - `test-ll-all`: Run all test suites (unsuitable ones will soft-skip)
+- CI workflow updates: Use platform-aware test targets
+  - Ubuntu job: `make test-ll` (runs common + ll_linux suite)
+  - macOS job: `make test-ll` (runs common + ll_macos suite)
+  - Report steps: Use `make test-ll` output instead of hardcoded globs
+- Wrapper dispatch contract: Hardened thin wrapper dispatch contract
+  - Priority order: LL_IMPL_PATH > LL_SCRIPT (recursion guard) > LL_IMPL > OS sniff
+  - Exit codes: 1 (missing/unexecutable), 2 (invalid LL_IMPL)
+  - Arg forwarding: Arguments forwarded verbatim without modification
+  - No behavior change; refactor/test only
+- macOS test suite: Finalized BSD-only preflight skeleton
+  - `tests/ll_macos/00_harness.bash`: Preflight helpers (ll_warn, ll_soft_skip, ll_require_macos_userland)
+  - `tests/ll_macos/10_core.bats`: Smoke test for preflight on Darwin
+  - Suite ready for Phase 3 implementation
 - Unified installer (`install.sh`): Combined `install_shell_settings.sh` and `install_shell_scripts.sh` into a single installer
   - Supports both remote and local installation modes
   - Options: `--settings-only`, `--scripts-only`, `--local`, `--repo-root`, `-y/--yes`, `-h/--help`
@@ -177,4 +276,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed ShellCheck warnings in `ll-performance.sh`: SC2034 (unused variables), SC2012 (ls to find), SC2004 (arithmetic variables)
 - Fixed all ShellCheck style warnings: SC2004 (arithmetic variables in alias.sh and ll-performance.sh), SC2012 (ls to find), SC2059 (printf format), SC2262 (alias definition/usage), SC2139/SC2263/SC2032/SC2317 (added to .shellcheckrc as intentional behavior)
 - Created `.shellcheckrc` to disable intentional warnings (SC2139, SC2262, SC2263, SC2032, SC2317)
-

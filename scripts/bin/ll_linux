@@ -1,0 +1,386 @@
+#!/usr/bin/env bash
+# scripts/bin/ll_linux
+# Linux-specific implementation of ll command.
+# Uses scripts/bin/ll_common.awk (BSD-safe shared render/format/color
+# helpers) and scripts/bin/ll_linux.awk (GNU `ls -l` ingress parser and
+# pre-colored-tail renderer); both are chained with -f.
+# Requires GNU coreutils (ls, awk, date) with --time-style=+%s support.
+# Usage: ll_linux [OPTIONS] [FILES...]
+# sezenismail@gmail.com
+# 2014-11-24 (optimized 2026-01-05)
+# Colorful Long Listing (fast)
+# Passes arguments to 'ls -l' and post-processes in a single awk pass (2-pass inside awk).
+
+set -euo pipefail
+
+# Flags we care about (others are passed through to ls as-is)
+ASIZE=0
+HUMANREADABLE=0
+NUMERICUIDGID=0
+OWNER=1
+GROUPNAME=1
+LISTDIRECTORY=0
+
+# Robust flag scan (supports options placed after operands; ls accepts that, getopts doesn't)
+# We only detect flags that affect our parsing/formatting; everything is still passed through to ls.
+for arg in "$@"; do
+  case "$arg" in
+    --) break ;;
+
+    # long options we care about
+    --directory) LISTDIRECTORY=1 ;;
+    --human-readable|--si) HUMANREADABLE=1 ;;
+    --numeric-uid-gid) NUMERICUIDGID=1 ;;
+    --size) ASIZE=1 ;;
+    --no-group) GROUPNAME=0 ;;
+
+    # short options (possibly combined)
+    -*)
+      # Skip a lone '-' (stdin sentinel)
+      [ "$arg" = "-" ] && continue
+      # Iterate over each flag character after '-'
+      _flags=${arg#-}
+      for ((i=0; i<${#_flags}; i++)); do
+        case "${_flags:i:1}" in
+          d) LISTDIRECTORY=1 ;;
+          h) HUMANREADABLE=1 ;;
+          n) NUMERICUIDGID=1 ;;
+          g) OWNER=0 ;;
+          G) GROUPNAME=0 ;;
+          o) GROUPNAME=0 ;;
+          s) ASIZE=1 ;;
+          *) ;;
+        esac
+      done
+      ;;
+
+    *) ;;
+  esac
+done
+
+
+# Resolve a GNU ls implementation (required for --time-style=+%s).
+# Allow override via LL_CHATGPT_LS for tests.
+LS_BIN="${LL_CHATGPT_LS:-}"
+if [ -n "$LS_BIN" ]; then
+  if ! "$LS_BIN" --color -l --time-style=+"%s" . >/dev/null 2>&1; then
+    echo "LL_CHATGPT_LS must support --time-style=+%s" >&2
+    exit 1
+  fi
+else
+  LS_BIN="ls"
+  if ls --color -l --time-style=+"%s" . >/dev/null 2>&1; then
+    :
+  elif command -v gls >/dev/null 2>&1; then
+    LS_BIN="$(command -v gls)"
+  elif [ -x /opt/local/libexec/gnubin/ls ]; then
+    LS_BIN="/opt/local/libexec/gnubin/ls"
+  else
+    _args=()
+    for arg in "$@"; do
+      case "$arg" in
+        --directory) _args+=("-d") ;;
+        --human-readable|--si) _args+=("-h") ;;
+        --numeric-uid-gid) _args+=("-n") ;;
+        --no-group) _args+=("-o") ;;
+        --size) _args+=("-s") ;;
+        --) _args+=("--") ;;
+        *) _args+=("$arg") ;;
+      esac
+    done
+    exec ls -l "${_args[@]}"
+  fi
+fi
+# Always force --time-style=+%s for fast relative time formatting in awk.
+# Keep user's args intact; we only read flags above and still pass "$@" through.
+#
+# LS_COLOR_MODE: pick the GNU ls color flag from LL_NO_COLOR.
+#   LL_NO_COLOR=1 → --color=never : GNU ls emits plain filenames/symlink
+#                                    targets, so the output matches ll_macos
+#                                    byte-for-byte under the baseline env.
+#   otherwise     → --color=auto  : GNU ls injects LS_COLORS around
+#                                    filenames as before (interactive path).
+if [ "${LL_NO_COLOR:-0}" = "1" ]; then
+  LS_COLOR_MODE="--color=never"
+else
+  # Force always (not auto) because ls output is captured into a variable;
+  # with auto, stdout isn't a tty and GNU ls falls back to never, which
+  # silently breaks the interactive colored path.
+  LS_COLOR_MODE="--color=always"
+fi
+ll_res=$("$LS_BIN" "$LS_COLOR_MODE" -l --time-style=+"%s" "$@")
+
+# Extract total line if present (same as ll script)
+ll_total=""
+if [ "$LISTDIRECTORY" -eq 0 ]; then
+  _first_line="$(printf '%s\n' "$ll_res" | head -n 1)"
+  if printf '%s\n' "$_first_line" | grep -Eq '^(total|toplam)[[:space:]]+'; then
+    ll_total="$_first_line"
+    ll_res="$(printf '%s\n' "$ll_res" | tail -n +2)"
+  fi
+fi
+
+# If ll_res is empty, only print a total line if present.
+if [ -z "$ll_res" ] && [ -n "$ll_total" ]; then
+  printf '%s\n' "$ll_total"
+  exit 0
+fi
+
+# If ll_res is empty (single file case), simulate what ll script does:
+# ll script processes empty ll_res and produces a line with just dates
+if [ -z "$ll_res" ]; then
+  # Calculate date from ll_total (single file listing)
+  _epoch=$(echo "$ll_total" | awk '{for(i=1;i<=NF;i++) if(match($i, /^[0-9]+$/)) {print $i; exit}}')
+  if [ -n "$_epoch" ]; then
+    _dt=$(awk -v epoch="$_epoch" -v now_epoch="${LL_NOW_EPOCH:-}" 'BEGIN {
+      now = systime()
+    if (now_epoch ~ /^[0-9]+$/) now = now_epoch
+    dt = now - epoch
+    print dt
+    }')
+    _prefix=""
+    _abs="$_dt"
+    if [ "$_dt" -lt 0 ]; then
+      _prefix="in"
+      _abs=$((-_dt))
+    fi
+    _formatted=""
+    _creset=$'\x1b[0m'
+    _cfut=$'\x1b[38;5;39m'
+    _format_time() {
+      local _val="$1"
+      local _unit="$2"
+      local _color="$3"
+      local _num_s _unit_s _prefix_s _prefix_w _num_w _unit_w _raw
+
+      _prefix_w=${#_prefix}
+      _num_w=${#_val}
+      _unit_w=${#_unit}
+
+      printf -v _num_s '%*s' "$_num_w" "$_val"
+      printf -v _unit_s '%-*s' "$_unit_w" "$_unit"
+      if [ "$_prefix_w" -gt 0 ]; then
+        printf -v _prefix_s '%*s' "$_prefix_w" "$_prefix"
+        _raw="${_prefix_s} ${_num_s} ${_unit_s}"
+      else
+        _raw="${_num_s} ${_unit_s}"
+      fi
+      if [ -n "$_prefix" ]; then
+        _color="$_cfut"
+      fi
+      _formatted="${_color}${_raw}${_creset}"
+    }
+    if [ "$_abs" -lt 120 ]; then
+      _csec=$'\x1b[38;5;124m'
+      _format_time "$_abs" "sec" "$_csec"
+    elif [ "$_abs" -lt 3600 ]; then
+      _cmin=$'\x1b[38;5;215m'
+      _format_time "$((_abs / 60))" "min" "$_cmin"
+    elif [ "$_abs" -lt 172800 ]; then
+      _chrs=$'\x1b[38;5;196m'
+      _format_time "$((_abs / 3600))" "hrs" "$_chrs"
+    elif [ "$_abs" -lt 3888000 ]; then
+      _cday=$'\x1b[38;5;230m'
+      _format_time "$((_abs / 86400))" "day" "$_cday"
+    elif [ "$_abs" -lt 31536000 ]; then
+      _cmon=$'\x1b[38;5;151m'
+      _format_time "$((_abs / 2592000))" "mon" "$_cmon"
+    else
+      _cyr=$'\x1b[38;5;241m'
+      _format_time "$((_abs / 31536000))" "yr" "$_cyr"
+    fi
+    if [ "$ASIZE" -eq 1 ]; then
+      # With -s, ll prints a leading blocks column (use 0 for single-file fast path)
+      _cb=$'\x1b[38;5;240m'
+      printf "%s%s%s %s \n" "$_cb" "0" "$_creset" "$_formatted"
+    else
+      # Without -s, ll prints only the relative time line
+      printf "%s \n" "$_formatted"
+    fi
+  else
+    echo ""
+  fi
+  echo "$ll_total"
+  exit 0
+fi
+
+# Resolve user name for "you" substitution in awk.
+USERNAME="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+
+# Resolve awk implementation (needs match(..., ..., array) support).
+AWK_BIN="${LL_CHATGPT_AWK:-}"
+if [ -z "$AWK_BIN" ]; then
+  if command -v gawk >/dev/null 2>&1; then
+    AWK_BIN="$(command -v gawk)"
+  else
+    AWK_BIN="awk"
+  fi
+fi
+if ! "$AWK_BIN" 'BEGIN{ if (match("1", /[0-9]+/, a)) exit 0; exit 1 }' </dev/null >/dev/null 2>&1; then
+  echo "GNU awk (gawk) is required for advanced features" >&2
+  exit 1
+fi
+
+# ------------------------------
+# Awk library chain
+# ------------------------------
+# Every run chains three awk programs:
+#   1) ll_common.awk   — BSD-safe shared render/format/color helpers
+#   2) ll_linux.awk    — GNU `ls -l` ingress parser + format_name_raw
+#   3) AWK_PROG        — driver BEGIN/row/END (inline below)
+# Both libraries must be readable alongside this script; the pre-Phase-2
+# LL_USE_COMMON_AWK opt-in flag and the duplicated inline standalone
+# program have been removed.
+_self_dir_linux="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+LL_COMMON_AWK="${LL_COMMON_AWK:-${_self_dir_linux}/ll_common.awk}"
+LL_LINUX_AWK="${LL_LINUX_AWK:-${_self_dir_linux}/ll_linux.awk}"
+if [ ! -r "$LL_COMMON_AWK" ]; then
+  echo "ll_linux: missing common awk library: $LL_COMMON_AWK" >&2
+  exit 1
+fi
+if [ ! -r "$LL_LINUX_AWK" ]; then
+  echo "ll_linux: missing linux awk library: $LL_LINUX_AWK" >&2
+  exit 1
+fi
+AWK_LIB_ARGS=(-f "$LL_COMMON_AWK" -f "$LL_LINUX_AWK")
+
+# NOW_EPOCH: honor LL_NOW_EPOCH; fall back to wall clock (matches ll_macos).
+# common's time_calc() wrapper passes this value straight to llc_time_calc;
+# leaving it empty would cause arithmetic on an uninitialised value.
+LL_LINUX_NOW_EPOCH="${LL_NOW_EPOCH:-}"
+if [[ ! "$LL_LINUX_NOW_EPOCH" =~ ^[0-9]+$ ]]; then
+  LL_LINUX_NOW_EPOCH="$(date +%s)"
+fi
+
+# Driver program: BEGIN calls ll_common_init() to install all colors,
+# constants, and helpers from ll_common.awk; row/END reference llc_*
+# helpers and the ingress functions from ll_linux.awk.
+# shellcheck disable=SC2016
+AWK_PROG='
+BEGIN {
+  ll_common_init()
+}
+
+{
+  if (!parse_line($0)) next
+
+  n++
+  a_blocks[n] = blocks
+  a_perms[n]  = perms
+  a_links[n]  = links
+  a_owner[n]  = owner
+  a_group[n]  = group
+  a_size[n]   = size
+  a_epoch[n]  = epoch
+  a_name[n]   = name
+  time_calc(epoch + 0)
+  a_tprefix[n] = time_prefix
+  a_tnum[n] = time_num
+  a_tunit[n] = time_unit
+  a_tfuture[n] = time_future
+  if (time_future) any_future = 1
+  if (length(time_prefix) > w_tprefix) w_tprefix = length(time_prefix)
+  tnum_s = sprintf("%d", time_num)
+  if (length(tnum_s) > w_tnum) w_tnum = length(tnum_s)
+  if (length(time_unit) > w_tunit) w_tunit = length(time_unit)
+
+  if (ASIZE) {
+    bcalc = blocks
+    if (HUMANREADABLE && bcalc ~ /^[0-9]+$/) bcalc = bcalc "B"
+    if (length(bcalc) > w_blocks) w_blocks = length(bcalc)
+  }
+  if (length(perms) > w_perms) w_perms = length(perms)
+  if (length(links) > w_links) w_links = length(links)
+
+  if (OWNER) {
+    o = owner
+    if (!NUMERICUIDGID && USERNAME != "" && o == USERNAME) o = "you"
+    if (length(o) > w_owner) w_owner = length(o)
+  }
+  if (GROUPNAME && length(group) > w_group) w_group = length(group)
+  size_raw = llc_strip_colors(size)
+  if (HUMANREADABLE && size_raw ~ /^[0-9]+$/) size_raw = size_raw "B"
+  if (length(size_raw) > w_size) w_size = length(size_raw)
+}
+
+END {
+  for (i=1; i<=n; i++) {
+    out = ""
+
+    if (ASIZE) {
+      b = a_blocks[i]
+      if (HUMANREADABLE) {
+        b_colored = llc_color_size_human(b)
+        out = out llc_lpad(b_colored, w_blocks) " "
+      } else {
+        out = out cb llc_lpad(b, w_blocks) creset " "
+      }
+    }
+
+    p = a_perms[i]
+    out = out llc_rpad(llc_color_perm(p), w_perms) " "
+
+    out = out llc_lpad(a_links[i], w_links) " "
+
+    if (OWNER) {
+      o = a_owner[i]
+      if (!NUMERICUIDGID && USERNAME != "" && o == USERNAME) o = "you"
+      if (o == "you") o = cusr o creset
+      else if (o == "root") o = croot o creset
+      out = out llc_rpad(o, w_owner) " "
+    }
+
+    if (GROUPNAME) {
+      g = a_group[i]
+      out = out llc_rpad(g, w_group) " "
+    }
+
+    s = a_size[i]
+    if (HUMANREADABLE) {
+      s_colored = llc_color_size_human(s)
+      out = out llc_lpad(s_colored, w_size) " "
+    } else {
+      c = llc_size_color_numeric(s + 0)
+      s_colored = c s creset
+      out = out llc_lpad(s_colored, w_size) " "
+    }
+
+    num_s = sprintf("%d", a_tnum[i])
+    unit_s = llc_rpad(a_tunit[i], w_tunit)
+    value_width = any_future ? (w_tnum + 3) : w_tnum
+    value_core = a_tfuture[i] ? ("in " num_s) : num_s
+    value_field = llc_lpad(value_core, value_width)
+    t_raw = value_field " " unit_s
+    t_colored = llc_color_reltime(t_raw, a_tunit[i], a_tfuture[i])
+    out = out t_colored " "
+
+    name_out = format_name_raw(a_name[i], a_perms[i])
+    # Match ll_macos: append erase-in-line + reset for very long names so
+    # the terminal line is cleared past the right edge. Same >=200 threshold.
+    name_suffix = ""
+    if (length(name_out) >= 200) name_suffix = sprintf("%c[K%s", 27, creset)
+    out = out name_out name_suffix
+
+    print out
+  }
+}
+'
+
+# Disable colors for testing (matches ll_macos behavior)
+NO_COLOR="${LL_NO_COLOR:-0}"
+
+"$AWK_BIN" "${AWK_LIB_ARGS[@]}" -f <(printf '%s\n' "$AWK_PROG") -v ASIZE="$ASIZE" \
+  -v HUMANREADABLE="$HUMANREADABLE" \
+  -v NOW_EPOCH="$LL_LINUX_NOW_EPOCH" \
+  -v NUMERICUIDGID="$NUMERICUIDGID" \
+  -v OWNER="$OWNER" \
+  -v GROUPNAME="$GROUPNAME" \
+  -v LISTDIRECTORY="$LISTDIRECTORY" \
+  -v USERNAME="$USERNAME" \
+  -v NO_COLOR="$NO_COLOR" <<<"$ll_res"
+
+# Print total line if present (same as ll script)
+if [ -n "$ll_total" ]; then
+  echo "$ll_total"
+fi
+exit 0

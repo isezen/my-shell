@@ -1,4 +1,7 @@
 #!/bin/bash
+# shell/bash/prompt.bash
+# Prompt configuration for bash shell
+# This file contains prompt customization settings
 # 2016-03-27
 # sezenismail@gmail.com
 # Shiny bash prompt support
@@ -14,6 +17,7 @@
 # Use single quotes so `${NEW_PWD}` is expanded at *prompt render* time (after PROMPT_COMMAND updates it).
 PS1='\h ☘ ${NEW_PWD} [\$] '
 
+  # bash_prompt_command function
 bash_prompt_command() {
   local pwdmaxlen=25
   local trunc_symbol=".."
@@ -23,6 +27,7 @@ bash_prompt_command() {
   local pwdoffset=$(( ${#NEW_PWD} - pwdmaxlen ))
   if [ ${pwdoffset} -gt "0" ];then
     NEW_PWD=${NEW_PWD:$pwdoffset:$pwdmaxlen}
+  # bash_prompt function
     NEW_PWD=${trunc_symbol}/${NEW_PWD#*/}
   fi
 }
@@ -44,4 +49,3 @@ bash_prompt() {
 PROMPT_COMMAND=bash_prompt_command
 bash_prompt
 unset bash_prompt
-

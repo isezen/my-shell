@@ -1,4 +1,7 @@
 #!/bin/bash
+# shell/bash/env.bash
+# Environment settings for bash shell
+# This file contains environment variable configurations
 # 2016-03-27
 # sezenismail@gmail.com
 # Bash environment settings (history, dircolors, etc.)
@@ -30,3 +33,11 @@ fi
 
 unset gnuls
 
+# LSCOLORS: GNU-like approximate (dirs bold blue, symlinks bold cyan, exec bold green)
+export LSCOLORS="ExGxFxDxCxegedabagacad"
+
+# Alternative LSCOLORS palettes (uncomment to use):
+# Default macOS palette:
+# export LSCOLORS="ExFxBxDxCxegedabagacad"
+# High-contrast variant:
+# export LSCOLORS="HxGxFxDxCxegedabagacad"

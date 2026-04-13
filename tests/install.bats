@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# install.bats
+# tests/install.bats
 # Extensive test suite for install.sh (local + remote, dry-run sandbox, precedence, idempotency, error paths)
 
 load test_helper/bats-support/load

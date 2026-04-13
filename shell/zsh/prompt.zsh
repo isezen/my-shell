@@ -1,4 +1,7 @@
 #!/bin/zsh
+# shell/zsh/prompt.zsh
+# Prompt configuration for zsh shell
+# This file contains prompt customization settings
 # zsh prompt support
 # Bash prompt strategy ported to Zsh (native)
 
@@ -10,6 +13,7 @@ setopt PROMPT_SUBST
 PS1='%m☘ ${NEW_PWD} [%#] '
 
 # Compute truncated path before each prompt (bash_prompt_command equivalent)
+  # Internal helper function: __my_shell_zsh_prompt_command
 __my_shell_zsh_prompt_command() {
   local pwdmaxlen=25
   local trunc_symbol=".."
@@ -35,4 +39,3 @@ __my_shell_zsh_prompt_command
 
 # Colors (bash.sh color chain Zsh equivalent)
 PS1='%F{cyan}%m%f☘ %F{green}${NEW_PWD}%f [%F{red}%#%f] '
-

@@ -1,4 +1,5 @@
 #!/bin/bash
+# env/activate.bash
 # activate.bash - Bash environment activation
 # Usage: source activate.bash
 
@@ -20,6 +21,27 @@ fi
 
 # Save PATH snapshot for exact restoration
 export MY_SHELL_OLD_PATH="$PATH"
+
+# Optional BSD-only mode: remove GNU coreutils gnubin paths.
+if [ "${LL_BSD_USERLAND:-}" = "1" ] || [ "${LL_NO_GNUBIN:-}" = "1" ]; then
+    _my_shell_path_parts=()
+    IFS=':' read -r -a _my_shell_path_raw <<< "$PATH"
+    for _my_shell_path in "${_my_shell_path_raw[@]}"; do
+        case "$_my_shell_path" in
+            /opt/local/libexec/gnubin|/usr/local/opt/coreutils/libexec/gnubin|/opt/homebrew/opt/coreutils/libexec/gnubin)
+                continue
+                ;;
+            /opt/local/bin)
+                if [ -x /opt/local/bin/gawk ] || [ -x /opt/local/bin/gdate ] || [ -x /opt/local/bin/gtouch ]; then
+                    continue
+                fi
+                ;;
+        esac
+        _my_shell_path_parts+=("$_my_shell_path")
+    done
+    PATH="$(IFS=:; printf '%s' "${_my_shell_path_parts[*]}")"
+    export PATH
+fi
 
 # Prepend scripts/bin/ and scripts/dev/ to PATH
 export PATH="$MY_SHELL_ROOT/scripts/bin:$MY_SHELL_ROOT/scripts/dev:$PATH"
@@ -52,7 +74,7 @@ reactivate() {
 
     # Remove existing prefix if present (to avoid duplication)
     if [[ "$PS1" == *"(my-shell)"* ]]; then
-        # Remove the prefix pattern: \[\e[0;35m\](my-shell)\[\e[0m\] 
+        # Remove the prefix pattern: \[\e[0;35m\](my-shell)\[\e[0m\]
         PS1="${PS1//\[\e[0;35m\](my-shell)\[\e[0m\] /}"
     fi
 
@@ -92,27 +114,27 @@ deactivate() {
 
     # Spawn marker: ./env/activate always starts a new interactive shell
     _SESSION_SPAWNED="$MY_SHELL_SESSION_SPAWNED"
-    
+
     # Clean up activation variables
     unset MY_SHELL_ACTIVATED
     unset MY_SHELL_ACTIVATION_MODE
     unset MY_SHELL_ROOT
     unset MY_SHELL_SESSION_SPAWNED
     unset MY_SHELL_SPAWNED_SHELL
-    
+
     # Clean up temporary artifacts (best-effort)
     if [ -n "$MY_SHELL_TMPDIR" ] && [ -d "$MY_SHELL_TMPDIR" ]; then
         rm -rf "$MY_SHELL_TMPDIR" 2>/dev/null || true
     fi
     unset MY_SHELL_TMPDIR
-    
+
     # Remove functions
     unset -f deactivate
     unset -f reactivate
 
     echo "- my-shell environment deactivated"
     echo "- Bye..."
-    
+
 
     # If this Bash session was spawned by ./env/activate, exit after cleanup.
     if [ "$_SESSION_SPAWNED" = "1" ]; then

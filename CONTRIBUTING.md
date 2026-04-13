@@ -156,6 +156,24 @@ We use **feature branches** for all changes:
    make check      # Run all checks (lint + alias-sync)
    ```
 
+4. **Testing ll implementations** (if modifying `ll_linux` or `ll_macos`):
+   ```bash
+   # Verify output parity between implementations
+   scripts/dev/ll-compare ll_linux ll_macos
+   
+   # Compare against canonical ls -l
+   scripts/dev/ls-compare ll_macos
+   scripts/dev/ls-compare ll_linux
+   
+   # Use deterministic timestamps for comparison
+   LL_NOW_EPOCH=1234567890 scripts/dev/ll-compare ll_linux ll_macos
+   
+   # Skip slow tests during development
+   LL_NO_COLOR=1 scripts/dev/ll-compare ll_linux ll_macos
+   ```
+   
+   **Critical requirement**: `ll_linux` and `ll_macos` outputs must be identical for cross-platform compatibility.
+
 ## Coding Standards
 
 ### Shell Script Standards
@@ -253,12 +271,28 @@ make test-bats
 # Run all tests (BATS + linting)
 make test
 
+# Run platform-aware ll test suite
+make test-ll              # Auto-detects platform (macOS or Linux)
+make test-ll-common       # Platform-independent wrapper tests
+make test-ll-macos        # macOS-specific BSD tests
+make test-ll-linux        # Linux-specific GNU tests
+make test-ll-all          # All test suites (unsuitable ones will soft-skip)
+
+# Run in CI simulation (requires Docker)
+make test-act             # Run GitHub Actions workflow locally
+
 # Run a specific test file
 bats tests/alias.bats
 bats tests/alias-sync.bats  # Alias synchronization tests
+bats tests/ll/10_wrapper_stub.bats  # Wrapper tests
+bats tests/ll_macos/10_core.bats    # macOS tests
 
 # Run with verbose output
 bats -v tests/alias.bats
+
+# Force specific ll implementation for testing
+LL_IMPL=linux ll /path    # Force Linux implementation
+LL_IMPL=macos ll /path    # Force macOS implementation
 ```
 
 ### Writing Tests
@@ -303,10 +337,15 @@ bats -v tests/alias.bats
 
 ### Test Coverage
 
+**Minimum baseline**: Maintain at least 55 tests as documented in `tests/TEST_COVERAGE.md`.
+
 - Aim for high test coverage
 - Test both success and failure cases
 - Test edge cases and error conditions
+- Breaking existing tests is unacceptable - all tests must pass before merge
+- New features require corresponding test coverage
 - Update `tests/TEST_COVERAGE.md` when adding new tests
+- Update test count badge in `README.md` if total test count changes
 
 ## Pull Request Process
 
@@ -325,9 +364,14 @@ bats -v tests/alias.bats
    ```
 
 3. **Update documentation** if needed:
-   - README.md
-   - CHANGELOG.md
-   - tests/TEST_COVERAGE.md
+   - **README.md** - Update if core functionality changes (features, aliases, user-facing behavior)
+   - **CHANGELOG.md** - Add entry to `[Unreleased]` section for each important modification:
+     ```markdown
+     - Commit N: <description> (areas: <components>). Behavior change: <details>
+     ```
+     Follow [Keep a Changelog](https://keepachangelog.com/) format. Note if change is docs-only, refactor-only, or behavior-changing.
+   - **CONTRIBUTING.md** - Update when core development workflows change (new test targets, build commands, development tools)
+   - **tests/TEST_COVERAGE.md** - Update when adding new test files or significant test coverage changes
 
 4. **Rebase on latest master**:
    ```bash
@@ -444,4 +488,3 @@ directory creation or navigation fails.
 ## Thank You!
 
 Your contributions make this project better. Thank you for taking the time to contribute! 🎉
-

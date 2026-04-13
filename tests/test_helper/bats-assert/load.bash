@@ -1,5 +1,10 @@
+# tests/test_helper/bats-assert/load.bash
 # bats-assert - Common assertions for Bats
 # This is a minimal implementation for basic assertions
+
+# Initialized for ShellCheck; Bats run overrides these globals.
+status=0
+output=""
 
 # Assert that command succeeded
 assert_success() {
@@ -47,7 +52,7 @@ assert_output() {
       return
     fi
   fi
-  
+
   if [ "$output" != "$expected" ]; then
     {
       echo "output differs"
@@ -57,15 +62,50 @@ assert_output() {
   fi
 }
 
-# Flunk - print error and exit
-flunk() {
-  {
-    if [ "$#" -eq 0 ]; then
-      cat
-    else
-      echo "$@"
+# Assert that a line in output contains string
+assert_line() {
+  local expected
+  local found=0
+
+  if [ "$1" = "--partial" ]; then
+    expected="$2"
+    while IFS= read -r line; do
+      if [[ "$line" == *"$expected"* ]]; then
+        found=1
+        break
+      fi
+    done <<< "$output"
+
+    if [ "$found" -eq 0 ]; then
+      {
+        echo "no line in output contains '$expected'"
+        echo "output: $output"
+      } | flunk
     fi
-  } >&2
-  return 1
+  else
+    expected="$1"
+    while IFS= read -r line; do
+      if [ "$line" = "$expected" ]; then
+        found=1
+        break
+      fi
+    done <<< "$output"
+
+    if [ "$found" -eq 0 ]; then
+      {
+        echo "no line in output matches '$expected'"
+        echo "output: $output"
+      } | flunk
+    fi
+  fi
 }
 
+# Flunk - print error and exit
+flunk() {
+  if [ -t 0 ]; then
+    echo "assertion failed" >&2
+  else
+    cat >&2
+  fi
+  return 1
+}

@@ -1,4 +1,7 @@
 #!/bin/zsh
+# shell/zsh/env.zsh
+# Environment settings for zsh shell
+# This file contains environment variable configurations
 # Zsh environment settings (history, dircolors, etc.)
 
 export CLICOLOR=1
@@ -20,3 +23,11 @@ if command ls --version >/dev/null 2>&1; then
   fi
 fi
 
+# LSCOLORS: GNU-like approximate (dirs bold blue, symlinks bold cyan, exec bold green)
+export LSCOLORS="ExGxFxDxCxegedabagacad"
+
+# Alternative LSCOLORS palettes (uncomment to use):
+# Default macOS palette:
+# export LSCOLORS="ExFxBxDxCxegedabagacad"
+# High-contrast variant:
+# export LSCOLORS="HxGxFxDxCxegedabagacad"

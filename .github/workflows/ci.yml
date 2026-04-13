@@ -11,7 +11,7 @@ jobs:
     name: Test on Ubuntu
     runs-on: ubuntu-latest
     # Local (act) ve GitHub Actions'da çalışır
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,7 +44,10 @@ jobs:
 
       - name: Run BATS tests
         id: test-bats
-        run: make test-bats
+        run: |
+          set -euo pipefail
+          export TERM=dumb
+          make test-ll |& tee .ci-test-ll.log
         continue-on-error: false
 
       - name: Generate Linux test report
@@ -56,15 +59,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Run tests and capture output
-          if command -v bats >/dev/null 2>&1; then
-            # Set TERM to avoid tput errors, use TAP format for CI
-            export TERM=dumb
-            # Use TAP format (more reliable in CI) and format it ourselves
-            # Suppress stderr errors (tput, broken pipe) but keep stdout
-            TEST_OUTPUT=$(bats tests/*.bats 2>/dev/null || bats tests/*.bats 2>&1 | grep -vE "(tput:|printf: write error)" || true)
-            
+
+          if [ -f .ci-test-ll.log ]; then
+            TEST_OUTPUT="$(cat .ci-test-ll.log 2>/dev/null)"
+
             # Extract test counts (before formatting)
             TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
             if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" = "" ]; then
@@ -72,15 +70,15 @@ jobs:
             fi
             PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok" || echo "0")
             FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
-            
+
             # Format test output: replace "ok" with "[ OK ]" and "not ok" with "[FAIL]"
             FORMATTED_OUTPUT=$(echo "$TEST_OUTPUT" | sed 's/^ok /[ OK ] /g; s/^not ok /[FAIL] /g')
-            
+
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$FORMATTED_OUTPUT" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             # Ensure all test counts are numeric
             PASSED_TESTS=${PASSED_TESTS:-0}
             FAILED_TESTS=${FAILED_TESTS:-0}
@@ -90,18 +88,18 @@ jobs:
             if ! [[ "$FAILED_TESTS" =~ ^[0-9]+$ ]]; then
               FAILED_TESTS=0
             fi
-            
+
             # Ensure TOTAL_TESTS is a valid number
             TOTAL_TESTS=${TOTAL_TESTS:-0}
             if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] || [ "$TOTAL_TESTS" -eq 0 ]; then
               TOTAL_TESTS=$((PASSED_TESTS + FAILED_TESTS))
             fi
-            
+
             # Final check: ensure TOTAL_TESTS is numeric
             if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]]; then
               TOTAL_TESTS=0
             fi
-            
+
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Count | Percent |" >> $GITHUB_STEP_SUMMARY
@@ -121,15 +119,15 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ BATS not found. Cannot generate coverage report." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Test log missing. Cannot generate report." >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Files" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| File | Tests | Percent |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|---------|" >> $GITHUB_STEP_SUMMARY
-          for test_file in tests/*.bats; do
+          for test_file in tests/ll/*.bats tests/ll_linux/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
               TEST_COUNT=${TEST_COUNT:-0}
@@ -152,7 +150,7 @@ jobs:
     name: Test on macOS
     runs-on: macos-latest
     # Sadece GitHub Actions'da çalışır (act macOS runner'ları desteklemez)
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -182,7 +180,10 @@ jobs:
 
       - name: Run BATS tests
         id: test-bats
-        run: make test-bats
+        run: |
+          set -euo pipefail
+          export TERM=dumb
+          make test-ll |& tee .ci-test-ll.log
         continue-on-error: false
 
       - name: Generate OSX test report
@@ -194,15 +195,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Run tests and capture output
-          if command -v bats >/dev/null 2>&1; then
-            # Set TERM to avoid tput errors, use TAP format for CI
-            export TERM=dumb
-            # Use TAP format (more reliable in CI) and format it ourselves
-            # Suppress stderr errors (tput, broken pipe) but keep stdout
-            TEST_OUTPUT=$(bats tests/*.bats 2>/dev/null || bats tests/*.bats 2>&1 | grep -vE "(tput:|printf: write error)" || true)
-            
+
+          if [ -f .ci-test-ll.log ]; then
+            TEST_OUTPUT="$(cat .ci-test-ll.log 2>/dev/null)"
+
             # Extract test counts (before formatting)
             TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "^[0-9]+\.\.[0-9]+" | tail -1 | awk -F'\.\.' '{print $2}' | awk '{print $1}' || echo "0")
             if [ -z "$TOTAL_TESTS" ] || [ "$TOTAL_TESTS" = "" ]; then
@@ -210,15 +206,15 @@ jobs:
             fi
             PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^ok" || echo "0")
             FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -c "^not ok" || echo "0")
-            
+
             # Format test output: replace "ok" with "[ OK ]" and "not ok" with "[FAIL]"
             FORMATTED_OUTPUT=$(echo "$TEST_OUTPUT" | sed 's/^ok /[ OK ] /g; s/^not ok /[FAIL] /g')
-            
+
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$FORMATTED_OUTPUT" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             # Ensure all test counts are numeric
             PASSED_TESTS=${PASSED_TESTS:-0}
             FAILED_TESTS=${FAILED_TESTS:-0}
@@ -228,18 +224,18 @@ jobs:
             if ! [[ "$FAILED_TESTS" =~ ^[0-9]+$ ]]; then
               FAILED_TESTS=0
             fi
-            
+
             # Ensure TOTAL_TESTS is a valid number
             TOTAL_TESTS=${TOTAL_TESTS:-0}
             if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]] || [ "$TOTAL_TESTS" -eq 0 ]; then
               TOTAL_TESTS=$((PASSED_TESTS + FAILED_TESTS))
             fi
-            
+
             # Final check: ensure TOTAL_TESTS is numeric
             if ! [[ "$TOTAL_TESTS" =~ ^[0-9]+$ ]]; then
               TOTAL_TESTS=0
             fi
-            
+
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Count | Percent |" >> $GITHUB_STEP_SUMMARY
@@ -259,15 +255,15 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ BATS not found. Cannot generate coverage report." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Test log missing. Cannot generate report." >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Test Files" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| File | Tests | Percent |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|---------|" >> $GITHUB_STEP_SUMMARY
-          for test_file in tests/*.bats; do
+          for test_file in tests/ll/*.bats tests/ll_macos/*.bats; do
             if [ -f "$test_file" ]; then
               TEST_COUNT=$(grep -c "^@test" "$test_file" || echo "0")
               TEST_COUNT=${TEST_COUNT:-0}
@@ -285,4 +281,3 @@ jobs:
         run: |
           echo "❌ Tests failed. Check the logs above for details."
           exit 1
-

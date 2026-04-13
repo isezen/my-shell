@@ -102,9 +102,9 @@ fetch_or_copy() {
   local rel_path="$1"
   local dest_path="$2"
   local file_mode="${3:-0755}"
-  
+
   prompt_overwrite "$dest_path"
-  
+
   if [ "$SOURCE_MODE" = "local" ]; then
     local src="$REPO_ROOT/$rel_path"
     if [ ! -f "$src" ]; then
@@ -116,7 +116,7 @@ fetch_or_copy() {
     local url="$base/$rel_path"
     curl -fsSL "$url" > "$dest_path" || die "Could not download $url"
   fi
-  
+
   chmod "$file_mode" "$dest_path" || die "Could not set permissions on $dest_path"
 }
 
@@ -362,7 +362,7 @@ fi
 if [ "$DO_SETTINGS" = "1" ]; then
   EFFECTIVE_SHELL_DIR="${EFFECTIVE_INSTALL_DIR}/${shell_name}"
   ensure_dir "$EFFECTIVE_SHELL_DIR"
-  
+
   # Determine files to install based on shell
   if [ "$shell_name" = "bash" ]; then
     FILES="init.bash aliases.bash prompt.bash env.bash"
@@ -371,12 +371,12 @@ if [ "$DO_SETTINGS" = "1" ]; then
   elif [ "$shell_name" = "fish" ]; then
     FILES="init.fish aliases.fish prompt.fish env.fish"
   fi
-  
+
   log "Installing my-shell configuration for $shell_name..."
   for file in $FILES; do
     rel_path="shell/${shell_name}/${file}"
     dest_path="${EFFECTIVE_SHELL_DIR}/${file}"
-    
+
     log "Installing: $file"
     if [ "$SOURCE_MODE" = "local" ]; then
       log "  Copying from local repository: $REPO_ROOT/$rel_path"
@@ -388,7 +388,7 @@ if [ "$DO_SETTINGS" = "1" ]; then
     log "  Done."
   done
   log ""
-  
+
   # Add source line to RC file
   SOURCE_LINE=""
   if [ "$DRY_RUN" = "1" ]; then
@@ -410,7 +410,7 @@ if [ "$DO_SETTINGS" = "1" ]; then
       SOURCE_LINE="source \"\$HOME/.my-shell/fish/init.fish\""
     fi
   fi
-  
+
   append_line_if_missing "$EFFECTIVE_RC_FILE" "$SOURCE_LINE"
 fi
 
@@ -425,7 +425,7 @@ if [ "$DO_SCRIPTS" = "1" ]; then
       die "Cannot write to $EFFECTIVE_BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
     fi
   fi
-  
+
   # Check if directory is writable (mkdir -p might succeed even if not writable)
   if [ ! -w "$EFFECTIVE_BIN_PREFIX" ]; then
     if [ "$BIN_PREFIX_REAL" = "/usr/local/bin" ]; then
@@ -434,14 +434,14 @@ if [ "$DO_SCRIPTS" = "1" ]; then
       die "Cannot write to $EFFECTIVE_BIN_PREFIX. Please check permissions or choose a writable path with --bin-prefix PATH"
     fi
   fi
-  
+
   SCRIPTS="ll dus dusf dusf."
-  
+
   log "Installing utility scripts to $EFFECTIVE_BIN_PREFIX..."
   for script in $SCRIPTS; do
     rel_path="scripts/bin/${script}"
     dest_path="${EFFECTIVE_BIN_PREFIX}/${script}"
-    
+
     log "Installing script: $script"
     if [ "$SOURCE_MODE" = "local" ]; then
       log "  Copying from local repository: $REPO_ROOT/$rel_path"
@@ -453,14 +453,14 @@ if [ "$DO_SCRIPTS" = "1" ]; then
     log "  Done."
   done
   log ""
-  
+
   # Add PATH line to RC file (idempotent)
   if [ "$shell_name" = "fish" ]; then
     PATH_LINE="set -gx PATH \"$EFFECTIVE_BIN_PREFIX\" \$PATH"
   else
     PATH_LINE="export PATH=\"$EFFECTIVE_BIN_PREFIX:\$PATH\""
   fi
-  
+
   append_line_if_missing "$EFFECTIVE_RC_FILE" "$PATH_LINE"
 fi
 
