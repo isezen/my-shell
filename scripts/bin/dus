@@ -13,29 +13,37 @@
 # ----------------------------------------------------------------------
 # GNU coreutils preflight
 # ----------------------------------------------------------------------
-# This script uses GNU-specific flags that BSD userland does not support:
+# Feature-frozen legacy utility. This script uses GNU-specific flags
+# that BSD userland does not support:
 #   - ls --color                  (BSD uses -G)
 #   - du -d N / du -ahcd          (BSD -d has different semantics)
 #   - head -n -N                  (BSD head has no negative count)
-#   - sed -r                      (BSD uses -E)
+#   - GNU grep GREP_COLORS env    (BSD grep has no equivalent)
 # Probing `ls --version` is a reliable GNU/BSD discriminator since BSD ls
 # treats it as an unknown flag and fails. If GNU coreutils is missing,
 # print an actionable error and exit 2 (usage/requirement error) rather
 # than letting the script fall through into cryptic BSD usage noise.
+#
+# Modern alternatives worth considering instead of this legacy script:
+#   ncdu   — fast interactive disk usage explorer
+#   dust   — Rust-based, tree view (`brew install dust` / `port install dust`)
+#   duf    — cross-platform disk-free overview
 if ! command ls --version >/dev/null 2>&1; then
   cat >&2 <<'MISSING_GNU'
-dus: GNU coreutils required.
+dus: GNU coreutils required (this is a feature-frozen legacy utility).
 
 This script uses GNU-specific flags (ls --color, du -d, head -n -N,
-sed -r) that BSD userland does not support.
+GNU grep GREP_COLORS) that BSD userland does not support.
 
-On macOS, install via one of:
+On macOS, install GNU coreutils via one of:
   MacPorts: sudo port install coreutils
   Homebrew: brew install coreutils
 
 Then put the GNU binaries ahead of the system ones in PATH, e.g.:
   export PATH="/opt/local/libexec/gnubin:$PATH"                     # MacPorts
   export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"    # Homebrew
+
+Or consider modern replacements: ncdu / dust / duf.
 MISSING_GNU
   exit 2
 fi
@@ -86,7 +94,7 @@ shift $((OPTIND-1))
 # echo "$ls_res" |  tr " " ","
 
 ls_res=$(ls -AUF1 --color) # get only file/directory names
-du_res=$(du -ahcd 1 | sed -r "s:./::") # get sizes
+du_res=$(du -ahcd 1 | sed -E "s:./::") # get sizes
 du_total=$(echo "$du_res" | tail -n 1)
 du_res=$(echo "$du_res" | head -n -2) # get sizes
 du_sizes=$(echo "$du_res" | cut -f 1) # Only sizes column

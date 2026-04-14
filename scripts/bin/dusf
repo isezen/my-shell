@@ -8,26 +8,29 @@
 # Disk Usage Info Sorted Only Regular Files
 
 # GNU coreutils preflight — see scripts/bin/dus for the full rationale.
+# Feature-frozen legacy utility; modern alternatives: ncdu, dust, duf.
 if ! command ls --version >/dev/null 2>&1; then
   cat >&2 <<'MISSING_GNU'
-dusf: GNU coreutils required.
+dusf: GNU coreutils required (this is a feature-frozen legacy utility).
 
 This script uses GNU-specific flags (ls --color, du -d, head -n -N,
 xargs -r / tr / cut behavior) that BSD userland does not support.
 
-On macOS, install via one of:
+On macOS, install GNU coreutils via one of:
   MacPorts: sudo port install coreutils
   Homebrew: brew install coreutils
 
 Then put the GNU binaries ahead of the system ones in PATH, e.g.:
   export PATH="/opt/local/libexec/gnubin:$PATH"                     # MacPorts
   export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"    # Homebrew
+
+Or consider modern replacements: ncdu / dust / duf.
 MISSING_GNU
   exit 2
 fi
 
 search_dir="${1:-.}"
-regfiles=$(find "$search_dir" -maxdepth 1 -type f -a ! -iname ".*" | sed -r "s:\./::")
+regfiles=$(find "$search_dir" -maxdepth 1 -type f -a ! -iname ".*" | sed -E "s:\./::")
 
 du_res=$(printf '%s\n' "$regfiles" | tr "\n" "\0" | xargs -0 du -achld 1) # Calculate du for files
 du_total=$(printf '%s\n' "$regfiles" | tr "\n" "\0" | xargs -0 du -achld 1 | tail -n 1) # get total size

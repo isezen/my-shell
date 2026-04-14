@@ -138,9 +138,14 @@ _gnu_coreutils_available() {
 
   run env PATH="/usr/bin:/bin" "$DUS_SCRIPT"
   [ "$status" -eq 2 ]
-  assert_output --partial "dus: GNU coreutils required."
+  # Banner was expanded in the minimal feature-freeze pass; assert the
+  # stable script-name + requirement substring and the install hints,
+  # not the full line, so cosmetic wording tweaks don't break the test.
+  assert_output --partial "dus: GNU coreutils required"
+  assert_output --partial "feature-frozen legacy utility"
   assert_output --partial "MacPorts: sudo port install coreutils"
   assert_output --partial "Homebrew: brew install coreutils"
+  assert_output --partial "ncdu / dust / duf"
 }
 
 @test "dusf: exits 2 with 'GNU coreutils required' when GNU ls is missing" {
@@ -150,7 +155,8 @@ _gnu_coreutils_available() {
 
   run env PATH="/usr/bin:/bin" "$DUSF_SCRIPT"
   [ "$status" -eq 2 ]
-  assert_output --partial "dusf: GNU coreutils required."
+  assert_output --partial "dusf: GNU coreutils required"
+  assert_output --partial "feature-frozen legacy utility"
 }
 
 @test "dusf.: exits 2 with 'GNU coreutils required' when GNU ls is missing" {
@@ -160,5 +166,6 @@ _gnu_coreutils_available() {
 
   run env PATH="/usr/bin:/bin" "$DUSFD_SCRIPT"
   [ "$status" -eq 2 ]
-  assert_output --partial "dusf.: GNU coreutils required."
+  assert_output --partial "dusf.: GNU coreutils required"
+  assert_output --partial "feature-frozen legacy utility"
 }
