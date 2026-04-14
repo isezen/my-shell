@@ -24,14 +24,16 @@ setup() {
 
 # Helper: run a one-shot bash with activate sourced and execute $1 inside.
 # Exported so `run _in_activated_bash ...` can find it inside bats's
-# subshell. We deliberately do NOT enable `set -u` here: activate.bash
-# touches several variables (MY_SHELL_ROOT, MY_SHELL_TMPDIR, etc.) without
-# `${VAR:-}` defaults, and locking the test under `set -u` would impose a
-# defensive-coding requirement that the script doesn't currently meet.
-# The script is intended to be sourced from a "normal" interactive shell.
+# subshell. `set -u` is enabled deliberately: activate.bash's defensive-
+# coding contract (use `${VAR:-}` defaults for every potentially-unset
+# MY_SHELL_* / PS1 reference) is locked in by this flag. If a future
+# edit reintroduces a bare `"$VAR"` on an unset variable, every test in
+# this file fails with `unbound variable` — which is the regression
+# signal we want.
 _in_activated_bash() {
   local body="$1"
   bash --noprofile --norc -c "
+    set -u
     PROJECT_ROOT='${PROJECT_ROOT}'
     ACTIVATE='${ACTIVATE}'
     # Capture the original PATH so the test body can compare against it.

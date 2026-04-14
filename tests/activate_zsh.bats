@@ -23,9 +23,14 @@ setup() {
 
 # Helper: zsh -c with activate sourced. zsh's --no-rcs --no-globalrcs
 # suppress the user's zshrc / zshenv so the test environment is clean.
+# `set -u` is enabled deliberately to regression-lock activate.zsh's
+# defensive-coding contract (every potentially-unset reference goes
+# through `${VAR:-}`). A future edit reintroducing a bare unset
+# reference will fail every test in this file with `unbound variable`.
 _in_activated_zsh() {
   local body="$1"
   zsh --no-rcs --no-globalrcs -c "
+    set -u
     PROJECT_ROOT='${PROJECT_ROOT}'
     ACTIVATE='${ACTIVATE}'
     ORIGINAL_PATH=\"\$PATH\"
