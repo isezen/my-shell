@@ -10,6 +10,35 @@
 #
 # dus (f|d|h|a)v
 
+# ----------------------------------------------------------------------
+# GNU coreutils preflight
+# ----------------------------------------------------------------------
+# This script uses GNU-specific flags that BSD userland does not support:
+#   - ls --color                  (BSD uses -G)
+#   - du -d N / du -ahcd          (BSD -d has different semantics)
+#   - head -n -N                  (BSD head has no negative count)
+#   - sed -r                      (BSD uses -E)
+# Probing `ls --version` is a reliable GNU/BSD discriminator since BSD ls
+# treats it as an unknown flag and fails. If GNU coreutils is missing,
+# print an actionable error and exit 2 (usage/requirement error) rather
+# than letting the script fall through into cryptic BSD usage noise.
+if ! command ls --version >/dev/null 2>&1; then
+  cat >&2 <<'MISSING_GNU'
+dus: GNU coreutils required.
+
+This script uses GNU-specific flags (ls --color, du -d, head -n -N,
+sed -r) that BSD userland does not support.
+
+On macOS, install via one of:
+  MacPorts: sudo port install coreutils
+  Homebrew: brew install coreutils
+
+Then put the GNU binaries ahead of the system ones in PATH, e.g.:
+  export PATH="/opt/local/libexec/gnubin:$PATH"                     # MacPorts
+  export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"    # Homebrew
+MISSING_GNU
+  exit 2
+fi
 
   # Display usage information
 _usage() {

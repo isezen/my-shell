@@ -22,10 +22,8 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 - Directory colors support
 
 ### 🛠️ Utility Scripts
-- **`ll`**: Colorful long listing with enhanced formatting
-- **`dus`**: Disk usage script with sorting and coloring
-- **`dusf`**: File-based disk usage analysis
-- **`dusf.`**: Alternative disk usage format
+- **`ll`**: Colorful long listing with enhanced formatting (cross-platform, byte-identical output between Linux and macOS — see [Behavior Contract](#behavior-contract))
+- **`dus`**, **`dusf`**, **`dusf.`**: Legacy disk-usage helpers (current dir summary, regular-file breakdown, hidden-file breakdown). **Require GNU coreutils**: on macOS install via `sudo port install coreutils` (MacPorts) or `brew install coreutils` (Homebrew), then prepend the gnubin directory to `PATH`. If GNU `ls` is not available the scripts exit with a clear error message (exit code 2) instead of producing cryptic BSD usage noise.
 
 ### ✅ Quality Assurance
 - **ShellCheck**: All scripts pass static analysis
