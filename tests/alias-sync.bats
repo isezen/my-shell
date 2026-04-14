@@ -34,8 +34,13 @@ extract_aliases_from_yaml() {
       continue
     fi
 
-    # Check if we're leaving the section (next top-level key)
-    if [[ "$in_section" == true ]] && [[ "$line" =~ ^[a-zA-Z_]+: ]]; then
+    # Check if we're leaving the section (next top-level key). Requires
+    # the line to be exactly `<key>:` possibly followed by whitespace —
+    # this rules out indented nested keys like `  description: foo` and
+    # inline-valued fields like `shell: bash`, which the old regex
+    # (`^[a-zA-Z_]+:`) would also have matched and silently terminated
+    # the section early.
+    if [[ "$in_section" == true ]] && [[ "$line" =~ ^[a-z_]+:[[:space:]]*$ ]]; then
       # Output last alias if any
       if [[ -n "$current_name" ]]; then
         echo "${current_name}|${current_shell}"
@@ -86,30 +91,52 @@ extract_aliases_from_yaml() {
   fi
 }
 
-# Function to check if alias exists in file (file parsing)
+# Escape POSIX extended regex metacharacters so an alias name can be
+# inlined into a grep -E pattern as a literal. Critical for names that
+# contain regex metacharacters — the project has '..', '...', '....',
+# '.....', '......', '.1'..'.5', 'du.', 'dusf.', 'rm!'. Without escaping,
+# '..' would match "any two characters" and false-positive on almost
+# every function definition.
+_escape_regex() {
+  printf '%s' "$1" | sed 's/[][\.*^$/()+?{}|]/\\&/g'
+}
+
+# Function to check if alias exists in file (file parsing).
+# Uses word-anchored extended-regex patterns so that e.g. 'c' does NOT
+# match 'clhist()' / 'function clhist'. Before this change the test
+# used grep -F on a bare prefix and silently false-positived across
+# every prefix-ambiguous name.
 check_alias_in_file() {
   local file="$1"
   local alias_name="$2"
   local shell_type="$3"
+  local re_name
+  re_name="$(_escape_regex "$alias_name")"
 
   case "$shell_type" in
     bash|zsh)
-      # Check for: alias name= or name() or function name() or function name {
-      # Use -F for literal string matching to avoid regex escaping issues
-      if grep -qF "alias ${alias_name}=" "$file" 2>/dev/null || \
-         grep -qF "alias \"${alias_name}\"=" "$file" 2>/dev/null || \
-         grep -qF "alias '${alias_name}'=" "$file" 2>/dev/null || \
-         grep -qF "${alias_name}()" "$file" 2>/dev/null || \
-         grep -qF "${alias_name} (" "$file" 2>/dev/null || \
-         grep -qF "function ${alias_name}()" "$file" 2>/dev/null || \
-         grep -qF "function ${alias_name} {" "$file" 2>/dev/null; then
+      # Match any of these *complete-token* declarations at line start
+      # (possibly indented inside an if-block):
+      #   alias NAME=...             alias "NAME"=...  alias 'NAME'=...
+      #   NAME() { ... }             NAME () { ... }
+      #   function NAME() { ... }    function NAME { ... }   (bash rm!)
+      #
+      # The token boundary is enforced by requiring the character AFTER
+      # ${re_name} to be one of (, space, or {, so 'c' cannot match
+      # 'clhist(' and 'du.' cannot match 'du.fish'-like substrings.
+      if grep -qE "^[[:space:]]*alias[[:space:]]+${re_name}=" "$file" 2>/dev/null \
+      || grep -qE "^[[:space:]]*alias[[:space:]]+['\"]${re_name}['\"]=" "$file" 2>/dev/null \
+      || grep -qE "^[[:space:]]*${re_name}[[:space:]]*\(\)[[:space:]]*\{" "$file" 2>/dev/null \
+      || grep -qE "^[[:space:]]*function[[:space:]]+${re_name}[[:space:]]*(\(\))?[[:space:]]*\{" "$file" 2>/dev/null; then
         return 0
       fi
       return 1
       ;;
     fish)
-      # Check for: function name
-      if grep -qF "function ${alias_name}" "$file" 2>/dev/null; then
+      # fish requires "function NAME" on its own logical line, NAME must
+      # be followed by whitespace or end-of-line (NOT another identifier
+      # character). This prevents 'c' from matching 'function cdh'.
+      if grep -qE "^[[:space:]]*function[[:space:]]+${re_name}([[:space:]]|$)" "$file" 2>/dev/null; then
         return 0
       fi
       return 1
@@ -119,6 +146,7 @@ check_alias_in_file() {
       ;;
   esac
 }
+export -f _escape_regex check_alias_in_file
 
 # Function to check if alias should be checked for this shell
 should_check_alias() {
@@ -239,4 +267,57 @@ load_aliases_from_yaml() {
   fi
 
   [ ${#missing[@]} -eq 0 ]
+}
+
+# ----------------------------------------------------------------------
+# Unit tests for check_alias_in_file (P2 #9 regex hardening)
+# ----------------------------------------------------------------------
+# These exercise the matcher directly on controlled fixtures to prevent
+# the word-boundary regressions that used to slip past the integration
+# tests above. Without these, a future edit could reintroduce grep -F
+# and the three YAML-driven tests would still pass by accident (because
+# every name in aliases.yml also appears in every aliases.* file).
+
+@test "check_alias_in_file: bash NAME() {} is detected" {
+  local f="$BATS_TEST_TMPDIR/bash.sh"
+  printf 'foo() { echo hi; }\n' > "$f"
+  check_alias_in_file "$f" "foo" "bash"
+}
+
+@test "check_alias_in_file: bash does NOT false-positive on prefix (foo vs foobar)" {
+  local f="$BATS_TEST_TMPDIR/bash.sh"
+  printf 'foobar() { echo hi; }\n' > "$f"
+  run check_alias_in_file "$f" "foo" "bash"
+  assert_failure
+}
+
+@test "check_alias_in_file: bash 'function NAME { ... }' style (rm! case) is detected" {
+  local f="$BATS_TEST_TMPDIR/bash.sh"
+  printf 'function rm! { command rm -rf -- "$@"; }\n' > "$f"
+  check_alias_in_file "$f" "rm!" "bash"
+}
+
+@test "check_alias_in_file: fish 'function NAME' is detected" {
+  local f="$BATS_TEST_TMPDIR/fn.fish"
+  printf 'function foo\n  echo hi\nend\n' > "$f"
+  check_alias_in_file "$f" "foo" "fish"
+}
+
+@test "check_alias_in_file: fish does NOT false-positive on prefix (c vs cdh)" {
+  local f="$BATS_TEST_TMPDIR/fn.fish"
+  printf 'function cdh\n  echo hi\nend\n' > "$f"
+  run check_alias_in_file "$f" "c" "fish"
+  assert_failure
+}
+
+@test "check_alias_in_file: dotted name '..' matches literal dots, not any-char" {
+  # '..' as ERE would match any two characters. The _escape_regex helper
+  # must escape it to '\.\.' so 'ab()' below does not match.
+  local f="$BATS_TEST_TMPDIR/bash.sh"
+  printf 'ab() { echo no; }\n..() { cd ..; }\n' > "$f"
+  # Positive: literal '..' matches '..() {'
+  check_alias_in_file "$f" ".." "bash"
+  # Negative: looking for a bogus 'xy' must not match 'ab' even with any-char regex
+  run check_alias_in_file "$f" "xy" "bash"
+  assert_failure
 }
