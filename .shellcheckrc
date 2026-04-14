@@ -1,23 +1,37 @@
-# ShellCheck configuration for my-shell project
+# ShellCheck configuration for my-shell project.
+#
+# Last audited: 2026-04-15. Method: stripped this file entirely, ran
+# `scripts/dev/run-shellcheck` locally (shellcheck 0.11.0) and under
+# Ubuntu CI via `make test-act` (the apt-packaged shellcheck, older
+# series), then kept only the rules that actually still fire.
+#
+# Rules removed during the audit because they produced zero hits on
+# either toolchain — future edits may reintroduce them if a new hit
+# lands and the exception is justified:
+#   SC2032   Alias can't be invoked via xargs
+#   SC2262   Alias definition and usage in same parsing unit
+#   SC2263   Multiple unused alias definitions
 
-# SC2139: Aliases intentionally expand variables when defined
-# This is intentional behavior for dynamic alias creation
+# SC2139 — "This expands when defined, not when used. Consider escaping."
+# shell/*/aliases.* intentionally builds alias bodies that interpolate
+# shell state at definition time (e.g. `alias top="htop -s PERCENT_CPU"`
+# inside a conditional). The warning is a real warning in other
+# contexts; it's disabled project-wide because the alias patterns are
+# load-bearing and reviewed by hand. 2-3 hits on both toolchains.
 disable=SC2139
 
-# SC2262/SC2263: Alias definition and usage in same parsing unit
-# Some aliases are intentionally defined and checked in the same function
-disable=SC2262,SC2263
-
-# SC2032: Alias can't be invoked via xargs
-# This is a known limitation, documented in code
-disable=SC2032
-
-# SC2317: Unreachable code
-# Some code paths are intentionally unreachable (error handling)
+# SC2317 — "Command appears to be unreachable."
+# Several error-handling `return`/`exit` paths and the `_usage` helper
+# patterns in scripts/bin/* look unreachable to shellcheck's simple
+# analyzer but are reached via getopts `?` / trap dispatch / sourced
+# callers. 3+ hits locally, 9+ hits on Ubuntu CI.
 disable=SC2317
 
-# SC2015: A && B || C is not if-then-else
-# We intentionally use `(cmd) || true` as a best-effort fallback in ll-compare
-# and ls-compare — awk failures must not kill the pipeline. Local shellcheck
-# 0.11.0 does not flag this; older Ubuntu-packaged shellcheck does.
+# SC2015 — "A && B || C is not if-then-else. C may run when A is true."
+# `scripts/dev/ll-compare` and `scripts/dev/ls-compare` use the
+# `(cmd) || true` idiom as a best-effort fallback so a failing awk in
+# one test case doesn't abort the whole run. Local shellcheck 0.11.0
+# no longer flags this pattern; the apt-packaged shellcheck on Ubuntu
+# CI (older series) still does, so the disable is required for CI
+# green. 0 hits locally, 4 hits on Ubuntu CI.
 disable=SC2015

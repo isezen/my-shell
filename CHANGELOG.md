@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`.shellcheckrc` audited — 3 dead disables removed, 3 live ones documented.** Methodology: moved `.shellcheckrc` aside, ran `scripts/dev/run-shellcheck` locally (shellcheck 0.11.0) and under Ubuntu CI via `make test-act` (apt-packaged shellcheck, older series), and counted hits per rule. Dead (zero hits on both toolchains, disables removed): `SC2032` (alias + xargs), `SC2262` (alias same parsing unit), `SC2263` (multiple unused alias defs). Live (reason + hit count added to the config comment block): `SC2139` (alias expansion when defined — 2-3 hits), `SC2317` (unreachable code — 3+/9+ hits), `SC2015` (A && B || C — 0 hits locally but 4 hits on Ubuntu's older shellcheck, so the disable is CI-only load-bearing). The config header now records the audit date (2026-04-15) and the method, so the next audit has a known baseline. Areas: lint-config.
+
 - **`dus`/`dusf`/`dusf.` declared feature-frozen + `sed -r` → `sed -E`.** A minimal follow-up to P2 #10's preflight gate. Two `sed -r` calls in `scripts/bin/dus` and `scripts/bin/dusf` converted to the portable `sed -E` form (accepted by both GNU sed 4.0+ and BSD sed, so no behavior change, just reduced surface area of GNU-only usage). Each script's preflight banner, the README Utility Scripts section, and this changelog now explicitly call the three scripts "feature-frozen" and point at modern alternatives (`ncdu`, `dust`, `duf`). A full BSD-safe rewrite is tracked in `wip/todo.md` as deferred backlog work; no code-level change there yet. Areas: scripts/docs.
 
 ### Added
