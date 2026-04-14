@@ -5,6 +5,11 @@ on:
     branches: [ master, main ]
   pull_request:
     branches: [ master, main ]
+  schedule:
+    # Weekly Monday 04:00 UTC — catches regressions from upstream
+    # dependency updates (gawk, shellcheck, bats-core, fish) without
+    # waiting for the next push.
+    - cron: '0 4 * * 1'
 
 jobs:
   test-ubuntu:
@@ -41,6 +46,19 @@ jobs:
 
       - name: Run Fish syntax check
         run: make lint-fish
+
+      - name: Run top-level BATS tests
+        # Covers tests/*.bats: alias.bats, alias-sync.bats, bash.bats,
+        # install.bats, scripts_dus.bats, scripts_ll.bats. These were
+        # previously skipped on CI because the next step only ran
+        # `make test-ll`, which dispatches to tests/ll/ + tests/ll_*/
+        # but not tests/*.bats. Failure here fails CI before the ll
+        # suite even starts.
+        run: |
+          set -euo pipefail
+          export TERM=dumb
+          bats tests/*.bats
+        continue-on-error: false
 
       - name: Run BATS tests
         id: test-bats
@@ -177,6 +195,19 @@ jobs:
 
       - name: Run Fish syntax check
         run: make lint-fish
+
+      - name: Run top-level BATS tests
+        # Covers tests/*.bats: alias.bats, alias-sync.bats, bash.bats,
+        # install.bats, scripts_dus.bats, scripts_ll.bats. These were
+        # previously skipped on CI because the next step only ran
+        # `make test-ll`, which dispatches to tests/ll/ + tests/ll_*/
+        # but not tests/*.bats. Failure here fails CI before the ll
+        # suite even starts.
+        run: |
+          set -euo pipefail
+          export TERM=dumb
+          bats tests/*.bats
+        continue-on-error: false
 
       - name: Run BATS tests
         id: test-bats

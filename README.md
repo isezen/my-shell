@@ -4,7 +4,7 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 
 [![CI](https://github.com/isezen/my-shell/workflows/CI/badge.svg)](https://github.com/isezen/my-shell/actions)
 [![ShellCheck](https://img.shields.io/badge/ShellCheck-passing-brightgreen)](https://www.shellcheck.net/)
-[![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-130%20passing-brightgreen)](tests/)
 
 ## Features
 
@@ -29,7 +29,7 @@ A collection of shell environment settings, aliases, and utility scripts for bas
 
 ### ✅ Quality Assurance
 - **ShellCheck**: All scripts pass static analysis
-- **BATS Tests**: 55 automated tests covering core functionality
+- **BATS Tests**: 130 automated tests covering shell aliases, install flow, `ll` family wrapper, and platform-specific GNU/BSD implementations
 - **CI/CD**: Automated testing on Linux and macOS
 - **Pre-commit hooks**: Code quality checks before commit
 
@@ -243,7 +243,7 @@ my-shell/
 │   ├── activate.zsh     # Zsh activation
 │   └── activate.fish    # Fish activation
 ├── install.sh           # Unified installation script
-├── tests/               # BATS test suite (55 tests)
+├── tests/               # BATS test suite (130 tests)
 │   ├── alias.bats       # Tests for aliases.bash
 │   ├── bash.bats        # Tests for prompt.bash and env.bash
 │   ├── alias-sync.bats  # Alias synchronization tests
@@ -349,11 +349,12 @@ All scripts are checked with:
 
 ## Testing
 
-The project includes a comprehensive test suite with **55 tests** covering:
-- Alias definitions and functionality
-- Function definitions and behavior
-- Script functionality and options
-- Cross-platform compatibility
+The project includes a comprehensive test suite with **130 tests** covering:
+- Alias definitions, sync between bash/zsh/fish, and shell-specific behavior
+- `install.sh` flow (settings/scripts modes, dry-run, RC file edits)
+- `ll` wrapper dispatch contract (`LL_IMPL_PATH`, `LL_IMPL`, `LL_SCRIPT` precedence)
+- `ll_linux` and `ll_macos` platform implementations against real GNU and BSD coreutils
+- Byte-level cross-driver parity baseline locked under deterministic env
 
 See [tests/README.md](tests/README.md) for detailed testing information.
 

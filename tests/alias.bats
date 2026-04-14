@@ -22,6 +22,12 @@ setup() {
 }
 
 @test "mem function is defined" {
+  # `mem` is defined in shell/bash/aliases.bash only when vm_stat and
+  # system_profiler are present (macOS userland). On Linux the function
+  # is intentionally not installed, so skip the assertion there.
+  if ! command -v vm_stat >/dev/null 2>&1; then
+    skip "mem requires macOS vm_stat / system_profiler"
+  fi
   run type mem
   assert_success
   # Check for function definition (works in both English and Turkish)

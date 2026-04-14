@@ -161,7 +161,6 @@
 │   │   └── 20_baseline_snapshot.bats
 │   ├── ll_linux
 │   │   ├── 00_harness.bash
-│   │   ├── 00_harness.bash.bak
 │   │   ├── 10_core.bats
 │   │   ├── 20_paths.bats
 │   │   ├── 30_edge.bats
@@ -208,5 +207,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-23 directories, 184 files
+23 directories, 183 files
 ```

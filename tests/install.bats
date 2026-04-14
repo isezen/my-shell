@@ -498,6 +498,13 @@ make_min_path_without_fish() {
 @test "dry-run: bin prefix not writable => dies with guidance (non-/usr/local/bin case)" {
   export SHELL="/bin/bash"
 
+  # When the test runner is root (e.g. a CI container), chmod 0555 cannot
+  # block the install — root bypasses DAC via CAP_DAC_OVERRIDE — so the
+  # "Cannot write to" guard never fires and the assertion below would fail.
+  if [ "$(id -u)" = "0" ]; then
+    skip "test runner is root; chmod 0555 cannot block writes (CAP_DAC_OVERRIDE)"
+  fi
+
   # Force bin prefix to a sandbox path and then make it non-writable
   mkdir -p "$SANDBOX/locked/bin"
   chmod 0555 "$SANDBOX/locked/bin"
@@ -509,6 +516,10 @@ make_min_path_without_fish() {
 
 @test "dry-run: /usr/local/bin not writable message mentions sudo or --user/--bin-prefix" {
   export SHELL="/bin/bash"
+
+  if [ "$(id -u)" = "0" ]; then
+    skip "test runner is root; chmod 0555 cannot block writes (CAP_DAC_OVERRIDE)"
+  fi
 
   mkdir -p "$SANDBOX/usr/local/bin"
   chmod 0555 "$SANDBOX/usr/local/bin"
