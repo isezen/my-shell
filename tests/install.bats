@@ -433,6 +433,47 @@ make_min_path_without_fish() {
   assert_output "#!/bin/sh"
 }
 
+@test "--backup: creates a timestamped .bak-YYYYMMDD-HHMMSS file next to overwritten dest" {
+  export SHELL="/bin/bash"
+  mkdir -p "$SANDBOX/HOME/.my-shell/bash"
+  printf 'ORIGINAL\n' > "$SANDBOX/HOME/.my-shell/bash/aliases.bash"
+
+  run "$REPO/install.sh" --local --repo-root "$REPO" --dry-run="$SANDBOX" -y --backup --settings-only
+  assert_success
+  assert_output --partial "Backed up:"
+  assert_output --regexp "aliases\\.bash\\.bak-[0-9]{8}-[0-9]{6}"
+
+  # Exactly one backup sibling exists, with the timestamp suffix shape.
+  run bash -c "ls \"$SANDBOX/HOME/.my-shell/bash/\"aliases.bash.bak-* 2>/dev/null | wc -l | tr -d ' '"
+  assert_success
+  assert_output "1"
+}
+
+@test "--backup: backup file content equals the pre-overwrite original" {
+  export SHELL="/bin/bash"
+  mkdir -p "$SANDBOX/HOME/.my-shell/bash"
+  printf 'USER-CUSTOMIZED\n' > "$SANDBOX/HOME/.my-shell/bash/aliases.bash"
+
+  run "$REPO/install.sh" --local --repo-root "$REPO" --dry-run="$SANDBOX" -y --backup --settings-only
+  assert_success
+
+  # Resolve the unique backup file (only one expected per test run).
+  local backup
+  backup="$(ls "$SANDBOX/HOME/.my-shell/bash/"aliases.bash.bak-* 2>/dev/null | head -n 1)"
+  [ -n "$backup" ]
+  [ -f "$backup" ]
+
+  # Backup preserves the original content.
+  run cat "$backup"
+  assert_success
+  assert_output "USER-CUSTOMIZED"
+
+  # Live file is the freshly-installed repo content (not the backup).
+  run cat "$SANDBOX/HOME/.my-shell/bash/aliases.bash"
+  assert_success
+  assert_output "bash-alias"
+}
+
 @test "non-dry-run: overwrite prompt declines => aborts" {
   export SHELL="/bin/zsh"
   export HOME="$TEST_TMP/home2"

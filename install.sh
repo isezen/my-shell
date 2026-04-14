@@ -65,6 +65,21 @@ ensure_file() {
 
 prompt_overwrite() {
   local dest="$1"
+
+  # --backup: snapshot the existing file (if any) to a timestamped sibling
+  # before the caller overwrites it. Runs unconditionally when BACKUP=1
+  # and skips the interactive prompt — the backup itself is the safety
+  # net, and --backup is meant to pair cleanly with -y for unattended
+  # installs. The backup uses a timestamped suffix so multiple installs
+  # accumulate rather than overwrite each other.
+  if [ "$BACKUP" = "1" ] && { [ -f "$dest" ] || [ -e "$dest" ]; }; then
+    local backup_path
+    backup_path="${dest}.bak-$(date +%Y%m%d-%H%M%S)"
+    cp "$dest" "$backup_path" || die "Could not back up $dest to $backup_path"
+    echo "→ Backed up: $backup_path"
+    return 0
+  fi
+
   if [ "$YES" = "1" ]; then
     return 0
   fi
@@ -132,6 +147,8 @@ Options:
   --user               Install scripts to \$HOME/.local/bin (user mode)
   --bin-prefix PATH    Install scripts to custom PATH (overrides --user and MY_SHELL_BIN_PREFIX)
   --dry-run=PATH       Sandbox mode: install to sandbox directory instead of real system (PATH must be absolute)
+  --backup             Before overwriting an existing file, copy it to <file>.bak-YYYYMMDD-HHMMSS
+                       (skips the interactive overwrite prompt; pairs with -y for unattended runs)
   -y, --yes            Overwrite existing files without prompting
   -h, --help           Show this help message
 
@@ -176,6 +193,7 @@ USER_MODE=0
 BIN_PREFIX_OVERRIDE=""
 DRY_RUN=0
 DRY_RUN_ROOT=""
+BACKUP=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -226,6 +244,10 @@ while [ $# -gt 0 ]; do
     --dry-run=*)
       DRY_RUN_ROOT="${1#*=}"
       DRY_RUN=1
+      shift
+      ;;
+    --backup)
+      BACKUP=1
       shift
       ;;
     -h|--help)
