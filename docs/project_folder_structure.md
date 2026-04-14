@@ -173,6 +173,9 @@
 │   │   │   └── load.bash
 │   │   └── bats-support
 │   │       └── load.bash
+│   ├── activate_bash.bats
+│   ├── activate_fish.bats
+│   ├── activate_zsh.bats
 │   ├── alias-sync.bats
 │   ├── alias.bats
 │   ├── bash.bats
@@ -207,5 +210,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-23 directories, 183 files
+23 directories, 186 files
 ```
