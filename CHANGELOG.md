@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Removed
+- **`docs/project_folder_structure.md` deleted from tracking.** The file was a stale `tree -L 3`-style snapshot regenerated on every commit by a local-only `.git/hooks/pre-commit` block calling `~/.cursor/scripts/generate_folder_structure.py` (a Cursor IDE script outside the repo). Audit found zero readers — no source file, doc, README, AGENTS.md, or test referenced it; every fact it contained is derivable on demand from `git ls-files`, `Glob`, or `ls -R`. Removed via `git rm`, added to `.gitignore` so a future Cursor regen on a clean checkout doesn't accidentally re-stage it, and the regen+`git add` block was stripped from the local pre-commit hook (left as a dated comment in `.git/hooks/pre-commit` for context). The Cursor IDE script itself (`~/.cursor/scripts/generate_folder_structure.py`) is intentionally NOT touched — it lives outside this repo and may serve other projects. The obsolete `AGENTS.md` Gotchas bullet that documented the auto-gen behavior is also removed (the situation no longer exists). Net effect: zero impact on AI-agent navigation, zero impact on CI, ~213 lines of churning markdown out of every commit diff. Areas: docs/build-config.
 
 ## [2.0.0] - 2026-04-15
 

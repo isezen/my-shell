@@ -46,3 +46,6 @@ wip/
 
 # Codex reports
 codex/
+
+# Cursor IDE auto-generated folder tree (no longer tracked, see CHANGELOG [Unreleased])
+docs/project_folder_structure.md
