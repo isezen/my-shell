@@ -172,8 +172,9 @@
 │   ├── test_helper
 │   │   ├── bats-assert
 │   │   │   └── load.bash
-│   │   └── bats-support
-│   │       └── load.bash
+│   │   ├── bats-support
+│   │   │   └── load.bash
+│   │   └── ll-fixtures.bash
 │   ├── activate_bash.bats
 │   ├── activate_fish.bats
 │   ├── activate_zsh.bats
@@ -211,5 +212,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-23 directories, 187 files
+23 directories, 188 files
 ```

@@ -9,6 +9,12 @@ export TZ=UTC
 export LL_NO_COLOR=1
 export LL_NOW_EPOCH=1577836800
 
+# Cross-platform epoch→mtime helpers (ll_touch_epoch, ll_epoch_to_touch_ts).
+# Used to be defined inline in this file; moved to a shared location so
+# ll_linux's harness can use the same entry points. See P3 #12.
+# shellcheck disable=SC1091  # source file is at a runtime-resolved path
+. "${BATS_TEST_DIRNAME}/../test_helper/ll-fixtures.bash"
+
 TESTS_DIR="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 PROJECT_ROOT="$(cd "${TESTS_DIR}/.." && pwd)"
 LL_SCRIPT="${PROJECT_ROOT}/scripts/bin/ll"
@@ -99,27 +105,8 @@ ll_seed_basic_fixtures() {
   ll_seed_fixtures_common
 }
 
-ll_epoch_to_touch_ts() {
-  local epoch="$1"
-  if /bin/date -r "$epoch" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
-    /bin/date -r "$epoch" +%Y%m%d%H%M.%S
-    return 0
-  fi
-  if command -v gdate >/dev/null 2>&1; then
-    gdate -d "@${epoch}" +%Y%m%d%H%M.%S
-    return 0
-  fi
-  return 1
-}
-
-ll_touch_epoch() {
-  local path="$1"
-  local epoch="$2"
-  local ts
-
-  ts="$(ll_epoch_to_touch_ts "$epoch")" || return 1
-  /usr/bin/touch -t "$ts" "$path"
-}
+# ll_epoch_to_touch_ts and ll_touch_epoch are provided by
+# tests/test_helper/ll-fixtures.bash (sourced at the top of this file).
 
 ll_strip_ansi_and_controls() {
   local text="$1"

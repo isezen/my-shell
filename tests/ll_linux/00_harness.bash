@@ -9,6 +9,14 @@ export TZ=UTC
 export LL_NO_COLOR=1
 export LL_NOW_EPOCH=1577836800
 
+# Cross-platform epoch→mtime helpers (ll_touch_epoch, ll_epoch_to_touch_ts).
+# Shared with tests/ll_macos/00_harness.bash. Existing inline
+# "${LL_GNU_TOUCH}" -d "@${epoch}" patterns in 30_edge.bats /
+# 40_color.bats still work unchanged; the helper is available for
+# any future test that wants a cross-platform entry point. See P3 #12.
+# shellcheck disable=SC1091  # source file is at a runtime-resolved path
+. "${BATS_TEST_DIRNAME}/../test_helper/ll-fixtures.bash"
+
 TESTS_DIR="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 PROJECT_ROOT="$(cd "${TESTS_DIR}/.." && pwd)"
 LL_SCRIPT="${PROJECT_ROOT}/scripts/bin/ll"
