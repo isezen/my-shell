@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.0.0] - 2026-04-15
+
+First tagged release since v1.0 (2014-11-29, 251 commits behind).
+Snapshots the repo at the point where: (a) the `ll_common.awk`
+cross-platform migration is complete with byte-level parity locked
+by test invariants, (b) the BATS test suite has been expanded to
+176 tests across 20 files and is fully covered by GitHub Actions
+CI on both Ubuntu and macOS, (c) `env/activate.{bash,zsh,fish}` is
+tested and safe under `set -u`, and (d) `install.sh` has a
+`--backup` mode. Install the exact state via:
+
+  git checkout v2.0.0 && ./install.sh --local --settings-only
+
+Highlights collected from the entries below:
+
+  * **`ll_common.awk` migration** — `ll_linux` and `ll_macos` now
+    share a single render/format/color layer (`ll_common.awk`) plus
+    a gawk-scoped ingress parser (`ll_linux.awk`). Under the
+    deterministic baseline env (`LC_ALL=C TZ=UTC LL_NO_COLOR=1
+    LL_NOW_EPOCH=1577836800`) the two drivers produce byte-identical
+    output across all 52 fixture cases, enforced by a three-invariant
+    lock in `tests/ll/20_baseline_snapshot.bats`.
+  * **Fish non-interactive safety** — `shell/fish/init.fish` guards
+    `aliases.fish` and `prompt.fish` behind `status is-interactive`
+    so SSH command runs and `fish -c` invocations stop blowing up on
+    missing `$TERM`.
+  * **Self-locating init files** — `shell/{bash,zsh,fish}/init.*`
+    resolve siblings relative to their own directory, so the same
+    file works in both repo and installed layouts.
+  * **`env/activate.{bash,zsh}` set -u safety** — every potentially-
+    unset reference now goes through `${VAR:-}`, regression-locked
+    by test helpers that turn nounset back on.
+  * **`install.sh --backup`** — opt-in snapshot of existing files
+    before overwrite; pairs cleanly with `-y` for unattended runs.
+  * **CI hardening** — top-level `tests/*.bats` suite (81 tests
+    covering alias-sync, install, bash config, dus utilities) now
+    runs in CI. Previously skipped. Weekly scheduled run added.
+  * **Agent-docs consolidation** — 3 overlapping agent guides
+    collapsed to 2: canonical `AGENTS.md` + minimal `CLAUDE.md`
+    pointer, `.github/copilot-instructions.md` deleted.
+  * **Legacy `dus`/`dusf`/`dusf.`** — declared feature-frozen with
+    a GNU-coreutils preflight gate (exit 2 + actionable banner) and
+    a minimal BSD-surface reduction (`sed -r` → `sed -E`).
+
+Full detail of every change below, grouped by type.
+
 ### Changed
 - **`.shellcheckrc` audited — 3 dead disables removed, 3 live ones documented.** Methodology: moved `.shellcheckrc` aside, ran `scripts/dev/run-shellcheck` locally (shellcheck 0.11.0) and under Ubuntu CI via `make test-act` (apt-packaged shellcheck, older series), and counted hits per rule. Dead (zero hits on both toolchains, disables removed): `SC2032` (alias + xargs), `SC2262` (alias same parsing unit), `SC2263` (multiple unused alias defs). Live (reason + hit count added to the config comment block): `SC2139` (alias expansion when defined — 2-3 hits), `SC2317` (unreachable code — 3+/9+ hits), `SC2015` (A && B || C — 0 hits locally but 4 hits on Ubuntu's older shellcheck, so the disable is CI-only load-bearing). The config header now records the audit date (2026-04-15) and the method, so the next audit has a known baseline. Areas: lint-config.
 
@@ -283,3 +331,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed ShellCheck warnings in `ll-performance.sh`: SC2034 (unused variables), SC2012 (ls to find), SC2004 (arithmetic variables)
 - Fixed all ShellCheck style warnings: SC2004 (arithmetic variables in alias.sh and ll-performance.sh), SC2012 (ls to find), SC2059 (printf format), SC2262 (alias definition/usage), SC2139/SC2263/SC2032/SC2317 (added to .shellcheckrc as intentional behavior)
 - Created `.shellcheckrc` to disable intentional warnings (SC2139, SC2262, SC2263, SC2032, SC2317)
+
+[Unreleased]: https://github.com/isezen/my-shell/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/isezen/my-shell/compare/v1.0...v2.0.0
