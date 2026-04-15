@@ -249,6 +249,20 @@ Modes: `--local` (from a local clone), `--settings-only`, `--scripts-only`,
   `ll_macos` likely means a function in `ll_common.awk` was added that
   uses a gawk-only feature (3-arg `match()`, `gensub`, etc.). Move it
   to `ll_linux.awk` instead.
+- **`docs/project_folder_structure.md` is auto-generated — do not edit
+  by hand.** A local `.git/hooks/pre-commit` hook (not committed; the
+  Cursor IDE installs it on clone) calls
+  `~/.cursor/scripts/generate_folder_structure.py` on every commit,
+  refreshes the file, and `git add`s it back to staging. Manual edits
+  are overwritten on the next commit. The file itself is tracked but
+  has no human readers and is not referenced from `README.md`,
+  `CONTRIBUTING.md`, or any spec — it's a Cursor IDE artifact kept for
+  quick repo navigation from that editor. If the pre-commit hook
+  starts failing in the future (e.g., Cursor is uninstalled or the
+  script path changes), removing the regen block from
+  `.git/hooks/pre-commit` on the affected machine is the minimum fix;
+  a proper in-repo rewrite of the generator is tracked in `wip/todo.md`
+  as deferred work.
 
 ## References
 
