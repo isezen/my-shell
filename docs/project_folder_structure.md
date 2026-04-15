@@ -158,7 +158,8 @@
 │   │   ├── fixtures
 │   │   │   └── ll_stub_impl.bash
 │   │   ├── 10_wrapper_stub.bats
-│   │   └── 20_baseline_snapshot.bats
+│   │   ├── 20_baseline_snapshot.bats
+│   │   └── 30_driver_flag_parity.bats
 │   ├── ll_linux
 │   │   ├── 00_harness.bash
 │   │   ├── 10_core.bats
@@ -210,5 +211,5 @@
 ├── README.md
 └── REQUIREMENTS.md
 
-23 directories, 186 files
+23 directories, 187 files
 ```

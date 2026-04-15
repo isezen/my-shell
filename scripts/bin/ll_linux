@@ -21,6 +21,9 @@ OWNER=1
 GROUPNAME=1
 LISTDIRECTORY=0
 
+# BEGIN flag-parser (KEEP IN SYNC with scripts/bin/ll_macos —
+# tests/ll/30_driver_flag_parity.bats enforces the long and short
+# option sets across both drivers)
 # Robust flag scan (supports options placed after operands; ls accepts that, getopts doesn't)
 # We only detect flags that affect our parsing/formatting; everything is still passed through to ls.
 for arg in "$@"; do
@@ -57,6 +60,7 @@ for arg in "$@"; do
     *) ;;
   esac
 done
+# END flag-parser
 
 
 # Resolve a GNU ls implementation (required for --time-style=+%s).

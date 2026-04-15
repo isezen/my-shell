@@ -37,6 +37,9 @@ GROUPNAME=1
 LISTDIRECTORY=0
 
 # Robust scan: consider only options before `--`.
+# BEGIN flag-parser (KEEP IN SYNC with scripts/bin/ll_linux —
+# tests/ll/30_driver_flag_parity.bats enforces the long and short
+# option sets across both drivers)
 for arg in "$@"; do
   case "$arg" in
     --)
@@ -83,6 +86,7 @@ for arg in "$@"; do
       ;;
   esac
 done
+# END flag-parser
 
 NOW_EPOCH="${LL_NOW_EPOCH:-}"
 if [[ ! "$NOW_EPOCH" =~ ^[0-9]+$ ]]; then
