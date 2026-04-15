@@ -457,7 +457,14 @@ if [ "$DO_SCRIPTS" = "1" ]; then
     fi
   fi
 
-  SCRIPTS="ll dus dusf dusf."
+  # Executable scripts. ll is the platform dispatcher; ll_linux and
+  # ll_macos are the per-OS implementations it dispatches to (via
+  # uname or LL_IMPL); dus/dusf/dusf. are the legacy disk-usage
+  # helpers. Both ll_linux and ll_macos source ll_common.awk
+  # (and ll_linux additionally sources ll_linux.awk) at runtime,
+  # so those data files MUST land in the same directory — they're
+  # installed in the data-file loop below.
+  SCRIPTS="ll ll_linux ll_macos dus dusf dusf."
 
   log "Installing utility scripts to $EFFECTIVE_BIN_PREFIX..."
   for script in $SCRIPTS; do
@@ -472,6 +479,26 @@ if [ "$DO_SCRIPTS" = "1" ]; then
       log "  Downloading from: $base/$rel_path"
     fi
     fetch_or_copy "$rel_path" "$dest_path"
+    log "  Done."
+  done
+
+  # Awk helper libraries — sourced at runtime by ll_linux / ll_macos.
+  # Installed as data files (mode 0644). MUST live alongside the
+  # ll_linux / ll_macos executables installed above; both drivers
+  # resolve them via "$(dirname "$0")/<basename>".
+  AWK_LIBS="ll_common.awk ll_linux.awk"
+  for lib in $AWK_LIBS; do
+    rel_path="scripts/bin/${lib}"
+    dest_path="${EFFECTIVE_BIN_PREFIX}/${lib}"
+
+    log "Installing awk library: $lib"
+    if [ "$SOURCE_MODE" = "local" ]; then
+      log "  Copying from local repository: $REPO_ROOT/$rel_path"
+    else
+      base="${MY_SHELL_REMOTE_BASE:-https://raw.githubusercontent.com/isezen/my-shell/master}"
+      log "  Downloading from: $base/$rel_path"
+    fi
+    fetch_or_copy "$rel_path" "$dest_path" 0644
     log "  Done."
   done
   log ""

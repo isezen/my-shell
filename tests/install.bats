@@ -56,12 +56,20 @@ setup() {
   printf 'fish-prompt\n' > "$REPO/shell/fish/prompt.fish"
   printf 'fish-env\n'    > "$REPO/shell/fish/env.fish"
 
-  # Create minimal scripts
-  printf '#!/bin/sh\necho ll\n'     > "$REPO/scripts/bin/ll"
-  printf '#!/bin/sh\necho dus\n'    > "$REPO/scripts/bin/dus"
-  printf '#!/bin/sh\necho dusf\n'   > "$REPO/scripts/bin/dusf"
-  printf '#!/bin/sh\necho dusf.\n'  > "$REPO/scripts/bin/dusf."
-  chmod +x "$REPO/scripts/bin/"*
+  # Create minimal scripts. ll is the platform dispatcher; ll_linux /
+  # ll_macos are the per-OS drivers it selects; the two .awk files are
+  # runtime-sourced data libraries that MUST land alongside the drivers.
+  printf '#!/bin/sh\necho ll\n'         > "$REPO/scripts/bin/ll"
+  printf '#!/bin/sh\necho ll_linux\n'   > "$REPO/scripts/bin/ll_linux"
+  printf '#!/bin/sh\necho ll_macos\n'   > "$REPO/scripts/bin/ll_macos"
+  printf '# ll_common.awk stub\n'       > "$REPO/scripts/bin/ll_common.awk"
+  printf '# ll_linux.awk stub\n'        > "$REPO/scripts/bin/ll_linux.awk"
+  printf '#!/bin/sh\necho dus\n'        > "$REPO/scripts/bin/dus"
+  printf '#!/bin/sh\necho dusf\n'       > "$REPO/scripts/bin/dusf"
+  printf '#!/bin/sh\necho dusf.\n'      > "$REPO/scripts/bin/dusf."
+  chmod +x "$REPO/scripts/bin/ll" "$REPO/scripts/bin/ll_linux" \
+           "$REPO/scripts/bin/ll_macos" "$REPO/scripts/bin/dus" \
+           "$REPO/scripts/bin/dusf" "$REPO/scripts/bin/dusf."
 
   # Stubs (uname, curl, fish) via PATH override.
   # Default uname -> Darwin (override per-test when needed).
@@ -282,9 +290,16 @@ make_min_path_without_fish() {
 
   # Scripts default bin prefix (/usr/local/bin mapped into sandbox)
   [ -x "$SANDBOX/usr/local/bin/ll" ]
+  [ -x "$SANDBOX/usr/local/bin/ll_linux" ]
+  [ -x "$SANDBOX/usr/local/bin/ll_macos" ]
   [ -x "$SANDBOX/usr/local/bin/dus" ]
   [ -x "$SANDBOX/usr/local/bin/dusf" ]
   [ -x "$SANDBOX/usr/local/bin/dusf." ]
+  # Awk libraries are data files (non-executable) alongside the drivers.
+  [ -f "$SANDBOX/usr/local/bin/ll_common.awk" ]
+  [ -f "$SANDBOX/usr/local/bin/ll_linux.awk" ]
+  [ ! -x "$SANDBOX/usr/local/bin/ll_common.awk" ]
+  [ ! -x "$SANDBOX/usr/local/bin/ll_linux.awk" ]
 
   # RC lines (sandbox paths are used in dry-run)
   assert_file_contains_once "$SANDBOX/HOME/.bash_profile" "source \"$SANDBOX/HOME/.my-shell/bash/init.bash\""
@@ -586,13 +601,29 @@ make_min_path_without_fish() {
 
 # --- Tests: scripts list completeness ---
 
-@test "installs all expected scripts (ll dus dusf dusf.)" {
+@test "installs all expected scripts (ll family + dus family)" {
   export SHELL="/bin/bash"
   run "$REPO/install.sh" --local --repo-root "$REPO" --dry-run="$SANDBOX" -y --scripts-only
   assert_success
 
-  [ -e "$SANDBOX/usr/local/bin/ll" ]
-  [ -e "$SANDBOX/usr/local/bin/dus" ]
-  [ -e "$SANDBOX/usr/local/bin/dusf" ]
-  [ -e "$SANDBOX/usr/local/bin/dusf." ]
+  # Executables: ll dispatcher + per-OS drivers + legacy dus family.
+  [ -x "$SANDBOX/usr/local/bin/ll" ]
+  [ -x "$SANDBOX/usr/local/bin/ll_linux" ]
+  [ -x "$SANDBOX/usr/local/bin/ll_macos" ]
+  [ -x "$SANDBOX/usr/local/bin/dus" ]
+  [ -x "$SANDBOX/usr/local/bin/dusf" ]
+  [ -x "$SANDBOX/usr/local/bin/dusf." ]
+}
+
+@test "installs awk libraries alongside ll drivers (data files, not executable)" {
+  export SHELL="/bin/bash"
+  run "$REPO/install.sh" --local --repo-root "$REPO" --dry-run="$SANDBOX" -y --scripts-only
+  assert_success
+
+  # Both drivers source these via "$(dirname "$0")/<basename>" at runtime,
+  # so they MUST be installed next to ll_linux / ll_macos.
+  [ -f "$SANDBOX/usr/local/bin/ll_common.awk" ]
+  [ -f "$SANDBOX/usr/local/bin/ll_linux.awk" ]
+  [ ! -x "$SANDBOX/usr/local/bin/ll_common.awk" ]
+  [ ! -x "$SANDBOX/usr/local/bin/ll_linux.awk" ]
 }

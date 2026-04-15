@@ -127,7 +127,9 @@ The installer will:
 
 **Utility Scripts:**
 ```sh
-sudo rm /usr/local/bin/ll /usr/local/bin/dus /usr/local/bin/dusf /usr/local/bin/dusf.
+sudo rm /usr/local/bin/ll /usr/local/bin/ll_linux /usr/local/bin/ll_macos \
+        /usr/local/bin/ll_common.awk /usr/local/bin/ll_linux.awk \
+        /usr/local/bin/dus /usr/local/bin/dusf /usr/local/bin/dusf.
 ```
 
 ## Usage Examples
