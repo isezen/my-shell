@@ -62,13 +62,15 @@ setup() {
   printf '#!/bin/sh\necho ll\n'         > "$REPO/scripts/bin/ll"
   printf '#!/bin/sh\necho ll_linux\n'   > "$REPO/scripts/bin/ll_linux"
   printf '#!/bin/sh\necho ll_macos\n'   > "$REPO/scripts/bin/ll_macos"
+  printf '#!/bin/sh\necho ll2\n'        > "$REPO/scripts/bin/ll2"
   printf '# ll_common.awk stub\n'       > "$REPO/scripts/bin/ll_common.awk"
   printf '# ll_linux.awk stub\n'        > "$REPO/scripts/bin/ll_linux.awk"
   printf '#!/bin/sh\necho dus\n'        > "$REPO/scripts/bin/dus"
   printf '#!/bin/sh\necho dusf\n'       > "$REPO/scripts/bin/dusf"
   printf '#!/bin/sh\necho dusf.\n'      > "$REPO/scripts/bin/dusf."
   chmod +x "$REPO/scripts/bin/ll" "$REPO/scripts/bin/ll_linux" \
-           "$REPO/scripts/bin/ll_macos" "$REPO/scripts/bin/dus" \
+           "$REPO/scripts/bin/ll_macos" "$REPO/scripts/bin/ll2" \
+           "$REPO/scripts/bin/dus" \
            "$REPO/scripts/bin/dusf" "$REPO/scripts/bin/dusf."
 
   # Stubs (uname, curl, fish) via PATH override.
@@ -292,6 +294,7 @@ make_min_path_without_fish() {
   [ -x "$SANDBOX/usr/local/bin/ll" ]
   [ -x "$SANDBOX/usr/local/bin/ll_linux" ]
   [ -x "$SANDBOX/usr/local/bin/ll_macos" ]
+  [ -x "$SANDBOX/usr/local/bin/ll2" ]
   [ -x "$SANDBOX/usr/local/bin/dus" ]
   [ -x "$SANDBOX/usr/local/bin/dusf" ]
   [ -x "$SANDBOX/usr/local/bin/dusf." ]
@@ -606,10 +609,11 @@ make_min_path_without_fish() {
   run "$REPO/install.sh" --local --repo-root "$REPO" --dry-run="$SANDBOX" -y --scripts-only
   assert_success
 
-  # Executables: ll dispatcher + per-OS drivers + legacy dus family.
+  # Executables: ll dispatcher + per-OS drivers + ll2 (eza wrapper) + legacy dus family.
   [ -x "$SANDBOX/usr/local/bin/ll" ]
   [ -x "$SANDBOX/usr/local/bin/ll_linux" ]
   [ -x "$SANDBOX/usr/local/bin/ll_macos" ]
+  [ -x "$SANDBOX/usr/local/bin/ll2" ]
   [ -x "$SANDBOX/usr/local/bin/dus" ]
   [ -x "$SANDBOX/usr/local/bin/dusf" ]
   [ -x "$SANDBOX/usr/local/bin/dusf." ]

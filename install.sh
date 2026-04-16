@@ -464,7 +464,7 @@ if [ "$DO_SCRIPTS" = "1" ]; then
   # (and ll_linux additionally sources ll_linux.awk) at runtime,
   # so those data files MUST land in the same directory — they're
   # installed in the data-file loop below.
-  SCRIPTS="ll ll_linux ll_macos dus dusf dusf."
+  SCRIPTS="ll ll_linux ll_macos ll2 dus dusf dusf."
 
   log "Installing utility scripts to $EFFECTIVE_BIN_PREFIX..."
   for script in $SCRIPTS; do

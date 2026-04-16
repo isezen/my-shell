@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# scripts/bin/ll2
+# eza-based ll replacement with compact relative time and "you" substitution.
+# Requires: eza (https://github.com/eza-community/eza)
+# Usage: ll2 [OPTIONS] [FILES...]
+
+set -euo pipefail
+
+if ! command -v eza >/dev/null 2>&1; then
+  echo "ll2: eza is required but not installed." >&2
+  echo "  Install: brew install eza (macOS) or cargo install eza (any)" >&2
+  exit 1
+fi
+
+_username="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+
+# Pad "you" to match username width so columns stay aligned.
+_ulen=${#_username}
+if [ "$_ulen" -gt 3 ]; then
+  _pad=$(printf '%*s' $((_ulen - 3)) '')
+  _replacement="you${_pad}"
+else
+  _replacement="you"
+fi
+
+# Build eza args: long listing + compact relative time + dirs first.
+_eza_args=(
+  -l
+  --time-style=relative
+  --group-directories-first
+  --icons=never
+)
+
+# Force color=always so ANSI survives the sed pipe; eza's default
+# color=auto suppresses colors when stdout is not a TTY (i.e. a pipe).
+if [ "${LL_NO_COLOR:-0}" = "1" ]; then
+  _eza_args+=(--color=never)
+else
+  _eza_args+=(--color=always)
+fi
+
+eza "${_eza_args[@]}" "$@" | sed -E \
+  -e 's/([0-9]+) seconds?/\1 sec/g' \
+  -e 's/([0-9]+) minutes?/\1 min/g' \
+  -e 's/([0-9]+) hours?/\1 hrs/g' \
+  -e 's/([0-9]+) days?/\1 day/g' \
+  -e 's/([0-9]+) weeks?/\1 wks/g' \
+  -e 's/([0-9]+) months?/\1 mon/g' \
+  -e 's/([0-9]+) years?/\1 yr/g' \
+  -e "s/${_username}/${_replacement}/g"
