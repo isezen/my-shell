@@ -829,10 +829,70 @@ The following file types are **tested and MUST be handled**:
 
 ---
 
-## 12. Change Log
+## 12. macOS Test Coverage Gaps
+
+The following gaps between this specification and the macOS test suite
+(`tests/ll_macos/`) were identified during the v2.0.0 migration audit.
+Each gap describes a behavior that is either specified but not test-locked
+on macOS, or test-locked but not reflected in the spec. They are ordered
+by impact; addressing them would strengthen cross-platform parity
+confidence.
+
+### GAP-1: `--si` is test-locked on macOS but spec says UNSPECIFIED
+
+§6.2 and §9.3.2 describe `ll_macos --si` behavior as UNSPECIFIED and
+note that tooling may skip `--si` tests for macOS. However,
+`tests/ll_macos/10_core.bats` includes `args=(--si)` in the core parity
+suite and asserts canonical equality. In the current harness, `--si`
+enables human-readable mode (base-1024 via `ll_macos_human_size`), not
+true SI base-1000.
+
+**Action:** Update §6.2 / §9.3.2 to reflect that macOS tests *do* lock
+`--si` as "human-readable mode" (base-1024), not true SI.
+
+### GAP-2: `-h` / `--human-readable` not test-locked on macOS
+
+§2.1 marks `-h/--human-readable` as supported on macOS. However, no
+`args=(-h)` or `args=(--human-readable)` case exists in
+`tests/ll_macos/10_core.bats`.
+
+**Action:** Add macOS test cases for `-h` / `--human-readable`, or
+downgrade macOS-side claims from MUST to UNSPECIFIED.
+
+### GAP-3: options-after-operands not test-locked on macOS
+
+§2.3 states options MAY appear after operands and MUST behave
+equivalently. No macOS test asserts `ll_macos file --no-group` style
+invocation. The harness parser supports it, but that does not lock the
+implementation.
+
+**Action:** Add explicit macOS tests for options-after-operands.
+
+### GAP-4: `-a` / `-A` hidden-file flags not test-locked on macOS
+
+§3.6 specifies default, `-a`, and `-A` behavior cross-platform but
+notes macOS is UNSPECIFIED for `-a`/`-A`. The macOS reference generator
+uses `/bin/ls -1A` and drops dotfiles via sed, so only "default excludes
+dotfiles" is indirectly locked.
+
+**Action:** Add macOS tests for `-a` and `-A` if parity is desired.
+
+### GAP-5: error handling not test-locked on macOS
+
+§8.1 locks Linux error parity vs `ls -l` (exit codes, stderr). The
+macOS suite only asserts success paths; no stderr/exit-code parity
+checks exist.
+
+**Action:** Add macOS tests for nonexistent paths, invalid options, and
+unreadable directories.
+
+---
+
+## 13. Change Log
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-04-16 | Added §12 macOS test coverage gaps (migrated from wip/ll_macos_specs.md audit) |
 | 1.1 | 2026-01-09 | Revised to remove normative claims not directly proven by tests; moved implementation details to non-normative sections |
 | 1.0 | 2026-01-09 | Initial specification based on test-locked behavior |
 
@@ -840,7 +900,6 @@ The following file types are **tested and MUST be handled**:
 
 ## References
 
-- **Current-State Report**: `wip/ll_current_state_report.md`
 - **Test Suites**: `tests/ll/`, `tests/ll_linux/`, `tests/ll_macos/`
 - **Comparison Tools**: `scripts/dev/ll-compare`, `scripts/dev/ls-compare`
 - **Implementations**: `scripts/bin/ll`, `scripts/bin/ll_linux`, `scripts/bin/ll_macos`

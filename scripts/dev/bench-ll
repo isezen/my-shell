@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Fast micro-benchmark for ll_macos performance
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BENCH_DIR="${PROJECT_ROOT}/wip/bench_dir"
+LL_MACOS="${PROJECT_ROOT}/scripts/bin/ll_macos"
+LL_LINUX="${PROJECT_ROOT}/scripts/bin/ll_linux"
+
+# Cleanup function
+cleanup() {
+  [ -d "$BENCH_DIR" ] && rm -rf "$BENCH_DIR" || true
+}
+trap cleanup EXIT
+
+# Create benchmark directory with ~50 files
+setup_benchmark_dir() {
+  rm -rf "$BENCH_DIR"
+  mkdir -p "$BENCH_DIR"
+  cd "$BENCH_DIR"
+
+  # Regular files (30 files)
+  for i in {1..30}; do
+    printf 'content %d\n' "$i" > "file${i}.txt"
+  done
+
+  # Files with spaces (5 files)
+  printf 'content\n' > "file with spaces 1.txt"
+  printf 'content\n' > "file with spaces 2.txt"
+  printf 'content\n' > "another file.txt"
+  printf 'content\n' > "test file.txt"
+  printf 'content\n' > "my file.txt"
+
+  # Unicode files (5 files)
+  printf 'content\n' > "İçerik-ğüşöç.txt"
+  printf 'content\n' > "测试文件.txt"
+  printf 'content\n' > "файл.txt"
+  printf 'content\n' > "ファイル.txt"
+  printf 'content\n' > "test-émojis-🚀.txt"
+
+  # Symlinks (10 files)
+  ln -s file1.txt link1.txt 2>/dev/null || true
+  ln -s file2.txt link2.txt 2>/dev/null || true
+  ln -s "file with spaces 1.txt" "link with spaces.txt" 2>/dev/null || true
+  ln -s file3.txt link3.txt 2>/dev/null || true
+  ln -s file4.txt link4.txt 2>/dev/null || true
+  ln -s file5.txt link5.txt 2>/dev/null || true
+  ln -s "İçerik-ğüşöç.txt" "unicode-link.txt" 2>/dev/null || true
+  ln -s file6.txt link6.txt 2>/dev/null || true
+  ln -s file7.txt link7.txt 2>/dev/null || true
+  ln -s missing-target broken-link.txt 2>/dev/null || true
+
+  # Directories (2 dirs)
+  mkdir -p dir1 dir2
+  printf 'content\n' > dir1/file.txt
+  printf 'content\n' > dir2/file.txt
+
+  echo "Created benchmark directory with $(find . -type f | wc -l | tr -d ' ') files"
+}
+
+# Run benchmark: command, runs, description
+run_benchmark() {
+  local cmd="$1"
+  local runs="${2:-5}"
+  local desc="${3:-}"
+
+  local times=()
+  local total=0
+
+  # Warmup run
+  eval "$cmd" >/dev/null 2>&1 || true
+
+  for ((i=1; i<=runs; i++)); do
+    local start end elapsed
+    start=$(date +%s.%N)
+    eval "$cmd" >/dev/null 2>&1 || true
+    end=$(date +%s.%N)
+    elapsed=$(LC_NUMERIC=C awk -v s="$start" -v e="$end" 'BEGIN {printf "%.6f", e - s}')
+    times+=("$elapsed")
+    total=$(LC_NUMERIC=C awk -v t="$total" -v e="$elapsed" 'BEGIN {printf "%.6f", t + e}')
+  done
+
+  local avg
+  avg=$(LC_NUMERIC=C awk -v t="$total" -v r="$runs" 'BEGIN {printf "%.6f", t / r}')
+
+  # Use awk for all formatting to avoid locale issues
+  LC_NUMERIC=C awk -v desc="$desc" -v avg="$avg" -v runs="$runs" 'BEGIN {
+    printf "%-40s %10.6f sec (avg of %d runs)", desc, avg, runs
+  }'
+
+  if [ "$runs" -gt 1 ]; then
+    local min_max min max
+    min_max=$(printf '%s\n' "${times[@]}" | LC_NUMERIC=C awk '
+      BEGIN {min=999999; max=0}
+      {if ($1 < min) min=$1; if ($1 > max) max=$1}
+      END {printf "%.6f %.6f", min, max}
+    ')
+    min=$(echo "$min_max" | awk '{print $1}')
+    max=$(echo "$min_max" | awk '{print $2}')
+    LC_NUMERIC=C awk -v min="$min" -v max="$max" 'BEGIN {
+      printf " [min: %.6f, max: %.6f]", min, max
+    }'
+  fi
+  printf '\n'
+}
+
+# Main benchmark execution
+main() {
+  cd "$PROJECT_ROOT"
+
+  echo "=== ll_macos Performance Benchmark ==="
+  echo "Date: $(date)"
+  echo ""
+
+  setup_benchmark_dir
+
+  cd "$BENCH_DIR"
+
+  echo "=== Benchmark Results ==="
+  echo ""
+
+  # Benchmark ll_macos (default)
+  run_benchmark "\"$LL_MACOS\" ." 5 "ll_macos <dir>"
+
+  # Benchmark ll_macos -h
+  run_benchmark "\"$LL_MACOS\" -h ." 5 "ll_macos -h <dir>"
+
+  # Benchmark ll_macos -s -h
+  run_benchmark "\"$LL_MACOS\" -s -h ." 5 "ll_macos -s -h <dir>"
+
+  # Benchmark ll_linux (baseline)
+  if [ -x "$LL_LINUX" ]; then
+    run_benchmark "\"$LL_LINUX\" ." 5 "ll_linux <dir> (baseline)"
+  else
+    echo "ll_linux not available, skipping baseline"
+  fi
+
+  echo ""
+  echo "=== Benchmark Complete ==="
+}
+
+main "$@"
