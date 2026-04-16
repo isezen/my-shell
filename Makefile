@@ -1,7 +1,7 @@
 # Makefile for my-shell project
 # Provides convenient commands for linting, formatting, and testing
 
-.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-ll-common test-ll-linux test-ll-macos test-ll test-ll-all test-act clean baseline-check baseline-regen
+.PHONY: help lint lint-bash lint-fish format format-fish check alias-sync install-hooks test test-bats test-ll-common test-ll-linux test-ll-macos test-ll2 test-ll test-ll-all test-act clean baseline-check baseline-regen
 
 # Default target
 .DEFAULT_GOAL := help
@@ -89,7 +89,7 @@ test: test-bats lint ## Run all tests (BATS tests and linting)
 test-bats: ## Run BATS tests
 	@echo "$(COLOR_GREEN)Running BATS tests...$(COLOR_RESET)"
 	@if command -v bats >/dev/null 2>&1; then \
-		bats tests/*.bats tests/ll/*.bats || exit 1; \
+		bats tests/*.bats tests/ll/*.bats tests/ll2/*.bats || exit 1; \
 		echo "$(COLOR_GREEN)✓ All BATS tests passed$(COLOR_RESET)"; \
 	else \
 		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
@@ -115,6 +115,14 @@ test-ll-linux: ## Run Linux-specific tests (GNU toolchain)
 test-ll-macos: ## Run macOS-specific tests (BSD toolchain)
 	@if command -v bats >/dev/null 2>&1; then \
 		bats tests/ll_macos/*.bats || exit 1; \
+	else \
+		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+
+test-ll2: ## Run ll2 (eza wrapper) smoke tests
+	@if command -v bats >/dev/null 2>&1; then \
+		bats tests/ll2/*.bats || exit 1; \
 	else \
 		echo "$(COLOR_RED)✗ bats not found. Install with: brew install bats-core$(COLOR_RESET)"; \
 		exit 1; \

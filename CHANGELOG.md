@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`ll2` smoke test suite (`tests/ll2/10_smoke.bats`, 5 tests).** Pins the small surface `ll2` actively shapes on top of eza, rather than attempting byte-level parity against `ll` — eza's column layout (no nlink, no group by default, `.` permissions prefix, different size format) differs structurally from `ls -l`, and eza's version drift across machines would make a cross-tool diff flaky. The five invariants locked: (1) `ll2` exits non-zero with the actionable `brew install eza` hint when `eza` is missing from PATH; (2) fixture listing places directories before regular files and includes all entries; (3) the owner column shows `you` while symlink targets containing the same username are NOT substituted (proves `sub()` not `gsub()` scoping); (4) every non-empty output line ends with an ll bucket token (`sec`, `min`, `hrs`, `day`, `mon`, or `yr`, optionally prefixed by `in` for future mtimes); (5) the `-g` → `--no-user` flag translation actually suppresses the owner column. `LL_NOW_EPOCH` is intentionally NOT used — assertions check the bucket *shape*, not its value, so freshly-touched fixtures work. New `make test-ll2` target; `test-bats` now also globs `tests/ll2/*.bats`. Areas: ll/ll2, tests (138 → 143 passing).
+
 ### Removed
 - **`REQUIREMENTS.md` deleted.** The file was largely AI-generated boilerplate that was never maintained: it claimed bash 4.0+ minimum (we now support 3.2), referenced non-existent filenames (`alias.sh`, `my_settings.fish`, `install_shell_settings.sh`), listed a non-existent Git version (2.52.0), and duplicated information already in README.md and AGENTS.md. Stale requirements docs are worse than no docs — they actively mislead. Platform and dependency information lives in README.md (user-facing) and AGENTS.md (agent-facing). Areas: docs.
 
