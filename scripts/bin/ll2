@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/bin/ll2
-# eza-based ll replacement with compact relative time and "you" substitution.
+# eza-based ll replacement with ll-style relative time, coloring, and alignment.
 # Requires: eza (https://github.com/eza-community/eza)
 # Usage: ll2 [OPTIONS] [FILES...]
 
@@ -13,38 +13,147 @@ if ! command -v eza >/dev/null 2>&1; then
 fi
 
 _username="$(id -un 2>/dev/null || printf '%s' "${USER:-}")"
+_now="$(date +%s)"
 
-# Pad "you" to match username width so columns stay aligned.
-_ulen=${#_username}
-if [ "$_ulen" -gt 3 ]; then
-  _pad=$(printf '%*s' $((_ulen - 3)) '')
-  _replacement="you${_pad}"
-else
-  _replacement="you"
-fi
+NO_COLOR="${LL_NO_COLOR:-0}"
 
-# Build eza args: long listing + compact relative time + dirs first.
 _eza_args=(
   -l
-  --time-style=relative
+  "--time-style=+%s"
   --group-directories-first
   --icons=never
 )
 
-# Force color=always so ANSI survives the sed pipe; eza's default
-# color=auto suppresses colors when stdout is not a TTY (i.e. a pipe).
-if [ "${LL_NO_COLOR:-0}" = "1" ]; then
+if [ "$NO_COLOR" = "1" ]; then
   _eza_args+=(--color=never)
 else
   _eza_args+=(--color=always)
 fi
 
-eza "${_eza_args[@]}" "$@" | sed -E \
-  -e 's/([0-9]+) seconds?/\1 sec/g' \
-  -e 's/([0-9]+) minutes?/\1 min/g' \
-  -e 's/([0-9]+) hours?/\1 hrs/g' \
-  -e 's/([0-9]+) days?/\1 day/g' \
-  -e 's/([0-9]+) weeks?/\1 wks/g' \
-  -e 's/([0-9]+) months?/\1 mon/g' \
-  -e 's/([0-9]+) years?/\1 yr/g' \
-  -e "s/${_username}/${_replacement}/g"
+# Single eza call with epoch timestamps → awk replaces epoch with
+# ll-style compact relative time (colored, right-aligned numbers).
+eza "${_eza_args[@]}" "$@" | awk \
+    -v NOW="$_now" \
+    -v USERNAME="$_username" \
+    -v NO_COLOR="$NO_COLOR" \
+'
+BEGIN {
+  # ll time bucket thresholds (from ll_common.awk)
+  T_2MIN   = 120
+  T_HOUR   = 3600
+  T_2DAYS  = 172800
+  T_45DAYS = 3888000
+  T_YEAR   = 31536000
+  T_MIN    = 60
+  T_DAY    = 86400
+  T_30DAYS = 2592000
+
+  esc = "\033"
+  creset = esc "[0m"
+  # ll time bucket colors
+  csec = esc "[38;5;124m"
+  cmin = esc "[38;5;215m"
+  chrs = esc "[38;5;196m"
+  cday = esc "[38;5;230m"
+  cmon = esc "[38;5;151m"
+  cyr  = esc "[38;5;241m"
+  cfut = esc "[38;5;39m"
+
+  n = 0
+}
+
+{
+  n++
+  lines[n] = $0
+
+  # Extract epoch: find 9-11 digit number (with or without ANSI wrapping)
+  ep = 0
+  s = $0
+  # Strip ANSI to find the epoch in clean text
+  clean = s
+  gsub(/\033\[[0-9;]*m/, "", clean)
+  if (match(clean, /[0-9]{9,11}/)) {
+    ep = substr(clean, RSTART, RLENGTH) + 0
+  }
+  epochs[n] = ep
+
+  # Compute relative time
+  dt = NOW - ep
+  is_future = 0
+  if (dt < 0) { dt = -dt; is_future = 1 }
+
+  if      (dt < T_2MIN)   { v = dt;                   lbl = "sec" }
+  else if (dt < T_HOUR)   { v = int(dt / T_MIN);      lbl = "min" }
+  else if (dt < T_2DAYS)  { v = int(dt / T_HOUR);     lbl = "hrs" }
+  else if (dt < T_45DAYS) { v = int(dt / T_DAY);      lbl = "day" }
+  else if (dt < T_YEAR)   { v = int(dt / T_30DAYS);   lbl = "mon" }
+  else                    { v = int(dt / T_YEAR);     lbl = "yr"  }
+
+  pre = ""
+  if (is_future) pre = "in "
+
+  time_v[n]   = v
+  time_lbl[n] = lbl
+  time_pre[n] = pre
+  time_fut[n] = is_future
+
+  # Track max visible time width for right-alignment
+  tlen = length(pre v " " lbl)
+  if (tlen > max_tlen) max_tlen = tlen
+}
+
+END {
+  for (i = 1; i <= n; i++) {
+    line = lines[i]
+
+    # "you" substitution
+    gsub(USERNAME, "you", line)
+
+    # Build formatted time string
+    v   = time_v[i]
+    lbl = time_lbl[i]
+    pre = time_pre[i]
+
+    raw = pre v " " lbl
+    # Right-align: pad on the left
+    pad = ""
+    need = max_tlen - length(raw)
+    for (p = 0; p < need; p++) pad = pad " "
+
+    if (NO_COLOR == "1") {
+      time_str = pad raw
+    } else {
+      if (time_fut[i])       c = cfut
+      else if (lbl == "sec") c = csec
+      else if (lbl == "min") c = cmin
+      else if (lbl == "hrs") c = chrs
+      else if (lbl == "day") c = cday
+      else if (lbl == "mon") c = cmon
+      else if (lbl == "yr")  c = cyr
+      else c = ""
+      time_str = c pad raw creset
+    }
+
+    # Replace epoch in line with formatted time.
+    # Epoch in colored output: \033[34m<epoch>\033[0m
+    # Epoch in plain output:   <epoch>
+    ep = epochs[i]
+    if (NO_COLOR == "1") {
+      sub(ep, time_str, line)
+    } else {
+      # Match the ANSI-wrapped epoch: \033[34m<epoch>\033[0m
+      # Build a regex-safe epoch pattern
+      ansi_epoch = esc "\\[34m" ep esc "\\[0m"
+      if (match(line, ansi_epoch)) {
+        before = substr(line, 1, RSTART - 1)
+        after  = substr(line, RSTART + RLENGTH)
+        line = before time_str after
+      } else {
+        sub(ep, time_str, line)
+      }
+    }
+
+    print line
+  }
+}
+'
