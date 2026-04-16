@@ -30,9 +30,54 @@ else
   _eza_args+=(--color=always)
 fi
 
+# Translate ls/ll flags to eza equivalents. eza redefines several
+# single-letter flags with different semantics (-h = header, -g = show
+# group, -G = grid, -s = sort, -o = octal, -t = time field). The
+# shell aliases pass -hGg which would break without this translation.
+_user_args=()
+_seen_sep=0
+for _arg in "$@"; do
+  if [ "$_seen_sep" -eq 1 ]; then
+    _user_args+=("$_arg")
+    continue
+  fi
+  case "$_arg" in
+    --)
+      _seen_sep=1
+      _user_args+=("$_arg")
+      ;;
+    --*)
+      # Long options: pass through as-is (eza and ls long names differ
+      # enough that collision is unlikely; user knows what they're doing)
+      _user_args+=("$_arg")
+      ;;
+    -*)
+      # Decompose combined short flags and translate individually.
+      _flags="${_arg#-}"
+      _i=0
+      while [ "$_i" -lt "${#_flags}" ]; do
+        _c="${_flags:_i:1}"
+        case "$_c" in
+          h) ;;                              # ls: human-readable (eza default in -l)
+          g) _eza_args+=(--no-user) ;;       # ls: suppress owner
+          G) ;;                              # ls: suppress group (eza default)
+          o) ;;                              # ls: suppress group (same as -G)
+          s) _eza_args+=(--blocksize) ;;     # ls: show block sizes
+          t) _eza_args+=(--sort=modified) ;; # ls: sort by modification time
+          *)  _user_args+=("-$_c") ;;        # unknown: pass through to eza
+        esac
+        _i=$((_i + 1))
+      done
+      ;;
+    *)
+      _user_args+=("$_arg")
+      ;;
+  esac
+done
+
 # Single eza call with epoch timestamps → awk replaces epoch with
 # ll-style compact relative time (colored, right-aligned numbers).
-eza "${_eza_args[@]}" "$@" | awk \
+eza "${_eza_args[@]}" "${_user_args[@]}" | awk \
     -v NOW="$_now" \
     -v USERNAME="$_username" \
     -v NO_COLOR="$NO_COLOR" \
