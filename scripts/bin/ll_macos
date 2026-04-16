@@ -166,11 +166,10 @@ batch_push_rows() {
     fi
 
     local path="${paths[$idx]}"
-    local row_idx=${#rows[@]}
     # Fields: blocks perms links owner group size epoch name target path is_child
     rows+=("${blocks1k}${DELIM}${perms}${DELIM}${links}${DELIM}${owner}${DELIM}${group}${DELIM}${size}${DELIM}${epoch}${DELIM}${name}${DELIM}${target}${DELIM}${path}${DELIM}0")
-    # Store mapping from path to row index for O(1) lookup
-    row_index_map["$path"]=$row_idx
+    # Parallel row_paths entry for linear path→index lookup (see top).
+    row_paths+=("$path")
     ((idx++)) || true
   done < <(/usr/bin/stat -f "$stat_fmt" -- "${stat_paths[@]}" 2>/dev/null)
 }
@@ -575,8 +574,28 @@ fi
 # Rows stored as US-separated fields to preserve names safely.
 # Fields: blocks perms links owner group size epoch name target path is_child
 rows=()
-# Map from path to row index for O(1) lookup when printing ROW operands
-declare -A row_index_map
+# Parallel indexed array: row_paths[i] is the operand path for rows[i].
+# Bash 3.2 compat: stock macOS ships bash 3.2 (no `declare -A`), so we
+# use a parallel array + linear scan instead of an associative map.
+# N is the count of operand ROWs (not expanded dir children), typically
+# tiny — the shell-side lookup cost is negligible next to stat/awk.
+row_paths=()
+
+# _find_row_index_by_path TARGET
+#   Returns 0 and sets global _FOUND_ROW_IDX on hit; returns 1 on miss.
+#   Uses a global (not a subshell) to avoid forking in the render loop.
+_find_row_index_by_path() {
+  local target="$1"
+  local i n=${#row_paths[@]}
+  for ((i=0; i<n; i++)); do
+    if [ "${row_paths[i]}" = "$target" ]; then
+      _FOUND_ROW_IDX=$i
+      return 0
+    fi
+  done
+  _FOUND_ROW_IDX=""
+  return 1
+}
 
 row_target_type=()
 row_target_perms=()
@@ -770,15 +789,25 @@ attach_symlink_target_metadata
 # ------------------------------
 # Directory slice lookup for render plan
 # ------------------------------
-# dir_markers items are: dir, delimiter, start_index, delimiter, end_index (indices are 0-based)
-# Build maps so render_all_awk can emit D + delimiter + start + delimiter + end quickly.
-declare -A dir_start_index
-declare -A dir_end_index
-for m in "${dir_markers[@]}"; do
-  IFS="$DELIM" read -r _d _s _e <<<"$m"
-  dir_start_index["$_d"]="$_s"
-  dir_end_index["$_d"]="$_e"
-done
+# dir_markers items are: dir, delimiter, start_index, delimiter, end_index (0-based).
+# Bash 3.2 compat: instead of two associative maps (dir→start, dir→end)
+# we iterate dir_markers directly via a helper that sets globals.
+# _FOUND_DIR_START / _FOUND_DIR_END are set on hit, empty on miss.
+_find_dir_slice() {
+  local target="$1"
+  local m _d _s _e
+  for m in "${dir_markers[@]}"; do
+    IFS="$DELIM" read -r _d _s _e <<<"$m"
+    if [ "$_d" = "$target" ]; then
+      _FOUND_DIR_START="$_s"
+      _FOUND_DIR_END="$_e"
+      return 0
+    fi
+  done
+  _FOUND_DIR_START=""
+  _FOUND_DIR_END=""
+  return 1
+}
 
 # ------------------------------
 # Render (GENERAL PATH): single awk, preserves behavior
@@ -800,20 +829,18 @@ render_all_awk() {
       kind="${g%%"${DELIM}"*}"
       val="${g#*"${DELIM}"}"
       if [ "$kind" = "ROW" ]; then
-        if [ -n "${row_index_map["$val"]:-}" ]; then
-          # row_index_map is 0-based; awk rows are 1-based
-          printf 'R%s%s\n' "$DELIM" "$(( row_index_map["$val"] + 1 ))"
+        if _find_row_index_by_path "$val"; then
+          # _FOUND_ROW_IDX is 0-based; awk rows are 1-based
+          printf 'R%s%s\n' "$DELIM" "$(( _FOUND_ROW_IDX + 1 ))"
         fi
       else
         # HDR groups were expanded into rows; print the header marker in operand order.
         printf 'H%s%s\n' "$DELIM" "$val"
         # Also print the directory slice so awk can render its children.
-        s="${dir_start_index["$val"]:-}"
-        e="${dir_end_index["$val"]:-}"
-        if [ -n "$s" ] && [ -n "$e" ]; then
+        if _find_dir_slice "$val"; then
           # bash indices are 0-based and end is exclusive.
           # awk rows are 1-based; end becomes (e + 1) exclusive to cover last row.
-          printf 'D%s%s%s%s\n' "$DELIM" "$(( s + 1 ))" "$DELIM" "$(( e + 1 ))"
+          printf 'D%s%s%s%s\n' "$DELIM" "$(( _FOUND_DIR_START + 1 ))" "$DELIM" "$(( _FOUND_DIR_END + 1 ))"
         fi
       fi
     done

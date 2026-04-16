@@ -238,3 +238,47 @@ load './00_harness.bash'
 
   ll_rm_testdir
 }
+
+# Regression: stock macOS ships bash 3.2 (Apple froze it at the bash 3.2
+# GPLv2 line). ll_macos previously used `declare -A` (bash 4+) in three
+# spots and died at script load with "declare: -A: invalid option" on
+# machines without MacPorts / Homebrew bash. This test forces the stock
+# /bin/bash 3.2 interpreter explicitly so CI runners with newer bash in
+# PATH still catch any future regression into bash 4+ syntax.
+@test "ll_macos: runs under stock /bin/bash 3.2 (no declare -A, no bash 4+ features)" {
+  ll_require_macos_userland || skip "Not on macOS or required binaries missing"
+
+  if [ ! -x /bin/bash ]; then
+    skip "/bin/bash missing (not stock macOS)"
+  fi
+
+  # Probe the stock bash version. We want 3.2 specifically so the test
+  # actually exercises the legacy interpreter; if /bin/bash has been
+  # replaced with a newer build for some reason, the test is still
+  # useful as a sanity check that the script runs under it.
+  run /bin/bash --version
+  assert_success
+  assert_output --partial "bash"
+
+  ll_mk_testdir
+  ll_seed_fixtures_common
+
+  # Invoke ll_macos through the stock /bin/bash — bypassing the shebang's
+  # `/usr/bin/env bash` which would pick up a newer bash on hosts that
+  # have one in PATH. Running with a mixed operand set exercises all
+  # three code paths that used to need declare -A: batch_push_rows
+  # (row_paths tracking), dir_markers population, and the render_all_awk
+  # lookup loop.
+  run /bin/bash "${LL_MACOS_IMPL}" -- dir1 file1.txt link-to-file1
+  assert_success
+
+  # Must produce meaningful output, not collapse or crash.
+  assert_output --partial "file1.txt"
+  assert_output --partial "link-to-file1"
+
+  # Must NOT emit the bash 3.2 failure signature we're guarding against.
+  [[ "$output" != *"declare: -A"* ]]
+  [[ "$output" != *"invalid option"* ]]
+
+  ll_rm_testdir
+}
