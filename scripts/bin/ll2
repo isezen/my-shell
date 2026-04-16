@@ -97,31 +97,38 @@ BEGIN {
   time_pre[n] = pre
   time_fut[n] = is_future
 
-  # Track max visible time width for right-alignment
-  tlen = length(pre v " " lbl)
-  if (tlen > max_tlen) max_tlen = tlen
+  # Track max number width for right-alignment (number and unit aligned separately)
+  vlen = length(pre v)
+  if (vlen > max_vlen) max_vlen = vlen
 }
 
 END {
   for (i = 1; i <= n; i++) {
     line = lines[i]
 
-    # "you" substitution
-    gsub(USERNAME, "you", line)
+    # "you" substitution — only first occurrence (the owner field).
+    # gsub would also clobber paths like /Users/<username>/...
+    sub(USERNAME, "you", line)
 
     # Build formatted time string
     v   = time_v[i]
     lbl = time_lbl[i]
     pre = time_pre[i]
 
-    raw = pre v " " lbl
-    # Right-align: pad on the left
-    pad = ""
-    need = max_tlen - length(raw)
-    for (p = 0; p < need; p++) pad = pad " "
+    # ll-style: number right-aligned (max_vlen wide), unit left-aligned (3 chars)
+    numpart = pre v
+    npad = ""
+    need = max_vlen - length(numpart)
+    for (p = 0; p < need; p++) npad = npad " "
+
+    # Pad unit to 3 chars so "yr" aligns with "day"/"mon"/"min"/"hrs"/"sec"
+    ulbl = lbl
+    while (length(ulbl) < 3) ulbl = ulbl " "
+
+    raw = npad numpart " " ulbl
 
     if (NO_COLOR == "1") {
-      time_str = pad raw
+      time_str = raw
     } else {
       if (time_fut[i])       c = cfut
       else if (lbl == "sec") c = csec
@@ -131,7 +138,7 @@ END {
       else if (lbl == "mon") c = cmon
       else if (lbl == "yr")  c = cyr
       else c = ""
-      time_str = c pad raw creset
+      time_str = c raw creset
     }
 
     # Replace epoch in line with formatted time.
