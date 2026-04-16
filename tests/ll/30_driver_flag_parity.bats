@@ -113,3 +113,38 @@ _extract_short_options() {
     return 1
   }
 }
+
+# Regression: unknown long options (e.g. --group-directories-first,
+# which the fish/bash/zsh `ll` wrapper functions routinely append) must
+# NOT be mis-decomposed into individual short flags by the `-*)` branch.
+# The `d` character in such a long name would previously set
+# LISTDIRECTORY=1 and collapse the whole listing into a single `.` row.
+@test "ll drivers: unknown long options are not mis-parsed as short flags" {
+  local tmpdir driver
+  tmpdir="$(mktemp -d)"
+  : > "$tmpdir/file_a"
+  : > "$tmpdir/file_b"
+  : > "$tmpdir/file_c"
+
+  for driver in "$LL_MACOS" "$LL_LINUX"; do
+    # ll_linux needs a working GNU ls; soft-skip on hosts without one
+    # (macOS without gnubin). The macOS driver runs on any BSD stat.
+    if [ "$driver" = "$LL_LINUX" ]; then
+      if ! ls --color -l --time-style=+"%s" "$tmpdir" >/dev/null 2>&1 \
+         && ! command -v gls >/dev/null 2>&1 \
+         && [ ! -x /opt/local/libexec/gnubin/ls ]; then
+        continue
+      fi
+    fi
+
+    LL_NO_COLOR=1 run "$driver" --group-directories-first "$tmpdir"
+    assert_success
+
+    # Must list all three files, not collapse to a single `.` row.
+    assert_output --partial 'file_a'
+    assert_output --partial 'file_b'
+    assert_output --partial 'file_c'
+  done
+
+  rm -rf "$tmpdir"
+}

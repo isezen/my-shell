@@ -37,6 +37,12 @@ for arg in "$@"; do
     --size) ASIZE=1 ;;
     --no-group) GROUPNAME=0 ;;
 
+    # Unknown long options: ignore (still passed through to ls via "$@").
+    # Without this case they would fall through to the short-flag
+    # decomposer below and be mis-parsed character by character
+    # (e.g. --group-directories-first → 'd' → LISTDIRECTORY=1).
+    --*) ;;
+
     # short options (possibly combined)
     -*)
       # Skip a lone '-' (stdin sentinel)
